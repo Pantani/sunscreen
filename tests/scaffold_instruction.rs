@@ -122,11 +122,14 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
     let ix_snapshot = std::fs::read_to_string(&ix_file).unwrap();
     assert_eq!(ix_snapshot, ix_contents);
 
-    // 4) Drift detection: tweak the instruction file and re-run → exit 6.
-    let mut tampered = ix_contents.clone();
-    tampered.push_str("\n// user tamper\n");
-    std::fs::write(&ix_file, &tampered).unwrap();
-    let drift = run_scaffold(
+    // 4) User-region edits are PRESERVED across re-runs (not treated as drift).
+    let user_edited = ix_contents.replace(
+        "let _ = ctx;",
+        "let _ = ctx;\n    msg!(\"custom user logic\");",
+    );
+    assert_ne!(user_edited, ix_contents, "test setup: edit must apply");
+    std::fs::write(&ix_file, &user_edited).unwrap();
+    let preserved = run_scaffold(
         &ws,
         &[
             "scaffold",
@@ -139,10 +142,15 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
         ],
     );
     assert_eq!(
-        drift.status.code(),
-        Some(6),
-        "drift should exit 6; stderr={}",
-        String::from_utf8_lossy(&drift.stderr)
+        preserved.status.code(),
+        Some(0),
+        "user-region edit must NOT drift; stderr={}",
+        String::from_utf8_lossy(&preserved.stderr)
+    );
+    let after = std::fs::read_to_string(&ix_file).unwrap();
+    assert!(
+        after.contains("msg!(\"custom user logic\");"),
+        "user-region content must be preserved across re-run, got: {after}"
     );
 }
 

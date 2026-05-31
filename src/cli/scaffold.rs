@@ -97,22 +97,65 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     let mod_rel = relative_to(&ws.root, &program.instructions_mod_rs);
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
 
-    // Idempotency: if the instruction file already exists, compare byte-exact.
-    // - Same bytes → skip (unchanged).
-    // - Different bytes → drift error (exit 6); do not overwrite blindly.
+    // Idempotency: if the instruction file already exists, compare ONLY the
+    // auto-generated `segment=file` region. The `segment=handler` user-region
+    // is owned by the user and must be preserved across re-runs.
+    // - Auto-generated region identical → unchanged (no-op).
+    // - Auto-generated region differs → re-apply just that patch, preserving
+    //   the user-region content verbatim.
+    //
+    // `ix_existing_patched`, when `Some`, holds the rewritten file contents to
+    // be written back (with the user-region preserved).
+    let mut ix_existing_patched: Option<String> = None;
     let ix_status: FileStatus = if ix_abs.exists() {
         let existing = std::fs::read_to_string(&ix_abs).map_err(|e| {
             SunscreenError::Other(anyhow::anyhow!("read {}: {e}", ix_abs.display()))
         })?;
-        if existing == instruction_body {
-            FileStatus::Unchanged
-        } else {
-            return Err(SunscreenError::InstructionDrift {
-                path: ix_rel.to_string_lossy().into_owned(),
-                hint:
-                    "user modified handler region or args changed; use --force or restore from VCS"
-                        .to_string(),
-            });
+        // The freshly-rendered template carries both the auto-generated and
+        // the (stub) user regions. Extract the auto-generated `file` segment
+        // body from each side and compare only that.
+        let rendered_file_body =
+            extract_segment_body(&instruction_body, "file").ok_or_else(|| {
+                SunscreenError::Other(anyhow::anyhow!(
+                    "rendered instruction missing `segment=file` markers"
+                ))
+            })?;
+        let existing_file_body = extract_segment_body(&existing, "file");
+
+        match existing_file_body {
+            // Existing file has no recognisable `segment=file` marker — fall
+            // back to a strict byte comparison and surface drift if mismatched.
+            None => {
+                if existing == instruction_body {
+                    FileStatus::Unchanged
+                } else {
+                    return Err(SunscreenError::InstructionDrift {
+                        path: ix_rel.to_string_lossy().into_owned(),
+                        hint: "instruction file has no auto-generated markers; \
+                               restore from VCS or delete to regenerate"
+                            .to_string(),
+                    });
+                }
+            }
+            Some(existing_body) if existing_body == rendered_file_body => FileStatus::Unchanged,
+            Some(_) => {
+                // Auto-generated region drifted: re-apply ONLY the `file`
+                // segment, leaving the user-region (`segment=handler`)
+                // untouched.
+                let body_lines: Vec<String> = rendered_file_body
+                    .strip_suffix('\n')
+                    .unwrap_or(&rendered_file_body)
+                    .split('\n')
+                    .map(str::to_string)
+                    .collect();
+                let patches = vec![Patch {
+                    segment: "file".to_string(),
+                    lines: body_lines,
+                }];
+                let patched = apply(&existing, &patches).map_err(map_patch_err)?;
+                ix_existing_patched = Some(patched);
+                FileStatus::Updated
+            }
         }
     } else {
         FileStatus::Created
@@ -142,21 +185,26 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     };
 
     // 5. Compute new lib.rs content (best-effort; skip if marker missing).
-    let dispatches: Vec<InstructionDispatch> = all_instructions
-        .iter()
-        .map(|n| InstructionDispatch {
+    //
+    // Recover existing dispatch entries (with their args) from the current
+    // lib.rs `dispatch` segment so previously-scaffolded instructions keep
+    // their argument lists. Then merge in the new instruction, deduplicating
+    // by name (the new entry's args win for that name).
+    let existing_dispatches = read_existing_dispatches(&program.lib_rs)?;
+    let mut dispatches: Vec<InstructionDispatch> = Vec::new();
+    for n in &all_instructions {
+        let args = if n == &ix_snake {
+            parsed_args.clone()
+        } else if let Some(d) = existing_dispatches.iter().find(|d| &d.name == n) {
+            d.args.clone()
+        } else {
+            Vec::new()
+        };
+        dispatches.push(InstructionDispatch {
             name: n.clone(),
-            // R1 limitation: dispatch arg list is only correct for the
-            // newly-added instruction. Previously-scaffolded instructions
-            // are re-emitted with empty args (this matches scaffold default
-            // when called from the CLI without --args).
-            args: if n == &ix_snake {
-                parsed_args.clone()
-            } else {
-                Vec::new()
-            },
-        })
-        .collect();
+            args,
+        });
+    }
     let dispatch_body = render_dispatch_segment(&program_snake, &dispatches);
     let (lib_new, lib_status) = try_patch_lib_rs(&program.lib_rs, &dispatch_body)?;
 
@@ -200,6 +248,12 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     if ix_status == FileStatus::Created {
         tx.stage(&ix_rel.to_string_lossy(), instruction_body.as_bytes())
             .map_err(map_tx_err)?;
+    } else if ix_status == FileStatus::Updated {
+        // Auto-generated region drifted: rewrite in place, preserving the
+        // user-region content captured in `ix_existing_patched`.
+        if let Some(patched) = &ix_existing_patched {
+            replace_in_place(&ix_abs, patched)?;
+        }
     }
 
     // Stage the updated mod.rs only if it actually changed.
@@ -486,6 +540,97 @@ fn try_patch_lib_rs(
     }];
     let patched = apply(&existing, &patches).map_err(map_patch_err)?;
     Ok((patched, LibPatchStatus { patched: true }))
+}
+
+/// Extract the body (lines strictly between the begin/end markers) of an
+/// auto-generated segment from `source`, re-joined with `\n` and terminated
+/// with a trailing newline. Returns `None` if the segment is absent or the
+/// source cannot be scanned.
+fn extract_segment_body(source: &str, segment: &str) -> Option<String> {
+    let markers = scan(source).ok()?;
+    let m = markers
+        .iter()
+        .find(|m| m.kind == MarkerKind::AutoGenerated && m.segment == segment)?;
+    let lines: Vec<&str> = source.lines().collect();
+    // Body lives in (begin, end) exclusive of the marker lines themselves.
+    let mut out = String::new();
+    for line in &lines[m.begin + 1..m.end] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// Recover existing dispatch entries from a program's `lib.rs` `dispatch`
+/// segment. Returns an empty vec if the file or segment is missing.
+///
+/// Line-oriented parse: matches wrapper signatures of the form
+/// `pub fn <name>(ctx: Context<Pascal>[, <arg>: <ty>...]) -> Result<()>`.
+fn read_existing_dispatches(
+    lib_rs: &std::path::Path,
+) -> Result<Vec<InstructionDispatch>, SunscreenError> {
+    if !lib_rs.exists() {
+        return Ok(Vec::new());
+    }
+    let existing = std::fs::read_to_string(lib_rs)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", lib_rs.display())))?;
+    let Some(body) = extract_segment_body(&existing, "dispatch") else {
+        return Ok(Vec::new());
+    };
+    Ok(parse_dispatch_entries(&body))
+}
+
+/// Parse dispatch wrapper signature lines into [`InstructionDispatch`] entries.
+fn parse_dispatch_entries(body: &str) -> Vec<InstructionDispatch> {
+    let mut out = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("pub fn ") else {
+            continue;
+        };
+        // rest looks like: `name(ctx: Context<Pascal>, a: u64, ...) -> Result<()> {`
+        let Some(paren) = rest.find('(') else {
+            continue;
+        };
+        let name = rest[..paren].trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        // Extract the parenthesised parameter list (match the closing paren of
+        // the signature — wrappers keep the whole signature on one line).
+        let Some(close) = rest.rfind(')') else {
+            continue;
+        };
+        if close <= paren {
+            continue;
+        }
+        let params = &rest[paren + 1..close];
+        let mut args = Vec::new();
+        for param in params.split(',') {
+            let param = param.trim();
+            if param.is_empty() {
+                continue;
+            }
+            // Skip the leading `ctx: Context<...>` parameter.
+            if param.starts_with("ctx") {
+                continue;
+            }
+            let Some((arg_name, ty)) = param.split_once(':') else {
+                continue;
+            };
+            let arg_name = arg_name.trim();
+            let ty = ty.trim();
+            if arg_name.is_empty() || ty.is_empty() {
+                continue;
+            }
+            args.push(ArgSpec {
+                name: arg_name.to_string(),
+                ty: ty.to_string(),
+            });
+        }
+        out.push(InstructionDispatch { name, args });
+    }
+    out
 }
 
 fn list_existing_instructions(program: &ProgramView) -> Vec<String> {

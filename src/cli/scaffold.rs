@@ -35,7 +35,7 @@ pub enum ScaffoldCmd {
 /// Flags for `sunscreen scaffold instruction`.
 #[derive(Debug, Args)]
 pub struct InstructionArgs {
-    /// Instruction name (snake_case recommended; will be normalised).
+    /// Instruction name. Must start with a letter and contain only `[a-zA-Z0-9_]`.
     pub name: String,
     /// Parent program (must exist in `sunscreen.yml`).
     #[arg(long, value_name = "NAME")]
@@ -225,13 +225,12 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     };
 
     // 6. Stage everything via Transaction.
+    // Normalize separators to '/' for stable JSON output on all platforms.
+    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
     let plan_files: Vec<String> = {
-        let mut v = vec![
-            ix_rel.to_string_lossy().into_owned(),
-            mod_rel.to_string_lossy().into_owned(),
-        ];
+        let mut v = vec![to_fwd(&ix_rel), to_fwd(&mod_rel)];
         if lib_status.patched {
-            v.push(lib_rel.to_string_lossy().into_owned());
+            v.push(to_fwd(&lib_rel));
         }
         v
     };
@@ -253,7 +252,7 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
 
     // Stage the new instruction file (only if not unchanged).
     if ix_status == FileStatus::Created {
-        tx.stage(&ix_rel.to_string_lossy(), instruction_body.as_bytes())
+        tx.stage(&to_fwd(&ix_rel), instruction_body.as_bytes())
             .map_err(map_tx_err)?;
     } else if ix_status == FileStatus::Updated {
         // Auto-generated region drifted: rewrite in place, preserving the
@@ -268,7 +267,7 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     match (mod_action, mod_status) {
         (_, FileStatus::Unchanged) => {}
         (ModAction::Create, _) => {
-            tx.stage(&mod_rel.to_string_lossy(), new_mod_contents.as_bytes())
+            tx.stage(&to_fwd(&mod_rel), new_mod_contents.as_bytes())
                 .map_err(map_tx_err)?;
         }
         (ModAction::Replace, _) => {
@@ -295,7 +294,12 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
             "instruction_file": ix_status.as_str(),
             "mod_file": mod_status.as_str(),
             "lib_file": lib_file_status.as_str(),
-            "written": written.len(),
+            // `written` covers new files; add replacements (mod.rs / lib.rs
+            // updated in-place) so the count reflects all changed files.
+            "written": written.len()
+                + usize::from(mod_status == FileStatus::Updated)
+                + usize::from(lib_file_status == FileStatus::Updated)
+                + usize::from(ix_status == FileStatus::Updated),
         });
         println!("{payload}");
     } else if unchanged {

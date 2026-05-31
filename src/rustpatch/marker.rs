@@ -258,6 +258,14 @@ pub fn apply(source: &str, patches: &[Patch]) -> Result<String, RustpatchError> 
         }
     }
 
+    // Detect the line ending used in the source so we can round-trip it.
+    // Default to LF; switch to CRLF if any line ends with \r\n.
+    let line_ending = if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+
     let lines: Vec<&str> = source.lines().collect();
     let mut out: Vec<String> = Vec::with_capacity(lines.len() + 16);
     let mut cursor = 0usize;
@@ -280,10 +288,10 @@ pub fn apply(source: &str, patches: &[Patch]) -> Result<String, RustpatchError> 
         cursor += 1;
     }
 
-    let mut result = out.join("\n");
+    let mut result = out.join(line_ending);
     // Preserve a trailing newline if the input had one.
     if source.ends_with('\n') {
-        result.push('\n');
+        result.push_str(if line_ending == "\r\n" { "\r\n" } else { "\n" });
     }
     Ok(result)
 }

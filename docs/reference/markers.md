@@ -148,11 +148,10 @@ sunscreen scaffold instruction deposit \
 ```rust
 // === sunscreen:auto-generated:begin segment=instructions version=1 ===
 // DO NOT EDIT. Use `sunscreen scaffold instruction` to extend.
-pub mod initialize;
 pub mod deposit;
-
-pub use initialize::*;
+pub mod initialize;
 pub use deposit::*;
+pub use initialize::*;
 // === sunscreen:auto-generated:end segment=instructions ===
 ```
 

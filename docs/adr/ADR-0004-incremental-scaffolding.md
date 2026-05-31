@@ -12,6 +12,14 @@
 
 ---
 
+## Variation Log
+
+| Date | Author | Version | Summary |
+|------|--------|---------|---------|
+| 2026-05-31 | Pantani | 1.0.0 | Initial ADR |
+
+---
+
 ## TL;DR
 
 `sunscreen` adota **scaffolding incremental por edição baseada em markers** como estratégia primária para mutações em arquivos Rust de workspaces Anchor 1.0 existentes (`lib.rs`, `instructions/mod.rs`, `state/mod.rs`, `errors.rs`, `events.rs`). Cada scaffolder (`instruction`, `account`, `event`, `error`, `program`) opera exclusivamente dentro de regiões delimitadas por comentários `// === sunscreen:auto-generated:begin segment=… ===` (cf. `docs/reference/markers.md`). Código de usuário vive em regiões `user-region` e é tratado como imutável. Para casos raros em que insertion em território não-marcado é inevitável (referenciar uma struct nomeada pelo usuário), `sunscreen` faz fallback para **`ast-grep` como subprocess** — sem dependência de toolchain Rust em tempo de execução. Esta decisão segue Sub-ADR-001 do ADR-0001 § 7.1 e formaliza o roteiro R1→R5 de implementação dos scaffolders na Phase 2.
@@ -163,7 +171,7 @@ Cada round entrega: scaffolder + golden tests + entrada na tabela de `docs/refer
 
 ### 6.1 Componentes esperados
 
-```
+```text
 src/
 ├── rustpatch/
 │   ├── marker.rs       # scan / validate / apply

@@ -44,7 +44,7 @@
 
 ### 2.3 Gramática
 
-```
+```text
 MARKER       := BEGIN_MARKER | END_MARKER
 BEGIN_MARKER := "// === sunscreen:" KIND ":begin segment=" NAME
                 ( " version=" INT )?            // obrigatório em auto-generated

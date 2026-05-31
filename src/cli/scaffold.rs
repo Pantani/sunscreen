@@ -70,6 +70,9 @@ pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
 
 fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "instruction name")?;
+    if let Some(emit) = &args.emit {
+        validate_ident(emit, "--emit event name")?;
+    }
     let ix_snake = args.name.to_snake_case();
     let program_snake = args.program.to_snake_case();
 

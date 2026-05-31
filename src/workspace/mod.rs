@@ -119,7 +119,7 @@ impl From<io::Error> for WorkspaceError {
 impl From<WorkspaceError> for SunscreenError {
     fn from(e: WorkspaceError) -> Self {
         match e {
-            WorkspaceError::NotFound => SunscreenError::UserInput(e.to_string()),
+            WorkspaceError::NotFound => SunscreenError::WorkspaceMissing(e.to_string()),
             WorkspaceError::ConfigParse(_) => SunscreenError::ConfigInvalid(e.to_string()),
             WorkspaceError::OrphanProgram { .. } => SunscreenError::ConfigInvalid(e.to_string()),
             WorkspaceError::UnsafePath { .. } => SunscreenError::ConfigInvalid(e.to_string()),

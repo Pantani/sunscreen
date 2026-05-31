@@ -244,7 +244,10 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
         return Ok(0);
     }
 
-    // Two-phase commit: stage into a tx rooted at ws.root, then rename in.
+    // Atomic commit: stage all three file changes (new instruction file +
+    // in-place mod.rs / lib.rs patches) into one transaction so they land
+    // together or not at all. New files use `stage`; in-place rewrites use
+    // `stage_replace` (which captures originals for rollback).
     let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
 
     // Stage the new instruction file (only if not unchanged).
@@ -255,7 +258,8 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
         // Auto-generated region drifted: rewrite in place, preserving the
         // user-region content captured in `ix_existing_patched`.
         if let Some(patched) = &ix_existing_patched {
-            replace_in_place(&ix_abs, patched)?;
+            tx.stage_replace(&ix_abs, patched.as_bytes())
+                .map_err(map_tx_err)?;
         }
     }
 
@@ -267,12 +271,14 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
                 .map_err(map_tx_err)?;
         }
         (ModAction::Replace, _) => {
-            replace_in_place(&program.instructions_mod_rs, &new_mod_contents)?;
+            tx.stage_replace(&program.instructions_mod_rs, new_mod_contents.as_bytes())
+                .map_err(map_tx_err)?;
         }
     }
 
     if lib_file_status == FileStatus::Updated {
-        replace_in_place(&program.lib_rs, &lib_new)?;
+        tx.stage_replace(&program.lib_rs, lib_new.as_bytes())
+            .map_err(map_tx_err)?;
     }
 
     let written = tx.commit().map_err(map_tx_err)?;
@@ -686,24 +692,6 @@ fn relative_to(root: &std::path::Path, target: &std::path::Path) -> PathBuf {
         .strip_prefix(root)
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(|_| target.to_path_buf())
-}
-
-/// Atomic in-place file replacement (write sibling tempfile + rename).
-fn replace_in_place(path: &std::path::Path, contents: &str) -> Result<(), SunscreenError> {
-    let parent = path.parent().ok_or_else(|| {
-        SunscreenError::Other(anyhow::anyhow!("no parent for {}", path.display()))
-    })?;
-    std::fs::create_dir_all(parent).map_err(|e| SunscreenError::Other(anyhow::anyhow!(e)))?;
-    let tmp = parent.join(format!(
-        ".sunscreen-edit-{}-{}.tmp",
-        std::process::id(),
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("scratch")
-    ));
-    std::fs::write(&tmp, contents).map_err(|e| SunscreenError::Other(anyhow::anyhow!(e)))?;
-    std::fs::rename(&tmp, path).map_err(|e| SunscreenError::Other(anyhow::anyhow!(e)))?;
-    Ok(())
 }
 
 fn map_ws_err(e: WorkspaceError) -> SunscreenError {

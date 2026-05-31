@@ -47,12 +47,29 @@ pub struct PlannedFile {
     pub size: u64,
 }
 
+/// An in-place replacement of an existing file. The new bytes are written to
+/// the staging dir up front; on [`Transaction::commit`] they atomically
+/// overwrite `abs_dest`. The original bytes are captured eagerly so a failed
+/// or rolled-back commit can restore the previous content.
+struct ReplaceIntent {
+    /// Absolute destination path of the file to overwrite.
+    abs_dest: PathBuf,
+    /// Staged file holding the new content.
+    staged: PathBuf,
+    /// Original bytes captured at stage time (for rollback/undo).
+    original: Vec<u8>,
+    /// Set once the staged content has been moved over `abs_dest`.
+    replaced: bool,
+}
+
 /// Two-phase filesystem transaction.
 pub struct Transaction {
     root: PathBuf,
     staging: PathBuf,
     planned: Vec<PlannedFile>,
     committed: Vec<PathBuf>,
+    replaces: Vec<ReplaceIntent>,
+    replace_counter: u64,
     finished: bool,
 }
 
@@ -82,6 +99,8 @@ impl Transaction {
             staging,
             planned: Vec::new(),
             committed: Vec::new(),
+            replaces: Vec::new(),
+            replace_counter: 0,
             finished: false,
         })
     }
@@ -114,6 +133,49 @@ impl Transaction {
         self.planned.push(PlannedFile {
             path: rel_path.to_string(),
             size: contents.len() as u64,
+        });
+        Ok(())
+    }
+
+    /// Stage an atomic in-place replacement of an **existing** file. Unlike
+    /// [`Transaction::stage`] (which refuses to overwrite existing
+    /// destinations), this records an intent to overwrite `path` with
+    /// `new_bytes` when the transaction commits.
+    ///
+    /// `path` may be absolute or relative to the transaction root. The
+    /// current contents of `path` are read immediately and retained so that a
+    /// failed [`Transaction::commit`] or an explicit [`Transaction::rollback`]
+    /// restores the file to its prior state. The new bytes are written into
+    /// the staging dir now and atomically renamed over `path` at commit time.
+    pub fn stage_replace<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        new_bytes: &[u8],
+    ) -> Result<(), TxError> {
+        let abs_dest = {
+            let p = path.as_ref();
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                self.root.join(p)
+            }
+        };
+        // Capture original bytes now for rollback/undo.
+        let original = fs::read(&abs_dest)?;
+        // Write the new content into the staging dir under a unique name.
+        let n = self.replace_counter;
+        self.replace_counter += 1;
+        let base = abs_dest
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("scratch");
+        let staged = self.staging.join(format!("{base}.{n}.replace"));
+        fs::write(&staged, new_bytes)?;
+        self.replaces.push(ReplaceIntent {
+            abs_dest,
+            staged,
+            original,
+            replaced: false,
         });
         Ok(())
     }
@@ -168,6 +230,18 @@ impl Transaction {
             self.committed.push(to);
         }
 
+        // Apply in-place replacements atomically. On any failure, undo the
+        // new files and restore every already-replaced file's original bytes.
+        for i in 0..self.replaces.len() {
+            let from = self.replaces[i].staged.clone();
+            let to = self.replaces[i].abs_dest.clone();
+            if let Err(e) = move_file(&from, &to) {
+                self.undo();
+                return Err(TxError::Io(e));
+            }
+            self.replaces[i].replaced = true;
+        }
+
         // Cleanup staging tree (best effort).
         let _ = fs::remove_dir_all(&self.staging);
         self.finished = true;
@@ -184,6 +258,13 @@ impl Transaction {
     fn undo(&mut self) {
         for path in self.committed.drain(..) {
             let _ = fs::remove_file(&path);
+        }
+        // Restore originals for any replacement that was already applied.
+        for r in &mut self.replaces {
+            if r.replaced {
+                let _ = fs::write(&r.abs_dest, &r.original);
+                r.replaced = false;
+            }
         }
     }
 
@@ -327,6 +408,43 @@ mod tests {
         tx.stage("a.txt", b"one").unwrap();
         let err = tx.stage("a.txt", b"two").unwrap_err();
         assert!(matches!(err, TxError::DuplicateStage(_)));
+    }
+
+    #[test]
+    fn stage_replace_overwrites_existing_on_commit() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("lib.rs"), b"old").unwrap();
+        let mut tx = Transaction::new(dir.path()).unwrap();
+        tx.stage("ix.rs", b"new file").unwrap();
+        tx.stage_replace("lib.rs", b"patched").unwrap();
+        tx.commit().unwrap();
+        assert_eq!(fs::read(dir.path().join("lib.rs")).unwrap(), b"patched");
+        assert_eq!(fs::read(dir.path().join("ix.rs")).unwrap(), b"new file");
+    }
+
+    #[test]
+    fn stage_replace_restores_original_on_rollback() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("lib.rs"), b"original").unwrap();
+        let mut tx = Transaction::new(dir.path()).unwrap();
+        tx.stage_replace("lib.rs", b"patched").unwrap();
+        tx.rollback().unwrap();
+        assert_eq!(fs::read(dir.path().join("lib.rs")).unwrap(), b"original");
+    }
+
+    #[test]
+    fn stage_replace_undo_restores_on_new_file_collision() {
+        // A `stage` destination collision aborts commit before replaces run,
+        // so originals stay intact; a failure mid-replace must restore them.
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("lib.rs"), b"original").unwrap();
+        fs::write(dir.path().join("a.txt"), b"exists").unwrap();
+        let mut tx = Transaction::new(dir.path()).unwrap();
+        tx.stage("a.txt", b"new").unwrap();
+        tx.stage_replace("lib.rs", b"patched").unwrap();
+        let err = tx.commit().unwrap_err();
+        assert!(matches!(err, TxError::DestinationExists(_)));
+        assert_eq!(fs::read(dir.path().join("lib.rs")).unwrap(), b"original");
     }
 
     #[test]

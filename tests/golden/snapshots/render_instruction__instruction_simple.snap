@@ -1,0 +1,22 @@
+---
+source: tests/golden/render_instruction.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<Initialize>,
+) -> Result<()> {
+    let _ = ctx;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

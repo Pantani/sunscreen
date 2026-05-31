@@ -17,6 +17,21 @@ pub enum SunscreenError {
     #[error("invalid input: {0}")]
     UserInput(String),
 
+    /// Operation requires a sunscreen workspace, but none was discovered.
+    #[error("workspace not found: {0}")]
+    WorkspaceMissing(String),
+
+    /// An existing instruction file has no recognizable auto-generated markers,
+    /// so sunscreen cannot safely re-apply the scaffold (the file may have been
+    /// hand-written or its markers removed/corrupted).
+    #[error("instruction drift at {path}: {hint}")]
+    InstructionDrift {
+        /// Path (workspace-relative) of the drifted file.
+        path: String,
+        /// Human-readable hint about how to resolve.
+        hint: String,
+    },
+
     /// Fallback for arbitrary errors propagated via `anyhow`.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -36,6 +51,8 @@ impl SunscreenError {
             SunscreenError::ToolchainMissing(_) => 2,
             SunscreenError::ConfigInvalid(_) => 3,
             SunscreenError::UserInput(_) => 4,
+            SunscreenError::WorkspaceMissing(_) => 5,
+            SunscreenError::InstructionDrift { .. } => 6,
         }
     }
 
@@ -46,6 +63,8 @@ impl SunscreenError {
             SunscreenError::ConfigInvalid(_) => "config_invalid",
             SunscreenError::ToolchainMissing(_) => "toolchain_missing",
             SunscreenError::UserInput(_) => "user_input",
+            SunscreenError::WorkspaceMissing(_) => "workspace_missing",
+            SunscreenError::InstructionDrift { .. } => "instruction_drift",
             SunscreenError::Other(_) => "other",
         }
     }

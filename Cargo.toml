@@ -26,6 +26,10 @@ path = "tests/golden/render_basic.rs"
 name = "render_workspace"
 path = "tests/golden/render_workspace.rs"
 
+[[test]]
+name = "render_instruction"
+path = "tests/golden/render_instruction.rs"
+
 [[bench]]
 name = "cold_start"
 path = "benches/cold_start.rs"

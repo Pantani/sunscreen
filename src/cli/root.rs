@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use crate::cli::chain::{self, ChainCmd};
+use crate::cli::scaffold::{self, ScaffoldCmd};
 use crate::cli::{doctor, version};
 use crate::error::SunscreenError;
 
@@ -50,8 +51,11 @@ pub enum Command {
         #[arg(long, value_name = "NAME")]
         component: Option<String>,
     },
-    /// Scaffold a new Solana project (stub).
-    Scaffold,
+    /// Scaffold Anchor program artifacts (instruction, account, event, ...).
+    Scaffold {
+        #[command(subcommand)]
+        cmd: ScaffoldCmd,
+    },
     /// Workspace + chain operations (`new`, `serve`, `build`, `deploy`).
     Chain {
         #[command(subcommand)]
@@ -93,10 +97,7 @@ fn dispatch(cli: &Cli) -> Result<i32, SunscreenError> {
             doctor::run(cli.json, cli.config.as_deref(), component.as_deref())
                 .map_err(SunscreenError::from)
         }
-        Command::Scaffold => {
-            eprintln!("scaffold: TODO (template-engineer)");
-            Ok(0)
-        }
+        Command::Scaffold { cmd } => scaffold::run(cmd, cli.json),
         Command::Chain { cmd } => chain::run(cmd, cli.json),
         Command::Generate => {
             eprintln!("generate: TODO");

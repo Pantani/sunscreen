@@ -6,7 +6,9 @@ pub mod cli;
 pub mod config;
 pub mod error;
 pub mod fsutil;
+pub mod rustpatch;
 pub mod templates;
 pub mod toolchain;
+pub mod workspace;
 
 pub use error::SunscreenError;

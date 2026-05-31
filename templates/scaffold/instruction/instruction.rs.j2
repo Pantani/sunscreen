@@ -1,0 +1,52 @@
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+{%- if emit %}
+use crate::events::{{ emit | pascal_case }};
+{%- endif %}
+
+#[derive(Accounts)]
+{%- if args %}
+#[instruction({% for a in args %}{{ a.name | snake_case }}: {{ a.ty }}{% if not loop.last %}, {% endif %}{% endfor %})]
+{%- endif %}
+pub struct {{ instruction_name | pascal_case }}<'info> {
+{%- for acc in accounts %}
+    {%- if acc.kind == "SystemProgram" %}
+    pub {{ acc.name | snake_case }}: Program<'info, System>,
+    {%- elif acc.kind == "TokenProgram" %}
+    pub {{ acc.name | snake_case }}: Program<'info, anchor_spl::token::Token>,
+    {%- elif acc.kind == "AssociatedTokenProgram" %}
+    pub {{ acc.name | snake_case }}: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+    {%- else %}
+    {%- set has_attr = acc.mutable or acc.seeds %}
+    {%- if has_attr %}
+    #[account(
+        {%- set parts = [] -%}
+        {%- if acc.mutable %}mut{% if acc.seeds %}, {% endif %}{% endif -%}
+        {%- if acc.seeds %}seeds = [{% for s in acc.seeds %}{{ s }}{% if not loop.last %}, {% endif %}{% endfor %}], bump{% endif -%}
+    )]
+    {%- endif %}
+    {%- if acc.signer %}
+    pub {{ acc.name | snake_case }}: Signer<'info>,
+    {%- else %}
+    pub {{ acc.name | snake_case }}: AccountInfo<'info>,
+    {%- endif %}
+    {%- endif %}
+{%- endfor %}
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<{{ instruction_name | pascal_case }}>{% for a in args %},
+    {{ a.name | snake_case }}: {{ a.ty }}{% endfor %},
+) -> Result<()> {
+    let _ = ctx;
+{%- for a in args %}
+    let _ = &{{ a.name | snake_case }};
+{%- endfor %}
+{%- if emit %}
+    emit!({{ emit | pascal_case }} {});
+{%- endif %}
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

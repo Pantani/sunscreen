@@ -63,6 +63,9 @@ pub enum WorkspaceError {
     ConfigParse(ConfigError),
     /// A program declared in config has no matching directory on disk.
     OrphanProgram { name: String },
+    /// A program's configured `path` is unsafe (absolute or escapes the
+    /// workspace root via `..`).
+    UnsafePath { name: String, path: String },
     /// `find_program` lookup miss.
     ProgramNotFound { name: String },
     /// I/O error during traversal / stat.
@@ -80,6 +83,10 @@ impl fmt::Display for WorkspaceError {
             Self::OrphanProgram { name } => write!(
                 f,
                 "program {name:?} declared in sunscreen.yml has no directory on disk"
+            ),
+            Self::UnsafePath { name, path } => write!(
+                f,
+                "program {name:?} has unsafe path {path:?} (must be relative and stay inside the workspace)"
             ),
             Self::ProgramNotFound { name } => write!(f, "no program named {name:?} in workspace"),
             Self::Io(e) => write!(f, "workspace io error: {e}"),
@@ -115,6 +122,7 @@ impl From<WorkspaceError> for SunscreenError {
             WorkspaceError::NotFound => SunscreenError::UserInput(e.to_string()),
             WorkspaceError::ConfigParse(_) => SunscreenError::ConfigInvalid(e.to_string()),
             WorkspaceError::OrphanProgram { .. } => SunscreenError::ConfigInvalid(e.to_string()),
+            WorkspaceError::UnsafePath { .. } => SunscreenError::ConfigInvalid(e.to_string()),
             WorkspaceError::ProgramNotFound { .. } => SunscreenError::UserInput(e.to_string()),
             WorkspaceError::Io(io_err) => {
                 SunscreenError::Other(anyhow::anyhow!("workspace io: {io_err}"))
@@ -181,6 +189,20 @@ fn resolve_programs(root: &Path, cfg: &Config) -> Result<Vec<ProgramView>, Works
     let mut out = Vec::with_capacity(cfg.programs.len());
     for prog in &cfg.programs {
         let snake = prog.name.to_snake_case();
+        // Reject unsafe configured paths before joining: absolute paths and
+        // any path containing a `..` component would let a malicious config
+        // escape the workspace root.
+        let path = Path::new(&prog.path);
+        let unsafe_path = path.is_absolute()
+            || path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir));
+        if unsafe_path {
+            return Err(WorkspaceError::UnsafePath {
+                name: prog.name.clone(),
+                path: prog.path.clone(),
+            });
+        }
         let prog_root = root.join(&prog.path);
         // Also accept the alternative location `programs/<snake_name>/`
         // when the configured path does not exist, so configs that store
@@ -281,6 +303,27 @@ programs:
             find_program(&ws, "ghost"),
             Err(WorkspaceError::ProgramNotFound { .. })
         ));
+    }
+
+    #[test]
+    fn unsafe_program_path_returns_error() {
+        const ESCAPE_YML: &str = r#"version: 1
+project:
+  name: my-proto
+  framework: anchor
+programs:
+  - name: my-proto
+    path: ../escape
+"#;
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join(MANIFEST_FILE), ESCAPE_YML).unwrap();
+        match find_root(Some(tmp.path())) {
+            Err(WorkspaceError::UnsafePath { name, path }) => {
+                assert_eq!(name, "my-proto");
+                assert_eq!(path, "../escape");
+            }
+            other => panic!("expected UnsafePath, got {other:?}"),
+        }
     }
 
     #[test]

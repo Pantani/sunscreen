@@ -17,7 +17,7 @@
 //!   `// === sunscreen:user-region:end segment=handler ===` — user-owned; the
 //!   generator only emits a stub on first creation and never overwrites it.
 
-use heck::ToPascalCase;
+use heck::{ToPascalCase, ToSnakeCase};
 use rust_embed::RustEmbed;
 use serde::Serialize;
 
@@ -199,16 +199,23 @@ pub fn render_instructions_mod_segment(instructions: &[String]) -> String {
 pub fn render_dispatch_segment(_program: &str, instructions: &[InstructionDispatch]) -> String {
     let mut out = String::new();
     for ix in instructions {
-        let pascal = ix.name.to_pascal_case();
+        // Normalise to snake_case for Rust identifiers so the dispatch wrapper
+        // matches the names emitted by the instruction template.
+        let name = ix.name.to_snake_case();
+        let pascal = name.to_pascal_case();
         let arg_decls: String = ix
             .args
             .iter()
-            .map(|a| format!(", {}: {}", a.name, a.ty))
+            .map(|a| format!(", {}: {}", a.name.to_snake_case(), a.ty))
             .collect();
-        let arg_pass: String = ix.args.iter().map(|a| format!(", {}", a.name)).collect();
+        let arg_pass: String = ix
+            .args
+            .iter()
+            .map(|a| format!(", {}", a.name.to_snake_case()))
+            .collect();
         out.push_str(&format!(
             "pub fn {name}(ctx: Context<{pascal}>{arg_decls}) -> Result<()> {{\n    instructions::{name}::handler(ctx{arg_pass})\n}}\n",
-            name = ix.name,
+            name = name,
             pascal = pascal,
             arg_decls = arg_decls,
             arg_pass = arg_pass,

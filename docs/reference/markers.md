@@ -61,7 +61,7 @@ IDENT := [a-z][a-z0-9_-]*
 Regras adicionais:
 
 - `===` em ambos os lados é literal e obrigatório (assinatura visual + reduz colisão acidental).
-- A linha inteira do marker deve ser **idêntica** ao gerar e ao reler — `sunscreen` faz match por linha inteira após trim de whitespace à direita.
+- A linha inteira do marker deve ser **idêntica** ao gerar e ao reler — `sunscreen` faz match por linha inteira após trim de whitespace em ambos os lados (`trim()`: leading e trailing whitespace são ignorados).
 - `version` só aparece em `auto-generated`. `user-region` não versiona (sunscreen nunca migra conteúdo do usuário).
 - `generator` é diagnóstico (qual scaffolder produziu o segmento).
 
@@ -123,8 +123,7 @@ Segments futuros são adicionados a esta tabela e introduzem `version=1`; bumps 
 
 - Toda região `auto-generated` carrega `version=<n>`.
 - Bump de `version` indica **mudança incompatível** no formato do conteúdo gerado dentro daquele segment.
-- Quando `sunscreen` encontra `version=N` mas o scaffolder atual emite `version=N+1`, ele executa o **migrator** correspondente (`migrate_<segment>_v<N>_to_v<N+1>`) antes de reescrever a região.
-- Migradores são funções puras `(old_lines) -> Result<new_lines>` e residem em `src/rustpatch/migrate/`.
+- Quando `sunscreen` encontra `version=N` mas o scaffolder atual emite `version=N+1`, ele executa o **migrator** correspondente antes de reescrever a região. *(Suporte a migradores automáticos planejado para R2.)*
 - `version=1` é o ponto de partida para todos os segments listados em § 4.
 
 ---
@@ -147,10 +146,10 @@ sunscreen scaffold instruction deposit \
 // DO NOT EDIT. Use `sunscreen scaffold instruction` to extend.
 pub mod initialize;
 pub mod deposit;
-// === sunscreen:auto-generated:end segment=instructions ===
 
 pub use initialize::*;
 pub use deposit::*;
+// === sunscreen:auto-generated:end segment=instructions ===
 ```
 
 ### 8.2 `programs/escrow/src/lib.rs`

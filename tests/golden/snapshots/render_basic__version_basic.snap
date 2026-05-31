@@ -1,0 +1,7 @@
+---
+source: tests/golden/render_basic.rs
+assertion_line: 15
+expression: out
+---
+sunscreen 0.1.0
+project: my_project

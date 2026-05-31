@@ -1,0 +1,6 @@
+[dependencies]
+which = "6"
+regex = "1"
+comfy-table = "7"
+owo-colors = "4"
+semver = "1"

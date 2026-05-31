@@ -1,0 +1,10 @@
+version: 1
+project:
+  name: fullproj
+  description: A full example
+toolchain:
+  required:
+    anchor: 0.31.0
+    solana: 1.18.0
+scaffolding:
+  default_template: anchor-basic

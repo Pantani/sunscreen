@@ -1,0 +1,82 @@
+[package]
+name = "sunscreen"
+version = "0.1.0-dev"
+edition = "2021"
+description = "Solana CLI scaffolding & orchestration tool"
+license = "Apache-2.0"
+repository = "https://github.com/sunscreen-cli/sunscreen"
+homepage = "https://github.com/sunscreen-cli/sunscreen"
+readme = "README.md"
+keywords = ["solana", "cli", "scaffolding"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "sunscreen"
+path = "src/main.rs"
+
+[lib]
+name = "sunscreen"
+path = "src/lib.rs"
+
+[[test]]
+name = "render_basic"
+path = "tests/golden/render_basic.rs"
+
+[[bench]]
+name = "cold_start"
+path = "benches/cold_start.rs"
+harness = false
+
+[dependencies]
+# cli-architect (base)
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# config-engineer
+serde_yaml = "0.9"
+schemars = "0.8"
+
+# toolchain-detector
+which = "6"
+regex = "1"
+comfy-table = "7"
+owo-colors = "4"
+semver = "1"
+
+# template-engineer
+rust-embed = "8"
+minijinja = "2"
+heck = "0.5"
+indexmap = { version = "2", features = ["serde"] }
+once_cell = "1"
+
+[dev-dependencies]
+tempfile = "3"
+insta = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# Profile used by cargo-dist for release builds.
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# cargo-dist configuration. See https://opensource.axo.dev/cargo-dist/
+[workspace.metadata.dist]
+cargo-dist-version = "0.22.1"
+ci = ["github"]
+installers = ["shell", "powershell"]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+pr-run-mode = "plan"
+install-updater = false

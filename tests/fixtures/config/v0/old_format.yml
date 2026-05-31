@@ -1,0 +1,9 @@
+version: 0
+project:
+  id: myproj
+  description: Legacy v0 project
+toolchain:
+  required:
+    anchor: 0.31.0
+scaffolding:
+  default_template: anchor-basic

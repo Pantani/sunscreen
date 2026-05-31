@@ -155,6 +155,10 @@ impl Transaction {
         let abs_dest = {
             let p = path.as_ref();
             if p.is_absolute() {
+                // Absolute paths must be under the transaction root.
+                if !p.starts_with(&self.root) {
+                    return Err(TxError::PathEscape(p.to_string_lossy().into_owned()));
+                }
                 p.to_path_buf()
             } else {
                 // Reject relative paths that escape the root.

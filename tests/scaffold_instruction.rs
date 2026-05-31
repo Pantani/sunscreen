@@ -168,29 +168,17 @@ fn scaffold_instruction_outside_workspace_errors() {
 
 #[test]
 fn scaffold_instruction_invalid_args_exit_4() {
-    // We don't even need a real workspace — args parsing happens before
-    // workspace discovery is reached for cleanly-invalid inputs. But
-    // current implementation discovers workspace first; arrange a workspace
-    // so we actually hit the args validator.
+    // args/accounts parsing happens before workspace discovery, so a
+    // malformed --args value yields exit 4 even outside a real workspace.
     let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("demo");
-    run_chain_new(&ws, "demo");
-    let programs_dir = ws.join("programs");
-    let entries: Vec<_> = std::fs::read_dir(&programs_dir)
-        .unwrap()
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .collect();
-    let program_name = entries[0].file_name().to_string_lossy().into_owned();
-
     let out = run_scaffold(
-        &ws,
+        tmp.path(),
         &[
             "scaffold",
             "instruction",
             "foo",
             "--program",
-            &program_name,
+            "any",
             "--args",
             "noType",
         ],

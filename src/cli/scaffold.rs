@@ -447,6 +447,11 @@ fn parse_accounts(raw: &str) -> Result<Vec<AccountSpec>, SunscreenError> {
                             .map(|s| s.trim().to_string())
                             .filter(|s| !s.is_empty())
                             .collect();
+                        if seeds.is_empty() {
+                            return Err(SunscreenError::UserInput(format!(
+                                "`seeds=` for account `{name}` requires at least one seed expression"
+                            )));
+                        }
                         spec.seeds = Some(seeds);
                     } else {
                         return Err(SunscreenError::UserInput(format!(
@@ -608,12 +613,27 @@ fn parse_dispatch_entries(body: &str) -> Vec<InstructionDispatch> {
         }
         // Extract the parenthesised parameter list (match the closing paren of
         // the signature — wrappers keep the whole signature on one line).
-        let Some(close) = rest.rfind(')') else {
-            continue;
+        // Find the closing ')' of the param list by scanning forward from
+        // `paren`, tracking angle-bracket depth so we skip over
+        // `Context<Foo>` but stop at the real close-paren.
+        let close = {
+            let chars: Vec<char> = rest[paren + 1..].chars().collect();
+            let mut depth = 0usize;
+            let mut found = None;
+            for (i, &ch) in chars.iter().enumerate() {
+                match ch {
+                    '<' => depth += 1,
+                    '>' if depth > 0 => depth -= 1,
+                    ')' if depth == 0 => {
+                        found = Some(paren + 1 + i);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            let Some(pos) = found else { continue };
+            pos
         };
-        if close <= paren {
-            continue;
-        }
         let params = &rest[paren + 1..close];
         let mut args = Vec::new();
         for param in params.split(',') {

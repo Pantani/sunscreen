@@ -146,7 +146,10 @@ impl Transaction {
     /// current contents of `path` are read immediately and retained so that a
     /// failed [`Transaction::commit`] or an explicit [`Transaction::rollback`]
     /// restores the file to its prior state. The new bytes are written into
-    /// the staging dir now and atomically renamed over `path` at commit time.
+    /// the staging dir now and moved over `path` at commit time. On most
+    /// Unix filesystems this is an atomic `rename(2)`; on cross-device or
+    /// Windows paths the implementation falls back to copy + remove, which
+    /// is **not** atomic.
     pub fn stage_replace<P: AsRef<Path>>(
         &mut self,
         path: P,

@@ -21,8 +21,9 @@ pub enum SunscreenError {
     #[error("workspace not found: {0}")]
     WorkspaceMissing(String),
 
-    /// A generated artifact on disk diverges from what would be re-rendered.
-    /// User edits outside designated regions, or args changed between runs.
+    /// An existing instruction file has no recognizable auto-generated markers,
+    /// so sunscreen cannot safely re-apply the scaffold (the file may have been
+    /// hand-written or its markers removed/corrupted).
     #[error("instruction drift at {path}: {hint}")]
     InstructionDrift {
         /// Path (workspace-relative) of the drifted file.

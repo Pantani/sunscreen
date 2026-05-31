@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::cli::chain::{self, ChainCmd};
 use crate::cli::{doctor, version};
 use crate::error::SunscreenError;
 
@@ -44,11 +45,18 @@ pub enum Command {
     /// Print sunscreen version.
     Version,
     /// Diagnose local toolchain and environment.
-    Doctor,
+    Doctor {
+        /// Only probe a single tool by name (e.g. `anchor`, `solana`).
+        #[arg(long, value_name = "NAME")]
+        component: Option<String>,
+    },
     /// Scaffold a new Solana project (stub).
     Scaffold,
-    /// Manage local validator / chain operations (stub).
-    Chain,
+    /// Workspace + chain operations (`new`, `serve`, `build`, `deploy`).
+    Chain {
+        #[command(subcommand)]
+        cmd: ChainCmd,
+    },
     /// Code generation utilities (stub).
     Generate,
     /// Application lifecycle commands (stub).
@@ -81,17 +89,15 @@ fn dispatch(cli: &Cli) -> Result<i32, SunscreenError> {
             version::run();
             Ok(0)
         }
-        Command::Doctor => {
-            doctor::run(cli.json, cli.config.as_deref()).map_err(SunscreenError::from)
+        Command::Doctor { component } => {
+            doctor::run(cli.json, cli.config.as_deref(), component.as_deref())
+                .map_err(SunscreenError::from)
         }
         Command::Scaffold => {
             eprintln!("scaffold: TODO (template-engineer)");
             Ok(0)
         }
-        Command::Chain => {
-            eprintln!("chain: TODO");
-            Ok(0)
-        }
+        Command::Chain { cmd } => chain::run(cmd, cli.json),
         Command::Generate => {
             eprintln!("generate: TODO");
             Ok(0)

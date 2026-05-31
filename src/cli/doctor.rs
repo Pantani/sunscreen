@@ -13,10 +13,30 @@ use owo_colors::OwoColorize;
 use crate::toolchain::{detect_all, known, RealRunner, Status, ToolReport};
 
 /// Run doctor diagnostics. `config_path` overrides automatic config discovery.
-pub fn run(json: bool, config_path: Option<&Path>) -> anyhow::Result<i32> {
+/// When `component` is `Some`, only that tool is probed; if the name is
+/// unknown, an `anyhow` error is returned (mapped by the caller to a
+/// non-zero exit).
+pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> anyhow::Result<i32> {
     let cfg = crate::config::load(config_path).unwrap_or_default();
     let runner = RealRunner;
-    let specs = known();
+    let specs = match component {
+        None => known(),
+        Some(name) => {
+            let filtered: Vec<_> = known().into_iter().filter(|s| s.name == name).collect();
+            if filtered.is_empty() {
+                anyhow::bail!(
+                    "unknown component {:?} (known: {})",
+                    name,
+                    known()
+                        .iter()
+                        .map(|s| s.name)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+            filtered
+        }
+    };
     let reports = detect_all(&runner, &specs, &cfg.toolchain.required);
 
     if json {
@@ -38,7 +58,7 @@ pub fn run(json: bool, config_path: Option<&Path>) -> anyhow::Result<i32> {
 /// Back-compat shim for the existing single-argument call site in
 /// `cli::root` until that file is updated to pass `--config`.
 pub fn run_compat(json: bool) -> anyhow::Result<i32> {
-    run(json, None)
+    run(json, None, None)
 }
 
 fn print_table(reports: &[ToolReport]) {

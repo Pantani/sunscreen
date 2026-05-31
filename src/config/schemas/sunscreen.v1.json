@@ -1,35 +1,346 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "sunscreen.v1",
-  "description": "Placeholder JSON Schema for sunscreen.yml v1. Regenerate with `schemars::schema_for!(Config)` once a generator binary exists.",
+  "title": "Config",
+  "description": "Top-level configuration document for `sunscreen.yml` v1.",
   "type": "object",
-  "additionalProperties": false,
   "properties": {
-    "version": { "type": "integer", "minimum": 1, "default": 1 },
-    "project": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "name": { "type": "string" },
-        "description": { "type": ["string", "null"] }
+    "clusters": {
+      "default": {
+        "devnet": {
+          "url": "https://api.devnet.solana.com",
+          "wallet": "~/.config/solana/id.json"
+        },
+        "localnet": {
+          "url": "http://127.0.0.1:8899",
+          "wallet": "~/.config/solana/id.json"
+        },
+        "mainnet": {
+          "url": "https://api.mainnet-beta.solana.com",
+          "wallet": "~/.config/solana/id.json"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/ClustersCfg"
+        }
+      ]
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PluginCfg"
       }
     },
-    "toolchain": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "required": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
-        }
+    "programs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProgramCfg"
       }
+    },
+    "project": {
+      "default": {
+        "framework": "anchor",
+        "name": "",
+        "rust_edition": "2021"
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/ProjectCfg"
+        }
+      ]
+    },
+    "runtime": {
+      "default": {
+        "engine": "surfpool",
+        "faucet_sol": 100,
+        "port": 8899
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/RuntimeCfg"
+        }
+      ]
     },
     "scaffolding": {
+      "default": {},
+      "allOf": [
+        {
+          "$ref": "#/definitions/ScaffoldingCfg"
+        }
+      ]
+    },
+    "toolchain": {
+      "default": {
+        "required": {}
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/ToolchainCfg"
+        }
+      ]
+    },
+    "version": {
+      "default": 1,
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "workspace": {
+      "default": {
+        "frontend": "none"
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/WorkspaceCfg"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ClusterCfg": {
+      "description": "A single cluster endpoint configuration.",
       "type": "object",
-      "additionalProperties": false,
+      "required": [
+        "url",
+        "wallet"
+      ],
       "properties": {
-        "default_template": { "type": ["string", "null"] }
-      }
+        "url": {
+          "type": "string"
+        },
+        "wallet": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ClustersCfg": {
+      "description": "Cluster endpoints for the standard Solana triad. Custom clusters can be added via `cluster_overrides` on individual programs.",
+      "type": "object",
+      "properties": {
+        "devnet": {
+          "default": {
+            "url": "https://api.devnet.solana.com",
+            "wallet": "~/.config/solana/id.json"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ClusterCfg"
+            }
+          ]
+        },
+        "localnet": {
+          "default": {
+            "url": "http://127.0.0.1:8899",
+            "wallet": "~/.config/solana/id.json"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ClusterCfg"
+            }
+          ]
+        },
+        "mainnet": {
+          "default": {
+            "url": "https://api.mainnet-beta.solana.com",
+            "wallet": "~/.config/solana/id.json"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ClusterCfg"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Framework": {
+      "description": "Program framework. MVP scopes `anchor`; others are post-MVP placeholders.",
+      "type": "string",
+      "enum": [
+        "anchor",
+        "pinocchio",
+        "shank"
+      ]
+    },
+    "Frontend": {
+      "description": "Frontend stack selection. `None` means \"no frontend scaffolded\".",
+      "type": "string",
+      "enum": [
+        "next",
+        "vite",
+        "none"
+      ]
+    },
+    "PluginCfg": {
+      "description": "Plugin reference (placeholder for v1; full plugin protocol lands later).",
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProgramCfg": {
+      "description": "One program entry under `programs`.",
+      "type": "object",
+      "required": [
+        "name",
+        "path"
+      ],
+      "properties": {
+        "cluster_overrides": {
+          "description": "Map of cluster name (`localnet`/`devnet`/`mainnet` or any custom) to program address override.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProjectCfg": {
+      "description": "Project metadata.",
+      "type": "object",
+      "properties": {
+        "anchor_version": {
+          "description": "Pinned anchor version expected by the project (`MAJOR.MINOR.PATCH`). Used by `doctor` / preflight to warn on major divergence from the detected toolchain. Optional — absence disables the check.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "framework": {
+          "default": "anchor",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Framework"
+            }
+          ]
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "rust_edition": {
+          "default": "2021",
+          "type": "string"
+        },
+        "solana_version": {
+          "description": "Pinned solana version expected by the project (`MAJOR.MINOR.PATCH`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeCfg": {
+      "description": "Local runtime engine config (used by `chain serve`).",
+      "type": "object",
+      "properties": {
+        "engine": {
+          "default": "surfpool",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RuntimeEngine"
+            }
+          ]
+        },
+        "faucet_sol": {
+          "default": 100,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "port": {
+          "default": 8899,
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeEngine": {
+      "description": "Runtime engine selection.",
+      "type": "string",
+      "enum": [
+        "surfpool",
+        "test-validator"
+      ]
+    },
+    "ScaffoldingCfg": {
+      "description": "Scaffolding / template defaults.",
+      "type": "object",
+      "properties": {
+        "default_template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ToolchainCfg": {
+      "description": "Toolchain requirements. Map of tool name -> minimum semver requirement.",
+      "type": "object",
+      "properties": {
+        "required": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "WorkspaceCfg": {
+      "description": "Workspace-level options (frontend wiring, monorepo layout).",
+      "type": "object",
+      "properties": {
+        "frontend": {
+          "default": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Frontend"
+            }
+          ]
+        },
+        "frontend_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

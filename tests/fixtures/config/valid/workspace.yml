@@ -1,0 +1,31 @@
+version: 1
+project:
+  name: my-protocol
+  description: Bootstrap workspace example
+  framework: anchor
+  anchor_version: 1.0.2
+  solana_version: 2.1.0
+  rust_edition: "2021"
+programs:
+  - name: my-protocol
+    path: programs/my-protocol
+    cluster_overrides:
+      devnet: EscrowDevnetkD3aQVgPdMxbAv7XmgFK5Q6n8jR2
+workspace:
+  frontend: next
+  frontend_path: app
+clusters:
+  localnet:
+    url: http://127.0.0.1:8899
+    wallet: ~/.config/solana/id.json
+  devnet:
+    url: https://api.devnet.solana.com
+    wallet: ~/.config/solana/id.json
+  mainnet:
+    url: https://api.mainnet-beta.solana.com
+    wallet: ~/.config/solana/id.json
+runtime:
+  engine: surfpool
+  port: 8899
+  faucet_sol: 100
+plugins: []

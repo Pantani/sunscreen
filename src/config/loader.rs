@@ -348,6 +348,75 @@ mod tests {
     }
 
     #[test]
+    fn parse_full_workspace_schema() {
+        let cfg = parse_file("valid/workspace.yml").expect("workspace fixture parses");
+        assert_eq!(cfg.project.name, "my-protocol");
+        assert_eq!(cfg.project.framework, crate::config::Framework::Anchor);
+        assert_eq!(cfg.programs.len(), 1);
+        assert_eq!(cfg.programs[0].name, "my-protocol");
+        assert_eq!(
+            cfg.programs[0]
+                .cluster_overrides
+                .get("devnet")
+                .map(String::as_str),
+            Some("EscrowDevnetkD3aQVgPdMxbAv7XmgFK5Q6n8jR2")
+        );
+        assert_eq!(cfg.workspace.frontend, crate::config::Frontend::Next);
+        assert_eq!(cfg.workspace.frontend_path.as_deref(), Some("app"));
+        assert!(cfg.clusters.devnet.url.contains("devnet"));
+        assert_eq!(cfg.runtime.engine, crate::config::RuntimeEngine::Surfpool);
+        assert_eq!(cfg.runtime.faucet_sol, 100);
+        assert!(cfg.plugins.is_empty());
+        cfg.validate().expect("semantic validation passes");
+    }
+
+    #[test]
+    fn workspace_constructor_roundtrips_through_loader() {
+        let cfg = crate::config::Config::new_for_workspace(
+            "demo-proj",
+            crate::config::Framework::Anchor,
+            crate::config::Frontend::Next,
+        );
+        let yaml = serde_yaml::to_string(&cfg).expect("serialize");
+        let raw = serde_yaml::from_str::<Value>(&yaml).expect("re-parse yaml");
+        let cfg2 = materialize(raw).expect("materialize");
+        assert_eq!(cfg, cfg2);
+    }
+
+    #[test]
+    fn env_overlay_clusters_devnet_url() {
+        let path = fixture("valid/workspace.yml");
+        let body = fs::read_to_string(&path).expect("read");
+        let raw = parse_yaml(&path, &body).expect("parse");
+        let env = vec![(
+            "SUNSCREEN_CLUSTERS__DEVNET__URL".to_string(),
+            "https://custom.devnet.example.com".to_string(),
+        )];
+        let merged = apply_env_overlay(raw, env);
+        let cfg = materialize(merged).expect("materialize");
+        assert_eq!(cfg.clusters.devnet.url, "https://custom.devnet.example.com");
+        // Other fields preserved.
+        assert!(cfg.clusters.mainnet.url.contains("mainnet"));
+    }
+
+    #[test]
+    fn env_overlay_runtime_engine() {
+        let path = fixture("valid/workspace.yml");
+        let body = fs::read_to_string(&path).expect("read");
+        let raw = parse_yaml(&path, &body).expect("parse");
+        let env = vec![(
+            "SUNSCREEN_RUNTIME__ENGINE".to_string(),
+            "test-validator".to_string(),
+        )];
+        let merged = apply_env_overlay(raw, env);
+        let cfg = materialize(merged).expect("materialize");
+        assert_eq!(
+            cfg.runtime.engine,
+            crate::config::RuntimeEngine::TestValidator
+        );
+    }
+
+    #[test]
     fn toolchain_required_is_btreemap() {
         // Compile-time guard for downstream consumers (toolchain-detector).
         let cfg = parse_file("valid/full.yml").expect("full parses");

@@ -1,0 +1,24 @@
+# {{ project_name | pascal_case }}
+
+Anchor workspace scaffolded by **sunscreen**.
+
+- **Program:** `{{ program_name | snake_case }}`
+- **Anchor:** `{{ anchor_version }}`
+- **Solana:** `{{ solana_version }}`
+- **Cluster:** `{{ cluster }}`
+- **Frontend:** `{{ frontend }}`
+
+## Quickstart
+
+```bash
+yarn install
+anchor build
+anchor test
+```
+
+## Layout
+
+- `programs/{{ program_name | snake_case }}/` — on-chain program (Rust + Anchor)
+- `tests/` — TypeScript integration tests (mocha + chai)
+- `migrations/deploy.ts` — Anchor deploy hook
+- `sunscreen.yml` — sunscreen workspace config

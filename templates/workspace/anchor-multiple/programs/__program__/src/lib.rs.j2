@@ -1,0 +1,16 @@
+use anchor_lang::prelude::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod {{ program_name | snake_case }} {
+    use super::*;
+
+    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
+        msg!("{{ program_name | pascal_case }} initialized");
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize {}

@@ -1,0 +1,21 @@
+version: 1
+project:
+  name: {{ project_name | kebab_case }}
+  description: "{{ project_name }} — Solana workspace scaffolded by sunscreen"
+  framework: anchor
+  anchor_version: "{{ anchor_version }}"
+  solana_version: "{{ solana_version }}"
+  rust_edition: "{{ rust_edition }}"
+toolchain:
+  required:
+    anchor: "{{ anchor_version }}"
+    solana: "{{ solana_version }}"
+    rustc: "1.79.0"
+    node: "20.0.0"
+scaffolding:
+  default_template: workspace/anchor-multiple
+programs:
+  - name: {{ project_name | kebab_case }}
+    path: programs/{{ program_name }}
+workspace:
+  frontend: {{ frontend }}

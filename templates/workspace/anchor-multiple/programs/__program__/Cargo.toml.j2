@@ -1,0 +1,20 @@
+[package]
+name = "{{ program_name | snake_case }}"
+version = "0.1.0"
+description = "Anchor program for {{ project_name }}"
+edition = "{{ rust_edition }}"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "{{ program_name | snake_case }}"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "{{ anchor_version }}"

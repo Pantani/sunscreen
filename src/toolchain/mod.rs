@@ -9,7 +9,11 @@
 //! tolerant regex.
 
 pub mod detect;
+pub mod preflight;
 pub mod registry;
 
 pub use detect::{detect_all, CommandRunner, RealRunner, Status, ToolReport};
+pub use preflight::{
+    preflight_chain_new, preflight_chain_new_with, Frontend, PreflightError, PreflightReport,
+};
 pub use registry::{known, ToolSpec};

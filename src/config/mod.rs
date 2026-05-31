@@ -17,4 +17,7 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
 pub use loader::{load, ConfigError};
 pub use migrator::{migrate, registry, Migration};
-pub use schema::{Config, ProjectCfg, ScaffoldingCfg, ToolchainCfg};
+pub use schema::{
+    ClusterCfg, ClustersCfg, Config, Framework, Frontend, PluginCfg, ProgramCfg, ProjectCfg,
+    RuntimeCfg, RuntimeEngine, ScaffoldingCfg, ToolchainCfg, ValidationError, WorkspaceCfg,
+};

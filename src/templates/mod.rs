@@ -12,7 +12,9 @@ pub mod engine;
 pub mod error;
 pub mod funcs;
 pub mod render;
+pub mod workspace;
 
 pub use engine::Engine;
 pub use error::TemplateError;
 pub use render::render;
+pub use workspace::render_workspace;

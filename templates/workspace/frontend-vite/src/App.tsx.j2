@@ -1,0 +1,9 @@
+export default function App() {
+  return (
+    <main>
+      <h1>{{ project_name | pascal_case }}</h1>
+      <p>Cluster: <code>{{ cluster }}</code></p>
+      <p>Program: <code>{{ program_name | snake_case }}</code></p>
+    </main>
+  );
+}

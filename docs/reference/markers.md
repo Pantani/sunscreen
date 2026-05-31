@@ -45,14 +45,18 @@
 ### 2.3 Gramática
 
 ```text
-MARKER       := BEGIN_MARKER | END_MARKER
-BEGIN_MARKER := "// === sunscreen:" KIND ":begin segment=" NAME
-                ( " version=" INT )?            // obrigatório em auto-generated
-                ( " generator=" IDENT )?        // opcional
-                " ==="
-END_MARKER   := "// === sunscreen:" KIND ":end segment=" NAME " ==="
+MARKER       := AG_BEGIN | AG_END | UR_BEGIN | UR_END
 
-KIND  := "auto-generated" | "user-region"
+AG_BEGIN := "// === sunscreen:auto-generated:begin"
+            " segment=" NAME " version=" INT
+            ( " generator=" IDENT )?
+            " ==="                              // version= obrigatório; user-region não versiona
+
+AG_END   := "// === sunscreen:auto-generated:end segment=" NAME " ==="
+
+UR_BEGIN := "// === sunscreen:user-region:begin segment=" NAME " ==="
+UR_END   := "// === sunscreen:user-region:end segment=" NAME " ==="
+
 NAME  := [a-z][a-z0-9_-]*
 INT   := [1-9][0-9]*
 IDENT := [a-z][a-z0-9_-]*
@@ -136,7 +140,7 @@ Workspace gerado por `sunscreen chain new escrow` seguido de:
 sunscreen scaffold instruction deposit \
   --program escrow \
   --args "amount:u64" \
-  --accounts "vault:mut:seeds=vault,depositor:signer:mut,system_program"
+  --accounts "vault:mut|seeds=b\"vault\",depositor:signer|mut,system_program:system"
 ```
 
 ### 8.1 `programs/escrow/src/instructions/mod.rs`

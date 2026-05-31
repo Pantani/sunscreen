@@ -43,10 +43,11 @@ pub struct InstructionArgs {
     /// Comma-separated handler args, e.g. `"amount:u64,memo:String"`.
     #[arg(long, value_name = "LIST", default_value = "")]
     pub args: String,
-    /// Comma-separated accounts, e.g. `"vault:mut|signer,user:signer|seeds=b\"vault\"|user.key()"`.
+    /// Comma-separated accounts, e.g. `"vault:mut|signer,user:signer|seeds=b\"vault\";user.key()"`.
     ///
     /// Per-account flags are pipe-separated. Supported flags:
-    /// `mut`, `signer`, `system`, `token`, `assoc_token`, `seeds=<expr>[;<expr>...]`.
+    /// `mut`, `signer`, `system`, `token`, `assoc_token`, `seeds=<expr>[;<expr>...]`
+    /// (multiple seed expressions separated by `;` inside `seeds=`).
     #[arg(long, value_name = "LIST", default_value = "")]
     pub accounts: String,
     /// If set, emit `<EventName>` from the handler.

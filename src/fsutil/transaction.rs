@@ -157,6 +157,15 @@ impl Transaction {
             if p.is_absolute() {
                 p.to_path_buf()
             } else {
+                // Reject relative paths that escape the root.
+                if p.components().any(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                    )
+                }) {
+                    return Err(TxError::PathEscape(p.to_string_lossy().into_owned()));
+                }
                 self.root.join(p)
             }
         };

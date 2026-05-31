@@ -194,9 +194,14 @@ fn resolve_programs(root: &Path, cfg: &Config) -> Result<Vec<ProgramView>, Works
         // escape the workspace root.
         let path = Path::new(&prog.path);
         let unsafe_path = path.is_absolute()
-            || path
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir));
+            || path.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::Prefix(_)
+                        | std::path::Component::RootDir
+                )
+            });
         if unsafe_path {
             return Err(WorkspaceError::UnsafePath {
                 name: prog.name.clone(),

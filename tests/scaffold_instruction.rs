@@ -148,10 +148,7 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
         String::from_utf8_lossy(&preserved.stderr)
     );
     let after = std::fs::read_to_string(&ix_file).unwrap();
-    assert!(
-        after.contains("msg!(\"custom user logic\");"),
-        "user-region content must be preserved across re-run, got: {after}"
-    );
+    insta::assert_snapshot!("user_region_preserved_after_rescaffold", after);
 }
 
 #[test]

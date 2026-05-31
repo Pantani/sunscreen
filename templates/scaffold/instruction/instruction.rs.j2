@@ -20,7 +20,6 @@ pub struct {{ instruction_name | pascal_case }}<'info> {
     {%- set has_attr = acc.mutable or acc.seeds %}
     {%- if has_attr %}
     #[account(
-        {%- set parts = [] -%}
         {%- if acc.mutable %}mut{% if acc.seeds %}, {% endif %}{% endif -%}
         {%- if acc.seeds %}seeds = [{% for s in acc.seeds %}{{ s }}{% if not loop.last %}, {% endif %}{% endfor %}], bump{% endif -%}
     )]

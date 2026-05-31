@@ -620,8 +620,8 @@ fn parse_dispatch_entries(body: &str) -> Vec<InstructionDispatch> {
             if param.is_empty() {
                 continue;
             }
-            // Skip the leading `ctx: Context<...>` parameter.
-            if param.starts_with("ctx") {
+            // Skip the actual `ctx: Context<...>` parameter (not e.g. `ctx_seed: u64`).
+            if param.starts_with("ctx:") || param.starts_with("ctx :") {
                 continue;
             }
             let Some((arg_name, ty)) = param.split_once(':') else {

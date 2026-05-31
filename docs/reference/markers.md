@@ -14,7 +14,7 @@
 - Existem **dois tipos** de região:
   - `auto-generated` — território do `sunscreen`. Será **sobrescrito** a cada `sunscreen scaffold`.
   - `user-region` — território do humano. `sunscreen` **nunca toca** depois da criação inicial.
-- Markers funcionam em pares (`begin` / `end`) e são casados por **busca exata de string + delimitação por linha**. Sem regex.
+- Markers funcionam em pares (`begin` / `end`) e são casados por **parsing linha-a-linha**: `sunscreen` detecta linhas que contenham `// === sunscreen:`, ignora indentação inicial, e tokeniza atributos `key=value` por whitespace. Sem regex.
 
 ---
 
@@ -60,8 +60,8 @@ IDENT := [a-z][a-z0-9_-]*
 
 Regras adicionais:
 
-- `===` em ambos os lados é literal e obrigatório (assinatura visual + reduz colisão acidental).
-- A linha inteira do marker deve ser **idêntica** ao gerar e ao reler — `sunscreen` faz match por linha inteira após trim de whitespace em ambos os lados (`trim()`: leading e trailing whitespace são ignorados).
+- `===` no início da linha (após `//`) é obrigatório. O `===` de fechamento é convencional (preservado na geração) mas o scanner atual tolera sua ausência — futuras versões poderão torná-lo estrito.
+- O scanner ignora **indentação inicial** (trim_start) e tokeniza atributos por whitespace; ordem de atributos extras é tolerada. A geração produz sempre a forma canônica (`segment=` antes de `version=`).
 - `version` só aparece em `auto-generated`. `user-region` não versiona (sunscreen nunca migra conteúdo do usuário).
 - `generator` é diagnóstico (qual scaffolder produziu o segmento).
 

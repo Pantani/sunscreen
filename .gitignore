@@ -1,4 +1,18 @@
+# Rust build artifacts
 /target
-/_workspace_prev_*
+
+# Editor / OS
 .DS_Store
 *.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Ephemeral agent coordination workspace
+/_workspace/
+/_workspace_prev_*
+
+# Local env
+.env
+.env.local

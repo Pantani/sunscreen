@@ -55,7 +55,7 @@ solis/
 ├── cmd/solis/main.go              # stub: prints `solis 0.0.0`
 ├── docs/
 │   └── adr/
-│       └── ADR-0001-solis-cli.md  # ← committed from this output
+│       └── ADR-0001-solis-cli.md (moved to docs/adr/)  # ← committed from this output
 └── internal/
     └── version/
         └── version.go             # const Version = "0.0.0-dev"

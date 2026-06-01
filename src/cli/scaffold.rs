@@ -39,7 +39,8 @@ pub enum ScaffoldCmd {
 /// Flags for `sunscreen scaffold program`.
 #[derive(Debug, Args)]
 pub struct ProgramArgs {
-    /// Program name (kebab-case on disk + in `sunscreen.yml`).
+    /// Program name. Stored kebab-case in `sunscreen.yml` and `Anchor.toml`,
+    /// but the on-disk crate directory uses snake_case (`programs/<snake>/`).
     pub name: String,
     /// Optional Anchor program ID (base58 pubkey). Defaults to the canonical
     /// dummy ID — replace later via `solana-keygen new -o target/deploy/...`
@@ -1902,11 +1903,14 @@ fn validate_program_name(name: &str) -> Result<(), SunscreenError> {
 }
 
 fn validate_program_id(id: &str) -> Result<(), SunscreenError> {
-    // Base58 pubkeys are 32 bytes → 43-44 chars; valid base58 alphabet.
+    // A 32-byte ed25519 pubkey encodes to 32-44 base58 chars (32 = all-zero
+    // System Program, 44 = max for 256-bit values). Anything outside that
+    // range is not a real pubkey. Anchor will still re-verify at build time,
+    // so we deliberately don't pull bs58 just to decode 32 bytes here.
     const B58: &str = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    if id.len() < 32 || id.len() > 64 {
+    if !(32..=44).contains(&id.len()) {
         return Err(SunscreenError::UserInput(format!(
-            "invalid --id pubkey length: {} chars",
+            "invalid --id pubkey length: {} chars (expected 32-44 base58 chars)",
             id.len()
         )));
     }
@@ -2001,8 +2005,10 @@ fn patch_sunscreen_yml(
     let existing = std::fs::read_to_string(path)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
     let lines: Vec<&str> = existing.lines().collect();
-    // Find the `programs:` key (top-level).
-    let programs_idx = lines.iter().position(|l| l.trim_start() == "programs:");
+    // Find the column-0 `programs:` key. `trim_start` would also match an
+    // indented `programs:` inside a nested map (e.g. `cluster.programs:`)
+    // and patch the entry in the wrong place.
+    let programs_idx = lines.iter().position(|l| *l == "programs:");
     let entry = format!("  - name: {program_kebab}\n    path: programs/{program_snake}\n");
     if let Some(idx) = programs_idx {
         // Find the end of the programs list (next top-level key, i.e. line

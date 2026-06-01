@@ -2,11 +2,17 @@
 //!
 //! Mirrors [`crate::templates::workspace::render_workspace`] but is rooted at
 //! `templates/scaffold/program/`. Used by `sunscreen scaffold program <name>`
-//! to materialise a fresh Anchor program crate inside an existing workspace,
-//! pre-wired with all six segment markers (`dispatch`, `instructions`,
-//! `accounts`, `events`, `errors`, `state`) so subsequent scaffolders
-//! (`instruction`, `account`, `event`, `error`) can patch in place without
-//! drift warnings.
+//! to materialise a fresh Anchor program crate inside an existing workspace.
+//!
+//! At render time the crate is seeded with only the two markers that exist
+//! up front: `segment=dispatch` (inside `#[program] mod {}`) and
+//! `segment=instructions` (in `instructions/mod.rs`). The other four
+//! segments (`accounts`, `events`, `errors`, `state`) are added lazily by
+//! the subsequent scaffolders (`instruction`, `account`, `event`, `error`)
+//! when the user first creates one — see `ensure_lib_mod_decl` in
+//! `src/cli/scaffold.rs`. This keeps the freshly scaffolded crate
+//! `cargo check`-clean (no `mod` declarations pointing at non-existent
+//! files).
 //!
 //! Path placeholders mirror the workspace renderer:
 //!
@@ -21,6 +27,8 @@
 //! - `project_name` (string)
 //! - `anchor_version` (string)
 //! - `rust_edition` (string)
+//! - `program_id` (string) — base58 pubkey rendered into `declare_id!`.
+//!   Defaults to the canonical dummy id via Jinja `default()` if omitted.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -69,8 +77,8 @@ pub fn render_program(ctx: &Value, out_staging: &Path) -> Result<Vec<PathBuf>, T
     let mut env = Environment::new();
     funcs::register(&mut env);
 
-    let program_snake = string_filter(ctx, "program_name", "program", str_snake);
-    let project_kebab = string_filter(ctx, "project_name", "project", str_kebab);
+    let program_snake = required_string(ctx, "program_name", str_snake)?;
+    let project_kebab = required_string(ctx, "project_name", str_kebab)?;
 
     let mut written = Vec::with_capacity(assets.len());
     for (rel, bytes) in assets {
@@ -115,13 +123,14 @@ fn io_err(e: std::io::Error) -> TemplateError {
     ))
 }
 
-fn string_filter(ctx: &Value, primary: &str, fallback: &str, f: fn(&str) -> String) -> String {
-    let raw = ctx
-        .get(primary)
-        .and_then(Value::as_str)
-        .or_else(|| ctx.get(fallback).and_then(Value::as_str))
-        .unwrap_or(fallback);
-    f(raw)
+fn required_string(ctx: &Value, key: &str, f: fn(&str) -> String) -> Result<String, TemplateError> {
+    let raw = ctx.get(key).and_then(Value::as_str).ok_or_else(|| {
+        TemplateError::Render(minijinja::Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            format!("missing required context key: `{key}`"),
+        ))
+    })?;
+    Ok(f(raw))
 }
 
 fn str_snake(s: &str) -> String {

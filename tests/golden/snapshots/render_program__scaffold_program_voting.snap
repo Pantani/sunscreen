@@ -1,6 +1,5 @@
 ---
 source: tests/golden/render_program.rs
-assertion_line: 62
 expression: corpus(tmp.path())
 ---
 === programs/voting/Cargo.toml ===
@@ -34,7 +33,7 @@ features = []
 //! `sunscreen scaffold instruction` — edits inside the markers will be
 //! overwritten. Code outside the markers is preserved across re-runs.
 
-// === sunscreen:auto-generated:begin segment=instructions version=1 generator=program ===
+// === sunscreen:auto-generated:begin segment=instructions version=1 generator=instruction ===
 // === sunscreen:auto-generated:end segment=instructions ===
 === programs/voting/src/lib.rs ===
 //! `voting` — Anchor program scaffolded by `sunscreen scaffold program`.
@@ -55,6 +54,6 @@ declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 pub mod voting {
     use super::*;
 
-    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=program ===
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=dispatch ===
     // === sunscreen:auto-generated:end segment=dispatch ===
 }

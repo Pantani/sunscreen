@@ -506,7 +506,11 @@ fn expected_sites(program: &crate::workspace::ProgramView, ws_root: &Path) -> Ve
             abs_path: src.join("errors.rs"),
             segment: "error_variants",
             optional: true,
-            appendable: true,
+            // error_variants markers live INSIDE `#[error_code] pub enum ... {}`
+            // (see build_errors_host in src/cli/scaffold.rs). A blind EOF
+            // append would place variants outside the enum on the next
+            // `scaffold error` run, producing invalid Rust. Report-only.
+            appendable: false,
         },
     ]
 }

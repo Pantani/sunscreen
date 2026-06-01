@@ -232,8 +232,57 @@ fn build_pipeline_rejects_absolute_frontend_path() {
     assert_eq!(err.step, PipelineStep::FrontendNotify);
     assert!(err
         .to_string()
-        .contains("workspace.frontend_path must be relative"));
+        .contains("workspace.frontend_path must be a non-empty relative subpath"));
     assert!(!outside.join(".sunscreen/reload").exists());
+}
+
+#[test]
+fn build_pipeline_rejects_parent_dir_frontend_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("workspace");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&root).expect("create workspace dir");
+    std::fs::create_dir_all(&outside).expect("create outside frontend dir");
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
+
+    let err = BuildPipeline::new(&root)
+        .run(
+            &runner,
+            PipelineOptions {
+                frontend_path: Some(PathBuf::from("../outside")),
+                ..PipelineOptions::default()
+            },
+        )
+        .expect_err("parent-dir frontend path should be rejected");
+
+    assert_eq!(err.step, PipelineStep::FrontendNotify);
+    assert!(err
+        .to_string()
+        .contains("workspace.frontend_path must be a non-empty relative subpath"));
+    assert!(!outside.join(".sunscreen/reload").exists());
+}
+
+#[test]
+fn build_pipeline_rejects_empty_frontend_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
+
+    let err = BuildPipeline::new(root)
+        .run(
+            &runner,
+            PipelineOptions {
+                frontend_path: Some(PathBuf::new()),
+                ..PipelineOptions::default()
+            },
+        )
+        .expect_err("empty frontend path should be rejected");
+
+    assert_eq!(err.step, PipelineStep::FrontendNotify);
+    assert!(err
+        .to_string()
+        .contains("workspace.frontend_path must be a non-empty relative subpath"));
+    assert!(!root.join(".sunscreen/reload").exists());
 }
 
 #[test]

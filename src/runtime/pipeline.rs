@@ -1,7 +1,7 @@
 //! Build pipeline orchestration for Phase 3.
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::render_event_path;
@@ -293,16 +293,30 @@ fn frontend_reload_path(
     frontend_path: Option<&Path>,
 ) -> Result<PathBuf, io::Error> {
     let frontend_root = frontend_path.unwrap_or_else(|| Path::new("app"));
-    if frontend_root.is_absolute() {
+    if !is_relative_frontend_subpath(frontend_root) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "workspace.frontend_path must be relative to the workspace root",
+            "workspace.frontend_path must be a non-empty relative subpath without `..` components",
         ));
     }
     Ok(workspace_root
         .join(frontend_root)
         .join(".sunscreen")
         .join("reload"))
+}
+
+fn is_relative_frontend_subpath(path: &Path) -> bool {
+    let mut has_component = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_component = true,
+            Component::CurDir
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => return false,
+        }
+    }
+    has_component
 }
 
 fn notify_frontend(

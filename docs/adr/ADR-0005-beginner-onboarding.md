@@ -22,7 +22,7 @@
 
 ## TL;DR
 
-`sunscreen` adds a **dedicated onboarding layer** (Phase 5.5) composed of seven top-level commands — `init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn` — and a formal contract for **actionable errors** with a `next_step` field. This layer is a thin interactive wrapper over the already-existing core (`chain new`, scaffolders, doctor): `init` is a `dialoguer` wizard that ends by calling the same loader/validator as `chain new`; `quickstart <recipe>` composes `chain new` + scaffolders + frontend bootstrap into a single one-shot command; `wallet` and `deploy` are friendly wrappers over `solana-keygen`/`solana airdrop`/`anchor deploy`; `examples` ships ready-made projects via `rust-embed`; `learn` renders embedded markdown tutorials via `termimad`. All commands respect DD2 (power-user non-blocking): TTY detection disables prompts and `--non-interactive` forces flag-based equivalence. DoD: a user with no Solana account runs `sunscreen init` → `sunscreen quickstart nft` → sees an NFT minted on devnet in **< 10 min**.
+`sunscreen` adds a **dedicated onboarding layer** (Phase 5.5) composed of six top-level commands — `init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn` — and a formal contract for **actionable errors** with a `next_step` field. This layer is a thin interactive wrapper over the already-existing core (`chain new`, scaffolders, doctor): `init` is a `dialoguer` wizard that ends by calling the same loader/validator as `chain new`; `quickstart <recipe>` composes `chain new` + scaffolders + frontend bootstrap into a single one-shot command; `wallet` and `deploy` are friendly wrappers over `solana-keygen`/`solana airdrop`/`anchor deploy`; `examples` ships ready-made projects via `rust-embed`; `learn` renders embedded markdown tutorials via `termimad`. All commands respect DD2 (power-user non-blocking): TTY detection disables prompts and `--non-interactive` forces flag-based equivalence. DoD: a user with no Solana account runs `sunscreen init` → `sunscreen quickstart nft` → sees an NFT minted on devnet in **< 10 min**.
 
 ---
 
@@ -116,7 +116,7 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 
 ## 4. Decision
 
-`sunscreen` adopts **Option (A) — Separate layer** with seven new top-level commands and a formal contract for actionable errors.
+`sunscreen` adopts **Option (A) — Separate layer** with six new top-level commands and a formal contract for actionable errors.
 
 ### 4.1 New commands
 
@@ -170,7 +170,7 @@ The JSON serialization extends the canonical schema documented in ADR-0002 § 4.
 ### 4.4 TTY detection & --non-interactive
 
 - Single helper `src/onboarding/tty.rs::is_interactive() -> bool` checks `IsTerminal::is_terminal(&io::stdin())` AND absence of `--non-interactive` AND absence of `SUNSCREEN_NON_INTERACTIVE=1`.
-- Wizard prompts replaced by an `ErrorKind::UserInput` error with `next_step` listing the equivalent flag when `is_interactive() == false`.
+- Wizard prompts replaced by an `SunscreenError::UserInput` error with `next_step` listing the equivalent flag when `is_interactive() == false`.
 
 ---
 
@@ -342,7 +342,7 @@ JSON equivalent (extends the canonical schema from ADR-0002 § 4.4 — keeps `er
 ## 9. Acceptance Criteria
 
 - [ ] Seven new commands implemented per the table in § 4.1 with `--json` and `--non-interactive` where applicable.
-- [ ] `next_step` contract covers 100% of `ErrorKind` variants (verified by a CI test).
+- [ ] `next_step` contract covers 100% of `SunscreenError` variants (verified by a CI test).
 - [ ] `init` wizard produces a workspace **byte-identical** to `chain new` with equivalent flags (property test).
 - [ ] Five `quickstart` recipes (`token`, `nft`, `dao`, `blog`, + a generic one) execute on localnet in CI.
 - [ ] `sunscreen examples list` returns ≥ 5 embedded entries; `examples use <name>` creates a usable project.

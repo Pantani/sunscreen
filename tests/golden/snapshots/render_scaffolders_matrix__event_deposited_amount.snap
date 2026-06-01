@@ -1,0 +1,9 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct Deposited {
+    pub authority: Pubkey,
+    pub amount: u64,
+}

@@ -1,0 +1,10 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct Configured {
+    pub enabled: bool,
+    pub count: u64,
+    pub label: String,
+}

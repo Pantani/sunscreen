@@ -1,0 +1,24 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(data: Vec<u8>)]
+pub struct WriteBlob<'info> {
+    pub writer: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<WriteBlob>,
+    data: Vec<u8>,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &data;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

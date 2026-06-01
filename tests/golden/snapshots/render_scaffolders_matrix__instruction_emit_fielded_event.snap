@@ -1,0 +1,28 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::Deposited;
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct Deposit<'info> {
+    pub payer: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<Deposit>,
+    amount: u64,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &amount;
+    emit!(Deposited {
+        amount: todo!("set Deposited.amount"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

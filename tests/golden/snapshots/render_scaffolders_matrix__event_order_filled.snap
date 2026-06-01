@@ -1,0 +1,10 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct OrderFilled {
+    pub order_id: u128,
+    pub base_amount: u64,
+    pub quote_amount: u64,
+}

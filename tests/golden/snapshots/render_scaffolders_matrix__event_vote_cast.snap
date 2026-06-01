@@ -1,0 +1,10 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct VoteCast {
+    pub proposal: Pubkey,
+    pub voter: Pubkey,
+    pub choice: u8,
+}

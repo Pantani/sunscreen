@@ -1,0 +1,15 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("quote contained \"bad\" content")]
+    BadQuote,
+    #[msg("path contains \\ separator")]
+    PathIssue,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}

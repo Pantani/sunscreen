@@ -102,7 +102,7 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 ## 5. Invariants
 
-1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` is expected to preserve them. CI currently runs `cargo fmt -- --check` over the workspace itself; a dedicated golden test that formats a fixture file with `rustfmt` and re-scans markers is planned for Phase 2 R5 (cf. ADR-0001 § 9.5.1).
+1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` is expected to preserve them. Phase 2 R5 covers this with `tests/rustfmt_roundtrip.rs`, which formats a fixture containing every documented marker segment and re-scans the result (cf. ADR-0001 § 9.5.1).
 2. **Never inside `match`, `if`, `for`, `while`, `loop`, or arbitrary `{ … }` block.** Markers live only at item scope.
 3. **Line-grained.** Markers occupy entire lines; no inline marker alongside code.
 4. **Paired and ordered.** For each `begin segment=X` there is exactly one later `end segment=X` in the same file. No nesting.
@@ -114,14 +114,14 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen chain doctor --fix-markers` reports the mismatch; for **appendable** host files (e.g. `instructions/mod.rs`, `state/mod.rs`) it appends a missing pair. `dispatch` lives inside `#[program]` and is **not** appendable today — the user must restore it manually or re-run `scaffold instruction` for each affected instruction |
+| `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen chain doctor --fix-markers` reports malformed pairs. If the entire `dispatch` segment is missing, it can rebuild a fresh marker block inside `#[program]` from `instructions/*.rs`; malformed half-pairs still require manual cleanup first |
 | `error: duplicate begin segment=instructions in src/instructions/mod.rs` | unresolved merge conflict | resolve the conflict; keep only one pair |
 | `error: marker drift: version=1 expected, found version=2` | CLI downgrade | upgrade `sunscreen` to a version that understands `version=2` (no reverse migrator exists yet — see § 7) |
 | `error: marker inside expression` | user moved the marker inside a `match` | move it back to item scope |
 
 > The scanner currently tolerates extra attributes on `user-region` markers silently (including a stray `version=`); enforcement is deferred until a real version bump exists for user regions. Treat extra attributes as a spec violation even though no warning is emitted today.
 
-`sunscreen chain doctor` (shipped in Phase 2 R4, `src/cli/chain.rs::run_doctor`) validates markers across the entire workspace and offers `--fix-markers` for **appendable** recoverable cases. Note: the top-level `sunscreen doctor` is the **toolchain** diagnostic (verifies `anchor`/`solana`/`cargo`/etc.); workspace-level marker auditing lives under `chain doctor` per ADR-0001 §6.1.
+`sunscreen chain doctor` (shipped in Phase 2 R4 and hardened in R5, `src/cli/chain.rs::run_doctor`) validates markers across the entire workspace and offers `--fix-markers` for recoverable cases: appendable marker hosts are repaired at EOF, a missing `dispatch` block is reinserted inside `#[program]` only when the generated wrappers are gone and instruction files provide enough data, and missing `error_variants` markers are inserted only for safe empty multi-line `#[error_code]` enums or existing marked regions. Ambiguous non-appendable bodies remain reported as drift instead of being wrapped. Note: the top-level `sunscreen doctor` is the **toolchain** diagnostic (verifies `anchor`/`solana`/`cargo`/etc.); workspace-level marker auditing lives under `chain doctor` per ADR-0001 §6.1.
 
 ---
 
@@ -144,6 +144,12 @@ sunscreen scaffold instruction deposit \
   --args "amount:u64" \
   --accounts "vault:mut|seeds=b\"vault\",depositor:signer|mut,system_program:system"
 ```
+
+`--accounts` accepts both the pipe-separated form above and the ADR-style
+colon-separated form (`vault:mut:signer`, `system_program`, `token_program`).
+When `--emit` targets an existing event with fields, generated handlers emit a
+complete event literal with `todo!()` placeholders for each field so the code
+continues to compile while leaving semantic values for the user-owned handler.
 
 ### 8.1 `programs/escrow/src/instructions/mod.rs`
 

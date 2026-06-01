@@ -29,6 +29,80 @@ fn run(ws: &Path, args: &[&str]) -> std::process::Output {
         .expect("invoke sunscreen")
 }
 
+fn strip_auto_segment(source: &str, segment: &str) -> String {
+    let line_ending = detect_line_ending(source);
+    let begin = format!("sunscreen:auto-generated:begin segment={segment}");
+    let end = format!("sunscreen:auto-generated:end segment={segment}");
+    let mut out = Vec::new();
+    let mut skipping = false;
+    for line in source.lines() {
+        if line.contains(&begin) {
+            skipping = true;
+            continue;
+        }
+        if skipping && line.contains(&end) {
+            skipping = false;
+            continue;
+        }
+        if !skipping {
+            out.push(line);
+        }
+    }
+    let mut joined = out.join(line_ending);
+    joined.push_str(line_ending);
+    joined
+}
+
+fn remove_auto_marker_lines(source: &str, segment: &str) -> String {
+    let line_ending = detect_line_ending(source);
+    let begin = format!("sunscreen:auto-generated:begin segment={segment}");
+    let end = format!("sunscreen:auto-generated:end segment={segment}");
+    let mut joined = source
+        .lines()
+        .filter(|line| !line.contains(&begin) && !line.contains(&end))
+        .collect::<Vec<_>>()
+        .join(line_ending);
+    joined.push_str(line_ending);
+    joined
+}
+
+fn detect_line_ending(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+#[test]
+fn strip_auto_segment_preserves_crlf_line_endings() {
+    let source = concat!(
+        "alpha\r\n",
+        "// sunscreen:auto-generated:begin segment=dispatch version=1\r\n",
+        "generated\r\n",
+        "// sunscreen:auto-generated:end segment=dispatch\r\n",
+        "omega\r\n",
+    );
+
+    assert_eq!(strip_auto_segment(source, "dispatch"), "alpha\r\nomega\r\n");
+}
+
+#[test]
+fn remove_auto_marker_lines_preserves_crlf_line_endings() {
+    let source = concat!(
+        "alpha\r\n",
+        "// sunscreen:auto-generated:begin segment=dispatch version=1\r\n",
+        "generated\r\n",
+        "// sunscreen:auto-generated:end segment=dispatch\r\n",
+        "omega\r\n",
+    );
+
+    assert_eq!(
+        remove_auto_marker_lines(source, "dispatch"),
+        "alpha\r\ngenerated\r\nomega\r\n"
+    );
+}
+
 #[test]
 fn scaffold_program_creates_crate_and_patches_manifests() {
     let tmp = tempfile::tempdir().unwrap();
@@ -218,4 +292,321 @@ fn chain_doctor_fix_markers_repairs_drift() {
 
     let after = std::fs::read_to_string(&mod_rs).unwrap();
     assert!(after.contains("sunscreen:auto-generated:begin segment=instructions"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_rebuilds_dispatch_inside_program_module() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("dispatch_repair_app");
+    run_chain_new(&ws, "dispatch_repair_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "instruction",
+            "deposit",
+            "--program",
+            &program_name,
+            "--args",
+            "amount:u64",
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold instruction failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let lib_rs = program_dir.join("src/lib.rs");
+    let original = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(original.contains("sunscreen:auto-generated:begin segment=dispatch"));
+    assert!(original.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+
+    let scrubbed = strip_auto_segment(&original, "dispatch");
+    assert!(!scrubbed.contains("sunscreen:auto-generated:begin segment=dispatch"));
+    assert!(!scrubbed.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+    std::fs::write(&lib_rs, scrubbed).unwrap();
+
+    let report = run(&ws, &["chain", "doctor", "--json"]);
+    assert_eq!(report.status.code(), Some(6));
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(0),
+        "dispatch repair should succeed; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(after.contains("sunscreen:auto-generated:begin segment=dispatch"));
+    assert!(after.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+    assert!(after.contains("instructions::deposit::handler(ctx, amount)"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_preserves_no_arg_handlers_and_skips_helper_modules() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("dispatch_helper_app");
+    run_chain_new(&ws, "dispatch_helper_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "instruction",
+            "ping",
+            "--program",
+            &program_name,
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold instruction failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let helper_rs = program_dir.join("src/instructions/helpers.rs");
+    std::fs::write(
+        helper_rs,
+        "use super::*;\n\npub fn normalize_amount(amount: u64) -> u64 {\n    amount\n}\n",
+    )
+    .unwrap();
+
+    let lib_rs = program_dir.join("src/lib.rs");
+    let original = std::fs::read_to_string(&lib_rs).unwrap();
+    let scrubbed = strip_auto_segment(&original, "dispatch");
+    std::fs::write(&lib_rs, scrubbed).unwrap();
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(0),
+        "dispatch repair should succeed; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(after.contains("pub fn ping(ctx: Context<Ping>)"));
+    assert!(after.contains("instructions::ping::handler(ctx)"));
+    assert!(!after.contains("pub fn helpers("));
+    assert!(!after.contains("instructions::helpers::handler"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_refuses_dispatch_when_wrappers_remain_without_markers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("dispatch_duplicate_app");
+    run_chain_new(&ws, "dispatch_duplicate_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "instruction",
+            "deposit",
+            "--program",
+            &program_name,
+            "--args",
+            "amount:u64",
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold instruction failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let lib_rs = program_dir.join("src/lib.rs");
+    let original = std::fs::read_to_string(&lib_rs).unwrap();
+    let scrubbed = remove_auto_marker_lines(&original, "dispatch");
+    assert!(scrubbed.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+    std::fs::write(&lib_rs, &scrubbed).unwrap();
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(6),
+        "dispatch repair should refuse ambiguous existing wrappers; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert_eq!(after.matches("pub fn deposit(").count(), 1);
+    assert_eq!(after, scrubbed);
+}
+
+#[test]
+fn chain_doctor_fix_markers_repairs_empty_error_variants_enum() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("empty_error_repair_app");
+    run_chain_new(&ws, "empty_error_repair_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "error",
+            "Unauthorized",
+            "--program",
+            &program_name,
+            "--msg",
+            "caller is not authorized",
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold error failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let errors_rs = program_dir.join("src/errors.rs");
+    let original = std::fs::read_to_string(&errors_rs).unwrap();
+    let scrubbed = strip_auto_segment(&original, "error_variants");
+    assert!(!scrubbed.contains("Unauthorized,"));
+    std::fs::write(&errors_rs, scrubbed).unwrap();
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(0),
+        "empty error enum repair should succeed; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    assert!(after.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(after.contains("sunscreen:auto-generated:end segment=error_variants"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_refuses_ambiguous_error_variants_body() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("error_repair_app");
+    run_chain_new(&ws, "error_repair_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "error",
+            "Unauthorized",
+            "--program",
+            &program_name,
+            "--msg",
+            "caller is not authorized } today",
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold error failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let errors_rs = program_dir.join("src/errors.rs");
+    let original = std::fs::read_to_string(&errors_rs).unwrap();
+    assert!(original.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(original.contains("Unauthorized,"));
+
+    let scrubbed = remove_auto_marker_lines(&original, "error_variants");
+    assert!(!scrubbed.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(scrubbed.contains("Unauthorized,"));
+    std::fs::write(&errors_rs, &scrubbed).unwrap();
+
+    let report = run(&ws, &["chain", "doctor", "--json"]);
+    assert_eq!(report.status.code(), Some(6));
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(6),
+        "ambiguous error variant repair should remain unresolved; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    assert_eq!(after, scrubbed);
+    assert!(!after.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(after.contains("Unauthorized,"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_refuses_single_line_error_enum() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("single_line_error_app");
+    run_chain_new(&ws, "single_line_error_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_dir = entries[0].path();
+
+    let errors_rs = program_dir.join("src/errors.rs");
+    let source = "use anchor_lang::prelude::*;\n\n#[error_code]\npub enum SingleLineError {}\n";
+    std::fs::write(&errors_rs, source).unwrap();
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(6),
+        "single-line enum repair should remain unresolved; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    assert_eq!(after, source);
 }

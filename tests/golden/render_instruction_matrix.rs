@@ -40,6 +40,7 @@ fn many_args_no_accounts() -> InstructionCtx {
         ],
         accounts: vec![],
         emit: None,
+        emit_fields: vec![],
     }
 }
 
@@ -96,6 +97,7 @@ fn ctx_token_program() -> InstructionCtx {
             },
         ],
         emit: None,
+        emit_fields: vec![],
     }
 }
 
@@ -132,6 +134,7 @@ fn ctx_pda_multi_seeds() -> InstructionCtx {
             },
         ],
         emit: None,
+        emit_fields: vec![],
     }
 }
 
@@ -160,6 +163,7 @@ fn ctx_emit_with_args_and_accounts() -> InstructionCtx {
             },
         ],
         emit: Some("Deposited".into()),
+        emit_fields: vec![],
     }
 }
 

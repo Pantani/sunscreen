@@ -1,0 +1,11 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+use anchor_lang::prelude::*;
+
+// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
+#[event]
+pub struct Ping {
+}
+// === sunscreen:auto-generated:end segment=events ===

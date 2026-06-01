@@ -1,0 +1,21 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Authorize<'info> {
+    pub authority: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<Authorize>,
+) -> Result<()> {
+    let _ = ctx;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

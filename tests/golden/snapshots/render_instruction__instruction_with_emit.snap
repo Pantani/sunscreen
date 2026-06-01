@@ -20,7 +20,9 @@ pub fn handler(
 ) -> Result<()> {
     let _ = ctx;
     let _ = &nonce;
-    emit!(Pinged {});
+    emit!(Pinged {
+        nonce: todo!("set Pinged.nonce"),
+    });
     Ok(())
 }
 // === sunscreen:user-region:end segment=handler ===

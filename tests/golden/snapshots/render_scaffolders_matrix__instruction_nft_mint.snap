@@ -1,0 +1,34 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::NftMinted;
+
+#[derive(Accounts)]
+#[instruction(uri: String)]
+pub struct MintNft<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut)]
+    pub mint: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<MintNft>,
+    uri: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &uri;
+    emit!(NftMinted {
+        mint: todo!("set NftMinted.mint"),
+        owner: todo!("set NftMinted.owner"),
+        uri: todo!("set NftMinted.uri"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

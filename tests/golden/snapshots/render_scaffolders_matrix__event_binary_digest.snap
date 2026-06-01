@@ -1,0 +1,8 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct DigestRecorded {
+    pub digest: [u8; 32],
+}

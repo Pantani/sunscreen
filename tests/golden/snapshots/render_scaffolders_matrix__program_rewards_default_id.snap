@@ -1,0 +1,60 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+=== programs/rewards/Cargo.toml ===
+[package]
+name = "rewards"
+version = "0.1.0"
+description = "Anchor program for Rewards App"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "rewards"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.30.1"
+anchor-spl = "0.30.1"
+=== programs/rewards/Xargo.toml ===
+[target.bpfel-unknown-unknown.dependencies.std]
+features = []
+=== programs/rewards/src/instructions/mod.rs ===
+//! Instruction module registry for `rewards`.
+//!
+//! The `segment=instructions` block below is managed by
+//! `sunscreen scaffold instruction` — edits inside the markers will be
+//! overwritten. Code outside the markers is preserved across re-runs.
+
+// === sunscreen:auto-generated:begin segment=instructions version=1 generator=instruction ===
+// === sunscreen:auto-generated:end segment=instructions ===
+=== programs/rewards/src/lib.rs ===
+//! `rewards` — Anchor program scaffolded by `sunscreen scaffold program`.
+//!
+//! The `segment=*` blocks below are managed by the `sunscreen scaffold`
+//! family of commands. Edits inside the markers will be overwritten on the
+//! next scaffold run; code outside the markers is preserved.
+
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+#[allow(unused_imports)]
+use instructions::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod rewards {
+    use super::*;
+
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=dispatch ===
+    // === sunscreen:auto-generated:end segment=dispatch ===
+}

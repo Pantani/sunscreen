@@ -4,13 +4,17 @@
 //! (`serve`, `build`, `deploy`) are stubs.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand, ValueEnum};
 
 use crate::config::schema::{Config, Framework as CfgFramework, Frontend as CfgFrontend};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
-use crate::templates::render_workspace;
+use crate::runtime::pipeline::{BuildPipeline, PipelineError, PipelineOptions, PipelineStep};
+use crate::runtime::serve::{HeadlessServeLoop, NotifyWatchSource, ServeLoopInput};
+use crate::runtime::subprocess::SubprocessRunner;
+use crate::templates::{render_dispatch_segment, render_workspace, ArgSpec, InstructionDispatch};
 use crate::toolchain::preflight::{self, PreflightError};
 
 const ANCHOR_VERSION: &str = "0.30.1";
@@ -22,10 +26,10 @@ const RUST_EDITION: &str = "2021";
 pub enum ChainCmd {
     /// Bootstrap a new Solana workspace.
     New(NewArgs),
-    /// Run a local validator + program build loop (stub).
-    Serve,
-    /// Build all programs in the workspace (stub).
-    Build,
+    /// Run a local validator + program build loop.
+    Serve(ServeArgs),
+    /// Build all programs in the workspace.
+    Build(BuildArgs),
     /// Deploy programs to a cluster (stub).
     Deploy,
     /// Audit workspace marker integrity. Pass `--fix-markers` to insert
@@ -97,12 +101,37 @@ pub struct NewArgs {
     pub dry_run: bool,
 }
 
+/// Flags for `sunscreen chain build`.
+#[derive(Debug, Args)]
+pub struct BuildArgs {
+    /// Emit line-delimited JSON events suitable for CI logs.
+    #[arg(long, default_value_t = false)]
+    pub headless: bool,
+    /// Skip Codama client regeneration after a successful Anchor build.
+    #[arg(long, default_value_t = false)]
+    pub no_codama: bool,
+}
+
+/// Flags for `sunscreen chain serve`.
+#[derive(Debug, Args)]
+pub struct ServeArgs {
+    /// Emit line-delimited JSON events and skip the TUI.
+    #[arg(long, default_value_t = false)]
+    pub headless: bool,
+    /// Skip Codama client regeneration after a successful Anchor build.
+    #[arg(long, default_value_t = false)]
+    pub no_codama: bool,
+    /// Debounce filesystem changes before running the build pipeline.
+    #[arg(long, default_value_t = 150)]
+    pub debounce_ms: u64,
+}
+
 /// Dispatch entry point invoked from `cli::root`.
 pub fn run(cmd: &ChainCmd, json: bool) -> Result<i32, SunscreenError> {
     match cmd {
         ChainCmd::New(args) => run_new(args, json),
-        ChainCmd::Serve => stub("chain serve"),
-        ChainCmd::Build => stub("chain build"),
+        ChainCmd::Serve(args) => run_serve(args, json),
+        ChainCmd::Build(args) => run_build(args, json),
         ChainCmd::Deploy => stub("chain deploy"),
         ChainCmd::Doctor(args) => run_doctor(args, json),
     }
@@ -111,6 +140,147 @@ pub fn run(cmd: &ChainCmd, json: bool) -> Result<i32, SunscreenError> {
 fn stub(name: &str) -> Result<i32, SunscreenError> {
     eprintln!("{name}: TODO (Phase 2+)");
     Ok(0)
+}
+
+fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
+    use crate::workspace;
+
+    let structured = json || args.headless;
+    if !structured {
+        eprintln!("chain serve: TUI mode TODO (Phase 3); use --headless for the watcher loop");
+        return Ok(0);
+    }
+    if args.debounce_ms == 0 {
+        return Err(SunscreenError::UserInput(
+            "--debounce-ms must be greater than zero".into(),
+        ));
+    }
+
+    let ws = workspace::find_root(None)?;
+    let debounce = Duration::from_millis(args.debounce_ms);
+    emit_serve_event(serde_json::json!({
+        "event": "chain_serve_started",
+        "workspace": ws.root.display().to_string(),
+        "codama": !args.no_codama,
+        "debounce_ms": args.debounce_ms,
+    }));
+
+    let source = NotifyWatchSource::new(&ws.root)
+        .map_err(|err| SunscreenError::Other(anyhow::anyhow!("watch workspace: {err}")))?;
+    let mut loop_ = HeadlessServeLoop::new(
+        &ws.root,
+        debounce,
+        PipelineOptions {
+            run_codama: !args.no_codama,
+        },
+    );
+    let runner = SubprocessRunner;
+
+    loop {
+        let input = match source
+            .recv_timeout(debounce)
+            .map_err(|err| SunscreenError::Other(anyhow::anyhow!("watch workspace: {err}")))?
+        {
+            Some(event) => ServeLoopInput::NotifyEvent(event, Instant::now()),
+            None => ServeLoopInput::Tick(Instant::now()),
+        };
+        let events = loop_
+            .handle_input(input, &runner)
+            .map_err(|err| map_pipeline_err(err, "sunscreen chain serve"))?;
+        for event in events {
+            emit_serve_event(event);
+        }
+    }
+}
+
+fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
+    use crate::workspace;
+
+    let ws = workspace::find_root(None)?;
+    let structured = json || args.headless;
+    let programs: Vec<_> = ws
+        .programs
+        .iter()
+        .map(|program| program.name.clone())
+        .collect();
+
+    if structured {
+        emit_build_event(serde_json::json!({
+            "event": "chain_build_started",
+            "workspace": ws.root.display().to_string(),
+            "programs": programs,
+            "codama": !args.no_codama,
+        }));
+    } else {
+        println!(
+            "chain build: running build pipeline in {}",
+            ws.root.display()
+        );
+    }
+
+    let report = BuildPipeline::new(&ws.root)
+        .run(
+            &SubprocessRunner,
+            PipelineOptions {
+                run_codama: !args.no_codama,
+            },
+        )
+        .map_err(|err| map_pipeline_err(err, "sunscreen chain build"))?;
+    let exit_code = report.exit_code;
+    let success = report.success();
+    let status = if success { "ok" } else { "failed" };
+
+    if structured {
+        for event in &report.events {
+            emit_build_event(event.to_json());
+        }
+        emit_build_event(serde_json::json!({
+            "event": "chain_build_finished",
+            "status": status,
+            "exit_code": exit_code,
+        }));
+    } else {
+        for event in &report.events {
+            if event.event != "command_finished" {
+                continue;
+            }
+            if let Some(stdout) = &event.stdout {
+                print!("{stdout}");
+            }
+            if let Some(stderr) = &event.stderr {
+                eprint!("{stderr}");
+            }
+        }
+        if success {
+            println!("chain build: ok");
+        } else {
+            eprintln!("chain build: pipeline failed with exit code {exit_code}");
+        }
+    }
+
+    Ok(if success { 0 } else { exit_code })
+}
+
+fn emit_build_event(payload: serde_json::Value) {
+    println!("{payload}");
+}
+
+fn emit_serve_event(payload: serde_json::Value) {
+    println!("{payload}");
+}
+
+fn map_pipeline_err(err: PipelineError, command: &str) -> SunscreenError {
+    if err.source.is_not_found() {
+        let (tool, install_hint) = match err.step {
+            PipelineStep::AnchorBuild => ("anchor", "install Anchor"),
+            PipelineStep::CodamaRun => ("pnpm", "install pnpm before running Codama"),
+        };
+        SunscreenError::ToolchainMissing(format!(
+            "{tool} not found on PATH; {install_hint} before running `{command}`"
+        ))
+    } else {
+        SunscreenError::Other(anyhow::anyhow!("run build pipeline: {err}"))
+    }
 }
 
 fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {
@@ -406,18 +576,34 @@ fn run_doctor(args: &DoctorArgs, json: bool) -> Result<i32, SunscreenError> {
                 continue;
             }
             drift_count += 1;
-            if args.fix_markers && site.appendable {
-                let patched = append_marker_block(&contents, site.segment);
-                std::fs::write(&site.abs_path, &patched).map_err(|e| {
-                    SunscreenError::Other(anyhow::anyhow!("write {}: {e}", site.abs_path.display()))
-                })?;
-                fixed_files.push(rel_str.clone());
-                findings.push(serde_json::json!({
-                    "program": program.name,
-                    "file": rel_str,
-                    "segment": site.segment,
-                    "status": "fixed",
-                }));
+            if args.fix_markers {
+                let patched = if site.appendable {
+                    Some(append_marker_block(&contents, site.segment))
+                } else {
+                    repair_non_appendable_site(&contents, site, program)?
+                };
+                if let Some(patched) = patched {
+                    std::fs::write(&site.abs_path, &patched).map_err(|e| {
+                        SunscreenError::Other(anyhow::anyhow!(
+                            "write {}: {e}",
+                            site.abs_path.display()
+                        ))
+                    })?;
+                    fixed_files.push(rel_str.clone());
+                    findings.push(serde_json::json!({
+                        "program": program.name,
+                        "file": rel_str,
+                        "segment": site.segment,
+                        "status": "fixed",
+                    }));
+                } else {
+                    findings.push(serde_json::json!({
+                        "program": program.name,
+                        "file": rel_str,
+                        "segment": site.segment,
+                        "status": "missing_marker",
+                    }));
+                }
             } else {
                 findings.push(serde_json::json!({
                     "program": program.name,
@@ -546,6 +732,474 @@ fn append_marker_block(existing: &str, segment: &str) -> String {
     out
 }
 
+fn repair_non_appendable_site(
+    existing: &str,
+    site: &MarkerSite,
+    program: &crate::workspace::ProgramView,
+) -> Result<Option<String>, SunscreenError> {
+    match site.segment {
+        "dispatch" => rebuild_dispatch_marker_block(existing, program),
+        "error_variants" => Ok(rewrap_error_variants_marker_block(existing)),
+        _ => Ok(None),
+    }
+}
+
+fn rebuild_dispatch_marker_block(
+    existing: &str,
+    program: &crate::workspace::ProgramView,
+) -> Result<Option<String>, SunscreenError> {
+    let (open_line, close_line) = match find_program_module_bounds(existing) {
+        Some(bounds) => bounds,
+        None => return Ok(None),
+    };
+    let dispatches = collect_instruction_dispatches(program)?;
+    if program_module_contains_dispatch_wrappers(existing, open_line, close_line) {
+        return Ok(None);
+    }
+    let body = render_dispatch_segment(&program.name, &dispatches);
+    Ok(Some(insert_dispatch_marker_block(
+        existing, close_line, &body,
+    )))
+}
+
+fn collect_instruction_dispatches(
+    program: &crate::workspace::ProgramView,
+) -> Result<Vec<InstructionDispatch>, SunscreenError> {
+    let mut out = Vec::new();
+    let entries = std::fs::read_dir(&program.instructions_dir).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!(
+            "read {}: {e}",
+            program.instructions_dir.display()
+        ))
+    })?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if stem == "mod" {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path)
+            .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+        let Some(args) = parse_handler_args(&source) else {
+            continue;
+        };
+        out.push(InstructionDispatch {
+            name: stem.to_string(),
+            args,
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+fn parse_handler_args(source: &str) -> Option<Vec<ArgSpec>> {
+    let start = source.find("pub fn handler(")?;
+    let tail = &source[start + "pub fn handler(".len()..];
+    let params = take_param_list(tail)?;
+    Some(
+        split_params(params)
+            .into_iter()
+            .filter_map(|param| {
+                let param = param.trim();
+                if param.is_empty() || param.starts_with("ctx:") || param.starts_with("ctx :") {
+                    return None;
+                }
+                let (name, ty) = param.split_once(':')?;
+                let name = name.trim();
+                let ty = ty.trim();
+                if name.is_empty() || ty.is_empty() {
+                    return None;
+                }
+                Some(ArgSpec {
+                    name: name.to_string(),
+                    ty: ty.to_string(),
+                })
+            })
+            .collect(),
+    )
+}
+
+fn take_param_list(tail: &str) -> Option<&str> {
+    let mut angle_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    for (idx, ch) in tail.char_indices() {
+        match ch {
+            '<' => angle_depth += 1,
+            '>' if angle_depth > 0 => angle_depth -= 1,
+            '(' => paren_depth += 1,
+            '[' => bracket_depth += 1,
+            ']' if bracket_depth > 0 => bracket_depth -= 1,
+            '{' => brace_depth += 1,
+            '}' if brace_depth > 0 => brace_depth -= 1,
+            ')' if angle_depth == 0
+                && paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0 =>
+            {
+                return Some(&tail[..idx]);
+            }
+            ')' if paren_depth > 0 => paren_depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn split_params(params: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut angle_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    for (idx, ch) in params.char_indices() {
+        match ch {
+            '<' => angle_depth += 1,
+            '>' if angle_depth > 0 => angle_depth -= 1,
+            '(' => paren_depth += 1,
+            ')' if paren_depth > 0 => paren_depth -= 1,
+            '[' => bracket_depth += 1,
+            ']' if bracket_depth > 0 => bracket_depth -= 1,
+            '{' => brace_depth += 1,
+            '}' if brace_depth > 0 => brace_depth -= 1,
+            ',' if angle_depth == 0
+                && paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0 =>
+            {
+                parts.push(&params[start..idx]);
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(&params[start..]);
+    parts
+}
+
+fn find_program_module_bounds(existing: &str) -> Option<(usize, usize)> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut saw_program_attr = false;
+    let mut start = None;
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed == "#[program]" {
+            saw_program_attr = true;
+            continue;
+        }
+        if saw_program_attr && trimmed.starts_with("pub mod ") && trimmed.contains('{') {
+            start = Some(idx);
+            break;
+        }
+        if saw_program_attr && !trimmed.is_empty() && !trimmed.starts_with("#[") {
+            saw_program_attr = false;
+        }
+    }
+
+    let start = start?;
+    let close = find_matching_brace_line(existing, start)?;
+    Some((start, close))
+}
+
+fn program_module_contains_dispatch_wrappers(
+    existing: &str,
+    open_line: usize,
+    close_line: usize,
+) -> bool {
+    let lines: Vec<&str> = existing.lines().collect();
+    if close_line <= open_line + 1 {
+        return false;
+    }
+    lines[open_line + 1..close_line]
+        .iter()
+        .any(|line| line.trim_start().starts_with("pub fn "))
+}
+
+fn insert_dispatch_marker_block(existing: &str, insert_line: usize, body: &str) -> String {
+    let nl = crate::cli::scaffold::detect_line_ending(existing);
+    let trailing_nl = existing.ends_with('\n');
+    let lines: Vec<&str> = existing.lines().collect();
+    let close_indent: String = lines
+        .get(insert_line)
+        .map(|line| line.chars().take_while(|ch| ch.is_whitespace()).collect())
+        .unwrap_or_default();
+    let marker_indent = format!("{close_indent}    ");
+
+    let mut out = Vec::with_capacity(lines.len() + body.lines().count() + 4);
+    for (idx, line) in lines.iter().enumerate() {
+        if idx == insert_line {
+            if out
+                .last()
+                .is_some_and(|prev: &String| !prev.trim().is_empty())
+            {
+                out.push(String::new());
+            }
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:begin segment=dispatch version=1 generator=doctor ==="
+            ));
+            for body_line in body.strip_suffix('\n').unwrap_or(body).lines() {
+                out.push(body_line.to_string());
+            }
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:end segment=dispatch ==="
+            ));
+        }
+        out.push((*line).to_string());
+    }
+    let mut joined = out.join(nl);
+    if trailing_nl {
+        joined.push_str(nl);
+    }
+    joined
+}
+
+fn rewrap_error_variants_marker_block(existing: &str) -> Option<String> {
+    let (open_line, close_line) = find_error_enum_bounds(existing)?;
+    if close_line <= open_line {
+        return None;
+    }
+    insert_error_variants_marker_block(existing, open_line, close_line)
+}
+
+fn find_error_enum_bounds(existing: &str) -> Option<(usize, usize)> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut saw_error_attr = false;
+    let mut start = None;
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed == "#[error_code]" {
+            saw_error_attr = true;
+            continue;
+        }
+        if saw_error_attr && trimmed.starts_with("pub enum ") && trimmed.contains('{') {
+            start = Some(idx);
+            break;
+        }
+        if saw_error_attr && !trimmed.is_empty() && !trimmed.starts_with("#[") {
+            saw_error_attr = false;
+        }
+    }
+
+    let start = start?;
+    let close = find_matching_brace_line(existing, start)?;
+    Some((start, close))
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StringScanMode {
+    Normal { escaped: bool },
+    Raw { hashes: usize },
+}
+
+#[derive(Debug, Default)]
+struct RustBraceScanner {
+    block_comment_depth: usize,
+    string_mode: Option<StringScanMode>,
+}
+
+impl RustBraceScanner {
+    fn scan_line(&mut self, line: &str, mut on_brace: impl FnMut(char)) {
+        let mut idx = 0usize;
+        while idx < line.len() {
+            let rest = &line[idx..];
+            if self.block_comment_depth > 0 {
+                if rest.starts_with("/*") {
+                    self.block_comment_depth += 1;
+                    idx += 2;
+                } else if rest.starts_with("*/") {
+                    self.block_comment_depth -= 1;
+                    idx += 2;
+                } else {
+                    idx += next_char_len(rest);
+                }
+                continue;
+            }
+
+            if let Some(mode) = self.string_mode {
+                match mode {
+                    StringScanMode::Normal { escaped } => {
+                        let ch = rest.chars().next().expect("non-empty rest");
+                        if escaped {
+                            self.string_mode = Some(StringScanMode::Normal { escaped: false });
+                        } else if ch == '\\' {
+                            self.string_mode = Some(StringScanMode::Normal { escaped: true });
+                        } else if ch == '"' {
+                            self.string_mode = None;
+                        }
+                        idx += ch.len_utf8();
+                    }
+                    StringScanMode::Raw { hashes } => {
+                        if let Some(end_len) = raw_string_end_len(rest, hashes) {
+                            self.string_mode = None;
+                            idx += end_len;
+                        } else {
+                            idx += next_char_len(rest);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if rest.starts_with("//") {
+                break;
+            }
+            if rest.starts_with("/*") {
+                self.block_comment_depth += 1;
+                idx += 2;
+                continue;
+            }
+            if let Some(hashes) = raw_string_hashes(rest) {
+                self.string_mode = Some(StringScanMode::Raw { hashes });
+                idx += 2 + hashes;
+                continue;
+            }
+
+            let ch = rest.chars().next().expect("non-empty rest");
+            if ch == '"' {
+                self.string_mode = Some(StringScanMode::Normal { escaped: false });
+            } else if ch == '{' || ch == '}' {
+                on_brace(ch);
+            }
+            idx += ch.len_utf8();
+        }
+    }
+}
+
+fn next_char_len(input: &str) -> usize {
+    input.chars().next().map(char::len_utf8).unwrap_or(0)
+}
+
+fn raw_string_hashes(input: &str) -> Option<usize> {
+    let mut chars = input.chars();
+    if chars.next()? != 'r' {
+        return None;
+    }
+    let mut hashes = 0usize;
+    for ch in chars {
+        match ch {
+            '#' => hashes += 1,
+            '"' => return Some(hashes),
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn raw_string_end_len(input: &str, hashes: usize) -> Option<usize> {
+    let after_quote = input.strip_prefix('"')?;
+    let bytes = after_quote.as_bytes();
+    if bytes.len() < hashes {
+        return None;
+    }
+    if bytes[..hashes].iter().all(|byte| *byte == b'#') {
+        Some(1 + hashes)
+    } else {
+        None
+    }
+}
+
+fn find_matching_brace_line(existing: &str, start_line: usize) -> Option<usize> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut scanner = RustBraceScanner::default();
+    let mut depth = 0isize;
+    let mut saw_open = false;
+    for (idx, line) in lines.iter().enumerate().skip(start_line) {
+        scanner.scan_line(line, |ch| match ch {
+            '{' => {
+                depth += 1;
+                saw_open = true;
+            }
+            '}' if saw_open => {
+                depth -= 1;
+            }
+            _ => {}
+        });
+        if saw_open && depth == 0 {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn insert_error_variants_marker_block(
+    existing: &str,
+    open_line: usize,
+    close_line: usize,
+) -> Option<String> {
+    let nl = crate::cli::scaffold::detect_line_ending(existing);
+    let trailing_nl = existing.ends_with('\n');
+    let lines: Vec<&str> = existing.lines().collect();
+    let enum_indent: String = lines
+        .get(open_line)
+        .map(|line| line.chars().take_while(|ch| ch.is_whitespace()).collect())
+        .unwrap_or_default();
+    let marker_indent = format!("{enum_indent}    ");
+    let begin_fragment = "sunscreen:auto-generated:begin segment=error_variants";
+    let end_fragment = "sunscreen:auto-generated:end segment=error_variants";
+    let begin_line = (open_line + 1..close_line).find(|idx| lines[*idx].contains(begin_fragment));
+    let end_line = (open_line + 1..close_line).find(|idx| lines[*idx].contains(end_fragment));
+
+    match (begin_line, end_line) {
+        (Some(begin), Some(end)) if begin < end => {
+            let mut out = Vec::with_capacity(lines.len());
+            for (idx, line) in lines.iter().enumerate() {
+                if idx == begin {
+                    out.push(format!(
+                        "{marker_indent}// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=doctor ==="
+                    ));
+                } else if idx == end {
+                    out.push(format!(
+                        "{marker_indent}// === sunscreen:auto-generated:end segment=error_variants ==="
+                    ));
+                } else {
+                    out.push((*line).to_string());
+                }
+            }
+            let mut joined = out.join(nl);
+            if trailing_nl {
+                joined.push_str(nl);
+            }
+            return Some(joined);
+        }
+        (None, None) => {}
+        _ => return None,
+    }
+
+    if lines[open_line + 1..close_line]
+        .iter()
+        .any(|line| !line.trim().is_empty())
+    {
+        return None;
+    }
+
+    let mut out = Vec::with_capacity(lines.len() + 2);
+    for (idx, line) in lines.iter().enumerate() {
+        out.push((*line).to_string());
+        if idx == open_line {
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=doctor ==="
+            ));
+        }
+        if idx + 1 == close_line {
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:end segment=error_variants ==="
+            ));
+        }
+    }
+    let mut joined = out.join(nl);
+    if trailing_nl {
+        joined.push_str(nl);
+    }
+    Some(joined)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,5 +1217,62 @@ mod tests {
         assert!(validate_name("1abc").is_err());
         assert!(validate_name("has space").is_err());
         assert!(validate_name("dot.name").is_err());
+    }
+
+    #[test]
+    fn parse_handler_args_preserves_tuple_types_and_no_arg_handlers() {
+        let args = parse_handler_args(
+            "pub fn handler(ctx: Context<Deposit>, pair: (u64, u64), maybe: Option<(u64, u64)>, callback: fn(u64) -> u64) -> Result<()> {}",
+        )
+        .expect("handler should parse");
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0].name, "pair");
+        assert_eq!(args[0].ty, "(u64, u64)");
+        assert_eq!(args[1].name, "maybe");
+        assert_eq!(args[1].ty, "Option<(u64, u64)>");
+        assert_eq!(args[2].name, "callback");
+        assert_eq!(args[2].ty, "fn(u64) -> u64");
+
+        let no_args =
+            parse_handler_args("pub fn handler(ctx: Context<Ping>) -> Result<()> { Ok(()) }")
+                .expect("no-arg handler should still be a handler");
+        assert!(no_args.is_empty());
+
+        assert!(parse_handler_args("pub fn helper() {}").is_none());
+    }
+
+    #[test]
+    fn find_error_enum_bounds_ignores_braces_inside_messages() {
+        let source = r#"use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    #[msg("bad } input")]
+    BadInput,
+}
+"#;
+        let (open_line, close_line) =
+            find_error_enum_bounds(source).expect("error enum should be found");
+        assert_eq!(open_line, 3);
+        assert_eq!(close_line, 6);
+    }
+
+    #[test]
+    fn rewrap_error_variants_refuses_ambiguous_and_single_line_enums() {
+        let ambiguous = r#"use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    ExistingVariant,
+}
+"#;
+        assert!(rewrap_error_variants_marker_block(ambiguous).is_none());
+
+        let single_line = r#"use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {}
+"#;
+        assert!(rewrap_error_variants_marker_block(single_line).is_none());
     }
 }

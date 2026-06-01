@@ -1,0 +1,28 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::DigestRecorded;
+
+#[derive(Accounts)]
+#[instruction(digest: [u8; 32])]
+pub struct RecordDigest<'info> {
+    pub authority: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<RecordDigest>,
+    digest: [u8; 32],
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &digest;
+    emit!(DigestRecorded {
+        digest: todo!("set DigestRecorded.digest"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

@@ -1,0 +1,25 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct MixAccounts<'info> {
+    #[account(mut, seeds = [b"vault", payer.key().as_ref()], bump)]
+    pub vault: AccountInfo<'info>,
+    pub payer: Signer<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<MixAccounts>,
+) -> Result<()> {
+    let _ = ctx;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

@@ -1,0 +1,25 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(display_name: String)]
+pub struct UpdateProfile<'info> {
+    #[account(mut)]
+    pub user_profile: AccountInfo<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<UpdateProfile>,
+    display_name: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &display_name;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

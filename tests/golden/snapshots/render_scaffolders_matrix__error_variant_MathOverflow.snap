@@ -1,0 +1,6 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[msg("calculation overflowed")]
+MathOverflow,

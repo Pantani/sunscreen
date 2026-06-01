@@ -40,24 +40,13 @@ pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> a
     let reports = detect_all(&runner, &specs, &cfg.toolchain.required);
 
     if json {
-        // Stable machine-readable schema:
-        //   {
-        //     "tools": [ ToolReport, ... ],         // full per-tool detail
-        //     "available": { "<name>": bool, ... }  // flat skip-helper map
-        //   }
-        // The flat `available` map is what downstream integration tests
-        // consume to decide whether to skip Anchor / codama / surfpool
-        // suites. The per-tool reports also each carry an `available`
-        // boolean so single-tool consumers don't need the top-level map.
-        let available: std::collections::BTreeMap<&str, bool> = reports
-            .iter()
-            .map(|r| (r.name.as_str(), r.available))
-            .collect();
-        let envelope = serde_json::json!({
-            "tools": &reports,
-            "available": available,
-        });
-        println!("{}", serde_json::to_string_pretty(&envelope)?);
+        // Stable machine-readable schema: a JSON array of `ToolReport`
+        // (each entry carries `name`, `version`, `found`, `available`,
+        // `status`, ...). Downstream integration tests pick out the
+        // tool they care about and read its `available` boolean. This
+        // preserves the array shape contracted by the file header so
+        // existing `sunscreen doctor --json` consumers don't break.
+        println!("{}", serde_json::to_string_pretty(&reports)?);
     } else {
         print_table(&reports);
     }

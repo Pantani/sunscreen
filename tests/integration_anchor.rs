@@ -259,10 +259,13 @@ fn codama_regen_is_idempotent() {
         .join(format!("{name}.json"));
     assert!(idl_path.exists(), "expected IDL at {}", idl_path.display());
 
-    // First codama regen.
+    // First codama regen. Assert exit success so a broken codama CLI
+    // (bad flags, malformed IDL, runtime error) fails the test loudly
+    // instead of silently producing an empty `out_dir` that would let
+    // the idempotency check trivially pass on two empty snapshots.
     let regen = |project: &Path| -> PathBuf {
         let out_dir = project.join("clients").join("ts");
-        Command::new("codama")
+        let output = Command::new("codama")
             .args(["run", "js"])
             .arg("--idl")
             .arg(&idl_path)
@@ -271,6 +274,13 @@ fn codama_regen_is_idempotent() {
             .current_dir(project)
             .output()
             .expect("invoke codama");
+        assert!(
+            output.status.success(),
+            "codama regen failed (exit={:?})\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
         out_dir
     };
 

@@ -40,6 +40,12 @@ pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> a
     let reports = detect_all(&runner, &specs, &cfg.toolchain.required);
 
     if json {
+        // Stable machine-readable schema: a JSON array of `ToolReport`
+        // (each entry carries `name`, `version`, `found`, `available`,
+        // `status`, ...). Downstream integration tests pick out the
+        // tool they care about and read its `available` boolean. This
+        // preserves the array shape contracted by the file header so
+        // existing `sunscreen doctor --json` consumers don't break.
         println!("{}", serde_json::to_string_pretty(&reports)?);
     } else {
         print_table(&reports);

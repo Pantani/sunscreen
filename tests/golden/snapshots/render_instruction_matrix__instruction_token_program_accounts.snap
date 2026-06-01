@@ -1,0 +1,31 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct MintToUser<'info> {
+    #[account(mut)]
+    pub mint: AccountInfo<'info>,
+    #[account(mut)]
+    pub to: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<MintToUser>,
+    amount: u64,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &amount;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

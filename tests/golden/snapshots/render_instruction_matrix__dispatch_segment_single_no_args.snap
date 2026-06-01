@@ -1,0 +1,7 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+pub fn ping(ctx: Context<Ping>) -> Result<()> {
+    instructions::ping::handler(ctx)
+}

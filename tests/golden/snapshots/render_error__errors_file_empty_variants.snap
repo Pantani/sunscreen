@@ -1,0 +1,11 @@
+---
+source: tests/golden/render_error.rs
+expression: out
+---
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}

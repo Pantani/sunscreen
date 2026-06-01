@@ -1,0 +1,29 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(fee_bps: u16, max_supply: u64, name: String, authority: Pubkey)]
+pub struct Configure<'info> {
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<Configure>,
+    fee_bps: u16,
+    max_supply: u64,
+    name: String,
+    authority: Pubkey,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &fee_bps;
+    let _ = &max_supply;
+    let _ = &name;
+    let _ = &authority;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

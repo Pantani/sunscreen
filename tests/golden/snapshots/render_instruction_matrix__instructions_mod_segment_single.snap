@@ -1,0 +1,6 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+pub mod initialize;
+pub use initialize::*;

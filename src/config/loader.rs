@@ -76,9 +76,23 @@ fn upgrade(raw: &mut Value) -> Result<(), ConfigError> {
 
 /// Internal: split out so tests can inject a deterministic env.
 fn env_iter() -> Vec<(String, String)> {
-    env::vars()
-        .filter(|(k, _)| k.starts_with(ENV_OVERLAY_PREFIX) && k != ENV_CONFIG_VAR)
-        .collect()
+    env::vars().filter(|(k, _)| is_overlay_key(k)).collect()
+}
+
+/// Returns true if an env var name is a config overlay key.
+///
+/// Overlay vars must follow `SUNSCREEN_<SECTION>__<KEY>[__<SUBKEY>]`.
+/// Control vars like `SUNSCREEN_SKIP_PREFLIGHT` (no `__` separator) are read
+/// directly by their consumers and must not be folded into the merged config,
+/// where they would surface as unknown top-level fields.
+fn is_overlay_key(k: &str) -> bool {
+    if k == ENV_CONFIG_VAR {
+        return false;
+    }
+    let Some(rest) = k.strip_prefix(ENV_OVERLAY_PREFIX) else {
+        return false;
+    };
+    rest.contains(ENV_OVERLAY_SEP)
 }
 
 fn resolve_source(explicit: Option<&Path>) -> Result<Option<(PathBuf, String)>, ConfigError> {
@@ -414,6 +428,37 @@ mod tests {
             cfg.runtime.engine,
             crate::config::RuntimeEngine::TestValidator
         );
+    }
+
+    #[test]
+    fn is_overlay_key_filters_control_vars() {
+        // Control vars (no `__` separator) must be ignored by the overlay.
+        assert!(!is_overlay_key("SUNSCREEN_SKIP_PREFLIGHT"));
+        assert!(!is_overlay_key("SUNSCREEN_CONFIG"));
+        assert!(!is_overlay_key("SUNSCREEN_"));
+        assert!(!is_overlay_key("PATH"));
+        // Real overlay keys still match.
+        assert!(is_overlay_key("SUNSCREEN_PROJECT__DESCRIPTION"));
+        assert!(is_overlay_key("SUNSCREEN_TOOLCHAIN__REQUIRED__ANCHOR"));
+    }
+
+    #[test]
+    fn env_overlay_ignores_control_var_skip_preflight() {
+        // Regression: `SUNSCREEN_SKIP_PREFLIGHT=1` is a control var (no `__`).
+        // It must not surface as an unknown top-level field during materialize.
+        let path = fixture("valid/full.yml");
+        let body = fs::read_to_string(&path).expect("read");
+        let raw = parse_yaml(&path, &body).expect("parse");
+        let env = vec![
+            ("SUNSCREEN_SKIP_PREFLIGHT".to_string(), "1".to_string()),
+            (
+                "SUNSCREEN_PROJECT__DESCRIPTION".to_string(),
+                "still applied".to_string(),
+            ),
+        ];
+        let merged = apply_env_overlay(raw, env.into_iter().filter(|(k, _)| is_overlay_key(k)));
+        let cfg = materialize(merged).expect("materialize must succeed");
+        assert_eq!(cfg.project.description.as_deref(), Some("still applied"));
     }
 
     #[test]

@@ -158,7 +158,7 @@ Shipped via PR #7.
 - [x] ≥ 75 golden tests across all five scaffolders (37 render snapshots + 25 compile tests + existing scaffold suites)
 - [x] ≥ 25 compile tests (`cargo check` of generated workspaces) — `tests/compile_generated.rs`, 25 tests, shared `CARGO_TARGET_DIR` cache (~4s warm)
 - [x] 5 integration tests scaffolded — full `anchor build` + IDL inspection + codama regen (`tests/integration_anchor.rs`, `#[ignore]`d + skip-when-toolchain-missing)
-- [x] `doctor --json` exposes `available.{anchor,codama,solana,surfpool,rustfmt,…}` map + public `toolchain::detect_*` helpers
+- [x] `doctor --json` emits a flat `[ToolReport, …]` array where each report carries an `available` boolean (covers anchor, codama, solana, surfpool, rustfmt, …) + public `toolchain::detect_*` helpers for in-process callers
 - [x] Phase 2 DoD per ADR-0001 §10.4 satisfied end-to-end (202 passing, fmt + clippy clean)
 
 **Carry-overs into Phase 3 backlog:**

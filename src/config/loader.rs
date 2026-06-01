@@ -92,7 +92,13 @@ fn is_overlay_key(k: &str) -> bool {
     let Some(rest) = k.strip_prefix(ENV_OVERLAY_PREFIX) else {
         return false;
     };
-    rest.contains(ENV_OVERLAY_SEP)
+    // Require at least two non-empty segments separated by `__`. This rejects
+    // both control vars (no `__`, e.g. `SUNSCREEN_SKIP_PREFLIGHT`) and
+    // malformed keys with empty segments (`SUNSCREEN__FOO`, `SUNSCREEN_X__`,
+    // `SUNSCREEN___`), which would otherwise produce confusing
+    // unknown-field/empty-key errors at materialize time.
+    let segments: Vec<&str> = rest.split(ENV_OVERLAY_SEP).collect();
+    segments.len() >= 2 && segments.iter().all(|s| !s.is_empty())
 }
 
 fn resolve_source(explicit: Option<&Path>) -> Result<Option<(PathBuf, String)>, ConfigError> {
@@ -437,6 +443,10 @@ mod tests {
         assert!(!is_overlay_key("SUNSCREEN_CONFIG"));
         assert!(!is_overlay_key("SUNSCREEN_"));
         assert!(!is_overlay_key("PATH"));
+        // Malformed keys with empty segments must also be rejected.
+        assert!(!is_overlay_key("SUNSCREEN__FOO"));
+        assert!(!is_overlay_key("SUNSCREEN_SECTION__"));
+        assert!(!is_overlay_key("SUNSCREEN___"));
         // Real overlay keys still match.
         assert!(is_overlay_key("SUNSCREEN_PROJECT__DESCRIPTION"));
         assert!(is_overlay_key("SUNSCREEN_TOOLCHAIN__REQUIRED__ANCHOR"));

@@ -260,7 +260,7 @@ Explicitly deferred per ADR-0001 §10.9. Requires its own ADR before scoping; no
 
 ## 3. Critical Path & Dependencies
 
-```
+```text
 Phase 2 R4 (program + doctor --fix-markers)
    └─► Phase 2 R5 (polish, test counts)
          └─► Phase 3 (chain serve / build)

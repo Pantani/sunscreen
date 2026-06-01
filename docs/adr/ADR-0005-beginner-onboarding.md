@@ -126,7 +126,7 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 | `sunscreen examples list` | `--json`, `--tag <tag>` | Table: name, short description, tags, estimated time | 0 ok |
 | `sunscreen examples describe <name>` | `--json` | Example README rendered via `termimad` | 0 ok; 4 user_input (unknown name) |
 | `sunscreen examples use <name> [path]` | `--non-interactive`, `--json` | Copies embedded example to `path` (default: `./<name>`) | 0 ok; 4 user_input (unknown name); 7 path_conflict |
-| `sunscreen quickstart <recipe>` | `--name <n>`, `--cluster <localnet\|devnet>`, `--non-interactive`, `--json` | Composes `chain new` + scaffolds + frontend bootstrap; opens `localhost:3000` if TTY | 0 ok; 2 toolchain; 4 user_input; 7 path_conflict |
+| `sunscreen quickstart <recipe>` | `--name <n>`, `--cluster <localnet\|devnet>`, `--non-interactive`, `--json` | Composes `chain new` + scaffolds + frontend bootstrap; opens `localhost:3000` if TTY | 0 ok; 2 toolchain; 4 user_input; 7 path_conflict; 8 network (when `--cluster devnet` triggers the embedded `wallet airdrop`/`deploy` steps) |
 | `sunscreen wallet new [name]` | `--out <path>`, `--no-bip39-passphrase`, `--json` | Creates keypair; reports pubkey + path | 0 ok; 7 path_conflict |
 | `sunscreen wallet list` | `--json` | Lists known keypairs + which is default | 0 ok |
 | `sunscreen wallet airdrop [amount]` | `--cluster <c>`, `--to <pubkey>`, `--json` | Requests airdrop; reports final balance | 0 ok; 8 network (includes rate-limited responses) |

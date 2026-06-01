@@ -1,6 +1,6 @@
 # Sunscreen — Tooling CLI for Solana (Rust)
 
-Greenfield Rust CLI inspired by Ignite CLI. Scope: incremental scaffolding of Anchor 1.0 programs, dev loop orchestration (Surfpool + Codama + frontend), and plugin system. Design source of truth: `docs/adr/ADR-0001-solis-cli.md` (with the name adapted from "solis" → "sunscreen" and the language from Go → Rust). Tactical roadmap: `IMPLEMENTATION-KICKOFF.md`.
+Greenfield Rust CLI inspired by Ignite CLI. Scope: incremental scaffolding of Anchor 1.0 programs, dev loop orchestration (Surfpool + Codama + frontend), and plugin system. Design source of truth: `docs/adr/ADR-0001-solis-cli.md` (with the name adapted from "solis" → "sunscreen" and the language from Go → Rust). Live roadmap (single source of truth for status): `ROADMAP.md`. `IMPLEMENTATION-KICKOFF.md` is kept for historical reference (Go-stack snapshot).
 
 ## Harness: sunscreen
 

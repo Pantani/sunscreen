@@ -88,7 +88,7 @@ Additional rules:
 | Segment | Default kind | Location | Content |
 |---|---|---|---|
 | `instructions` | `auto-generated` | `programs/<prog>/src/instructions/mod.rs` | `pub mod <ix>;` per instruction + re-exports |
-| `dispatch` | `auto-generated` | `programs/<prog>/src/lib.rs` inside `#[program] pub mod <prog> { … }` | `pub fn <ix>(ctx: Context<…>, …) -> Result<()> { instructions::<ix>::handler(ctx, …) }` |
+| `dispatch` | `auto-generated` | `programs/<prog>/src/lib.rs` inside `#[program] pub mod <prog> { … }` | `pub fn {ix}(ctx: Context<…>, …) -> Result<()> { instructions::{ix}::handler(ctx, …) }` (e.g. `instructions::deposit::handler`) |
 | `file` | `auto-generated` | `programs/<prog>/src/instructions/<ix>.rs` | imports, `#[derive(Accounts)] struct <Ix>`, auxiliary structs |
 | `handler` | `user-region` | same file as `file` | body of `pub fn handler(...) -> Result<()> { … }` |
 | `accounts` *(R3)* | `auto-generated` | `programs/<prog>/src/state/mod.rs` | `pub mod <acc>;` |

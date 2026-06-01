@@ -211,9 +211,12 @@ fn scaffold_instruction_patches_lib_rs_dispatch_segment() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("\"lib_rs_patched\":true") || stdout.contains("\"lib_rs_patched\": true"),
-        "expected lib_rs_patched=true; stdout={stdout}"
+    let payload: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|e| panic!("stdout was not valid JSON ({e}): {stdout}"));
+    assert_eq!(
+        payload.get("lib_rs_patched").and_then(|v| v.as_bool()),
+        Some(true),
+        "expected lib_rs_patched=true; payload={payload}"
     );
 
     // The patched dispatch segment should now contain the new wrapper.

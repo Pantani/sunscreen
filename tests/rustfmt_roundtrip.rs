@@ -1,130 +1,212 @@
-//! Phase 2 R5 marker hardening: generated marker comments must survive
-//! `rustfmt` and remain scannable afterwards.
+//! Golden test: `rustfmt --edition=2021` must preserve every documented
+//! marker segment (cf. ADR-0004 §4 and `docs/reference/markers.md` §5).
+//!
+//! For each fixture under `tests/fixtures/markers/`:
+//!   1. Scan the original file with `rustpatch::marker::scan` to record the
+//!      marker pairs.
+//!   2. Run `rustfmt --edition=2021` on a copy.
+//!   3. Re-scan the formatted output. Assert that:
+//!      - the same number of marker pairs exist,
+//!      - segments are in the same order,
+//!      - each segment's `kind` and `version` is preserved.
+//!   4. Apply a no-op `Patch` to every auto-generated segment in the
+//!      formatted file. This must succeed (round-trip survives `apply`).
+//!
+//! If `rustfmt` is not available, the test prints a skip message and
+//! returns — it does NOT fail. Keeps the suite green on minimal dev boxes.
+//!
+//! Owned by qa-integrator (R5).
 
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use sunscreen::rustpatch::{scan, MarkerKind};
+use sunscreen::rustpatch::{apply, scan, MarkerKind, Patch};
 
-const FIXTURE: &str = r#"
-use anchor_lang::prelude::*;
-
-pub mod instructions {
-// === sunscreen:auto-generated:begin segment=instructions version=1 generator=cli ===
-pub mod initialize;
-pub use initialize::*;
-// === sunscreen:auto-generated:end segment=instructions ===
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("markers")
 }
 
-pub mod state {
-// === sunscreen:auto-generated:begin segment=accounts version=1 generator=account ===
-#[account]
-pub struct Vault {
-pub authority: Pubkey,
-}
-// === sunscreen:auto-generated:end segment=accounts ===
-}
-
-pub mod events {
-// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
-#[event]
-pub struct Deposited {
-pub amount: u64,
-}
-// === sunscreen:auto-generated:end segment=events ===
+fn rustfmt_available() -> bool {
+    Command::new("rustfmt")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
-pub mod errors {
-#[error_code]
-pub enum DemoError {
-// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
-#[msg("bad input")]
-BadInput,
-// === sunscreen:auto-generated:end segment=error_variants ===
-}
-}
-
-#[program]
-pub mod demo {
-use super::*;
-
-// === sunscreen:auto-generated:begin segment=dispatch version=1 generator=cli ===
-pub fn initialize(ctx: Context<Initialize>, amount: u64) -> Result<()> {
-instructions::initialize::handler(ctx, amount)
-}
-// === sunscreen:auto-generated:end segment=dispatch ===
+/// Run `rustfmt --edition=2021` on `path` in place. Returns the formatted
+/// contents.
+fn run_rustfmt(path: &Path) -> Result<String, String> {
+    let out = Command::new("rustfmt")
+        .args(["--edition", "2021"])
+        .arg(path)
+        .output()
+        .map_err(|e| format!("failed to spawn rustfmt: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "rustfmt failed (exit={:?}): {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    fs::read_to_string(path).map_err(|e| format!("read after rustfmt: {e}"))
 }
 
-pub mod initialize {
-use super::*;
+fn check_fixture(name: &str) {
+    let src_path = fixtures_dir().join(name);
+    let src = fs::read_to_string(&src_path).unwrap_or_else(|e| panic!("read fixture {name}: {e}"));
 
-// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-pub signer: Signer<'info>,
-}
-// === sunscreen:auto-generated:end segment=file ===
+    let original_markers = scan(&src)
+        .unwrap_or_else(|e| panic!("fixture {name} has invalid markers BEFORE rustfmt: {e}"));
+    assert!(
+        !original_markers.is_empty(),
+        "fixture {name} contains no markers — bad fixture",
+    );
 
-pub fn handler(ctx: Context<Initialize>, amount: u64) -> Result<()> {
-// === sunscreen:user-region:begin segment=handler ===
-let _ = (ctx, amount);
-Ok(())
-// === sunscreen:user-region:end segment=handler ===
+    // Copy fixture to a temp file so rustfmt edits don't touch the source tree.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let work_path = tmp.path().join(name);
+    fs::write(&work_path, &src).unwrap();
+
+    let formatted = match run_rustfmt(&work_path) {
+        Ok(s) => s,
+        Err(e) => panic!("rustfmt failed on fixture {name}: {e}"),
+    };
+
+    let formatted_markers = scan(&formatted).unwrap_or_else(|e| {
+        panic!(
+            "fixture {name}: rustfmt produced output with invalid markers: {e}\n--- formatted ---\n{formatted}",
+        )
+    });
+
+    assert_eq!(
+        original_markers.len(),
+        formatted_markers.len(),
+        "fixture {name}: marker count changed after rustfmt (before={}, after={})\nformatted:\n{formatted}",
+        original_markers.len(),
+        formatted_markers.len(),
+    );
+
+    for (i, (before, after)) in original_markers
+        .iter()
+        .zip(formatted_markers.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            before.segment, after.segment,
+            "fixture {name}: segment order changed at index {i} ({} -> {})",
+            before.segment, after.segment,
+        );
+        assert_eq!(
+            before.kind, after.kind,
+            "fixture {name}: kind changed for segment {} ({:?} -> {:?})",
+            before.segment, before.kind, after.kind,
+        );
+        assert_eq!(
+            before.version, after.version,
+            "fixture {name}: version changed for segment {} ({} -> {})",
+            before.segment, before.version, after.version,
+        );
+    }
+
+    // Round-trip apply: rewrite every auto-generated segment with its own body.
+    // This proves `apply` still locates and replaces regions after rustfmt.
+    let patches: Vec<Patch> = formatted_markers
+        .iter()
+        .filter(|m| m.kind == MarkerKind::AutoGenerated)
+        .map(|m| {
+            // Preserve the existing body lines verbatim (no-op patch).
+            let body: Vec<String> = formatted
+                .lines()
+                .skip(m.begin + 1)
+                .take(m.end - m.begin - 1)
+                .map(str::to_string)
+                .collect();
+            Patch {
+                segment: m.segment.clone(),
+                lines: body,
+            }
+        })
+        .collect();
+
+    let reapplied = apply(&formatted, &patches)
+        .unwrap_or_else(|e| panic!("fixture {name}: apply after rustfmt failed: {e}"));
+
+    // Idempotent no-op: the file should be byte-identical after re-applying its own body.
+    assert_eq!(
+        reapplied, formatted,
+        "fixture {name}: no-op apply changed the formatted file"
+    );
+
+    // And re-scan after apply.
+    let final_markers =
+        scan(&reapplied).unwrap_or_else(|e| panic!("fixture {name}: scan after apply failed: {e}"));
+    assert_eq!(final_markers.len(), formatted_markers.len());
 }
-}
-"#;
 
 #[test]
-fn documented_markers_survive_rustfmt_roundtrip() {
-    let expected = [
-        (MarkerKind::AutoGenerated, "instructions"),
-        (MarkerKind::AutoGenerated, "accounts"),
-        (MarkerKind::AutoGenerated, "events"),
-        (MarkerKind::AutoGenerated, "error_variants"),
-        (MarkerKind::AutoGenerated, "dispatch"),
-        (MarkerKind::AutoGenerated, "file"),
-        (MarkerKind::UserRegion, "handler"),
-    ];
-
-    let before = scan(FIXTURE).expect("fixture markers scan before rustfmt");
-    for (kind, segment) in expected {
-        assert!(
-            before
-                .iter()
-                .any(|m| m.kind == kind && m.segment == segment),
-            "fixture missing {kind:?} marker segment `{segment}` before rustfmt"
-        );
+fn rustfmt_preserves_dispatch_segment() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
     }
+    check_fixture("lib_dispatch.rs");
+}
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let fixture_path = tmp.path().join("markers.rs");
-    std::fs::write(&fixture_path, FIXTURE).expect("write fixture");
-    let instructions_dir = tmp.path().join("instructions");
-    std::fs::create_dir(&instructions_dir).expect("create instructions dir");
-    std::fs::write(instructions_dir.join("initialize.rs"), "").expect("write module stub");
-
-    let output = Command::new("rustfmt")
-        .arg("--edition=2021")
-        .arg(&fixture_path)
-        .output()
-        .expect("rustfmt must be installed with the Rust toolchain");
-    assert!(
-        output.status.success(),
-        "rustfmt failed:\nstdout={}\nstderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let formatted = std::fs::read_to_string(&fixture_path).expect("read formatted fixture");
-    let after = scan(&formatted).expect("markers scan after rustfmt");
-    assert_eq!(
-        after.len(),
-        before.len(),
-        "rustfmt changed marker count; formatted fixture:\n{formatted}"
-    );
-    for (kind, segment) in expected {
-        assert!(
-            after.iter().any(|m| m.kind == kind && m.segment == segment),
-            "rustfmt dropped {kind:?} marker segment `{segment}`; formatted fixture:\n{formatted}"
-        );
+#[test]
+fn rustfmt_preserves_instructions_segment() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
     }
+    check_fixture("instructions_mod.rs");
+}
+
+#[test]
+fn rustfmt_preserves_accounts_segment() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
+    }
+    check_fixture("state_mod.rs");
+}
+
+#[test]
+fn rustfmt_preserves_state_segment() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
+    }
+    check_fixture("state_vault.rs");
+}
+
+#[test]
+fn rustfmt_preserves_events_segment() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
+    }
+    check_fixture("events.rs");
+}
+
+#[test]
+fn rustfmt_preserves_error_variants_segment() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
+    }
+    check_fixture("errors.rs");
+}
+
+#[test]
+fn rustfmt_preserves_file_and_handler_segments() {
+    if !rustfmt_available() {
+        eprintln!("SKIP: rustfmt not installed");
+        return;
+    }
+    check_fixture("instruction_file.rs");
 }

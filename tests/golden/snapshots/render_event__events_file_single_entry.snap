@@ -1,0 +1,12 @@
+---
+source: tests/golden/render_event.rs
+expression: out
+---
+use anchor_lang::prelude::*;
+
+// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
+#[event]
+pub struct Deposited {
+    pub amount: u64,
+}
+// === sunscreen:auto-generated:end segment=events ===

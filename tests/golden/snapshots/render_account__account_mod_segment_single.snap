@@ -1,0 +1,6 @@
+---
+source: tests/golden/render_account.rs
+expression: out
+---
+pub mod vault;
+pub use vault::*;

@@ -1,0 +1,6 @@
+---
+source: tests/golden/render_error.rs
+expression: out
+---
+#[msg("kaboom")]
+Boom,

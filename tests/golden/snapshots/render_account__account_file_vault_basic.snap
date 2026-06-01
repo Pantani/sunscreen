@@ -1,0 +1,13 @@
+---
+source: tests/golden/render_account.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct Vault {
+    pub owner: Pubkey,
+    pub total: u64,
+}
+// === sunscreen:auto-generated:end segment=file ===

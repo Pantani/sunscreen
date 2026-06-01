@@ -89,5 +89,13 @@ pub fn known() -> Vec<ToolSpec> {
             required: false,
             default_min: None,
         },
+        ToolSpec {
+            name: "rustfmt",
+            bin: "rustfmt",
+            version_arg: "--version",
+            version_regex: r"rustfmt (\d+\.\d+\.\d+)",
+            required: false,
+            default_min: None,
+        },
     ]
 }

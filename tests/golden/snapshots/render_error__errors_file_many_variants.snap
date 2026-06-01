@@ -1,0 +1,17 @@
+---
+source: tests/golden/render_error.rs
+expression: out
+---
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("not enough lamports")]
+    InsufficientFunds,
+    #[msg("caller is not authorized")]
+    Unauthorized,
+    #[msg("arithmetic overflow")]
+    Overflow,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}

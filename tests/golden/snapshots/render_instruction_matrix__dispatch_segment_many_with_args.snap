@@ -1,0 +1,13 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+pub fn initialize(ctx: Context<Initialize>, seed: u64) -> Result<()> {
+    instructions::initialize::handler(ctx, seed)
+}
+pub fn deposit(ctx: Context<Deposit>, amount: u64, memo: String) -> Result<()> {
+    instructions::deposit::handler(ctx, amount, memo)
+}
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    instructions::close::handler(ctx)
+}

@@ -110,7 +110,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 
 #### R1 — rustpatch + `scaffold instruction` ✅
 
-- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) with rustfmt-preservation tests
+- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) — scan/apply behaviour and line-ending preservation covered; a dedicated `rustfmt`-roundtrip golden test is planned for R4
 - [x] `src/workspace/` — workspace discovery and program enumeration
 - [x] `src/cli/scaffold.rs` — `scaffold instruction <name>` subcommand
 - [x] `src/templates/instruction.rs`

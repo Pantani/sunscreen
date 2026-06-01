@@ -344,7 +344,7 @@ JSON equivalent (extends the canonical schema from ADR-0002 § 4.4 — keeps `er
 - [ ] Six new commands implemented per the table in § 4.1 with `--json` and `--non-interactive` where applicable.
 - [ ] `next_step` contract covers 100% of `SunscreenError` variants (verified by a CI test).
 - [ ] `init` wizard produces a workspace **byte-identical** to `chain new` with equivalent flags (property test).
-- [ ] Five `quickstart` recipes (`token`, `nft`, `dao`, `blog`, + a generic one) execute on localnet in CI.
+- [ ] All four `quickstart` recipes defined in § 4.1 (`token`, `nft`, `dao`, `blog`) execute on localnet in CI.
 - [ ] `sunscreen examples list` returns ≥ 5 embedded entries; `examples use <name>` creates a usable project.
 - [ ] `sunscreen learn` renders ≥ 5 MVP topics with no `termimad` warnings.
 - [ ] Human DoD: a user with no Solana account runs `sunscreen init` → `sunscreen quickstart nft` → sees an NFT minted on devnet in **< 10 min** (measured in an internal workshop).

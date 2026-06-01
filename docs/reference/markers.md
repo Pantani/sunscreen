@@ -102,7 +102,7 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 ## 5. Invariants
 
-1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` preserves them. This property is covered by a golden test in CI (cf. ADR-0001 § 9.5.1).
+1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` is expected to preserve them. CI currently runs `cargo fmt -- --check` over the workspace itself; a dedicated golden test that formats a fixture file with `rustfmt` and re-scans markers is planned for Phase 2 R4 (cf. ADR-0001 § 9.5.1).
 2. **Never inside `match`, `if`, `for`, `while`, `loop`, or arbitrary `{ … }` block.** Markers live only at item scope.
 3. **Line-grained.** Markers occupy entire lines; no inline marker alongside code.
 4. **Paired and ordered.** For each `begin segment=X` there is exactly one later `end segment=X` in the same file. No nesting.
@@ -128,7 +128,7 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 - Every `auto-generated` region carries `version=<n>`.
 - A `version` bump indicates an **incompatible change** in the format of the content generated within that segment.
-- When `sunscreen` encounters `version=N` but the current scaffolder emits `version=N+1`, it runs the corresponding **migrator** before rewriting the region. *(Automatic migrator support planned for R2.)*
+- When `sunscreen` encounters `version=N` but the current scaffolder emits `version=N+1`, it will run the corresponding **migrator** before rewriting the region. *No segment has bumped past `version=1` yet, so the migrator machinery in `src/rustpatch/` has not been built; it will be introduced the first time a real `version=2` lands.*
 - `version=1` is the starting point for every segment listed in § 4.
 
 ---

@@ -88,7 +88,7 @@ This constraint (preserving user code) is the central tension. Anchor 1.0 + IDL 
 **Cons:**
 - Only works in files that `sunscreen` generates. Mutation of user-authored code is out of reach.
 - User renames/moves of files can "lose" markers.
-- Regex cannot be used — match must be exact-string per line.
+- Match is line-oriented (`key=value` attribute parsing per `docs/reference/markers.md`): leading indentation is ignored and trailing `===` is tolerated, but free-form rewrites of the marker line will desync the scanner.
 
 **Mitigation:** the set of files `sunscreen` actually needs to edit is small and canonical (sub-module `mod.rs`, `lib.rs` dispatch, `errors.rs`, `events.rs`). Everything else is one-file-per-instruction, created once and protected by `user-region` in the handler.
 

@@ -94,7 +94,7 @@ Additional rules:
 | `accounts` *(R2)* | `auto-generated` | `programs/<prog>/src/state/mod.rs` | `pub mod <acc>;` |
 | `state` *(R2)* | `auto-generated` | `programs/<prog>/src/state/<acc>.rs` | `#[account] pub struct <Acc> { … }` |
 | `events` *(R3)* | `auto-generated` | `programs/<prog>/src/events.rs` | `#[event]` declarations |
-| `errors` *(R4)* | `auto-generated` | `programs/<prog>/src/errors.rs` | variants of the `#[error_code]` enum |
+| `error_variants` *(R3)* | `auto-generated` | `programs/<prog>/src/errors.rs` | variants of the `#[error_code]` enum |
 
 Future segments are added to this table and introduced with `version=1`; subsequent bumps (`version=2`, …) trigger automatic migrators.
 

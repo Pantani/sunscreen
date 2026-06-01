@@ -140,12 +140,12 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 `<target>` ∈ `{localnet, devnet, mainnet}`.
 `<topic>` MVP ∈ `{pda, cpi, token-2022, accounts-model, anchor-vs-native}`.
 
-> **Exit code compatibility.** This table strictly aligns with the canonical mapping in ADR-0002 § 4.3 and `src/error.rs::SunscreenError::exit_code` (which already assigns `1`=Other, `2`=ToolchainMissing, `3`=ConfigInvalid, `4`=UserInput, `5`=WorkspaceMissing, `6`=InstructionDrift). Onboarding does **not** repurpose any existing code. It extends the mapping with two new variants:
+> **Exit code compatibility.** The canonical source of truth is `src/error.rs::SunscreenError::exit_code`, which already assigns `1`=Other, `2`=ToolchainMissing, `3`=ConfigInvalid, `4`=UserInput, `5`=WorkspaceMissing, `6`=InstructionDrift. ADR-0002 § 4.3 documents `1`–`4` but still describes `5`/`6` as "reserved" (loosely flagged for future network/conflict use); that section is **out of date** relative to the implementation and must be amended as part of Phase 5.5 to reflect the current `5`/`6` assignments and the additions below. Onboarding does **not** repurpose any existing code. It extends the canonical mapping with two new variants:
 >
 > - `7` — `PathConflict` (target directory or file already exists; raised by `init`, `examples use`, `wallet new`, `quickstart`).
 > - `8` — `Network` (RPC, faucet, or airdrop failure — including rate-limited responses; raised by `wallet airdrop`, `wallet balance`, `deploy`).
 >
-> Phase 5.5 implementation MUST add `SunscreenError::PathConflict` and `SunscreenError::Network` variants, extend `exit_code()` to return `7` and `8`, and ship an amendment to ADR-0002 § 4.3 promoting these codes from "reserved" to "assigned". The existing reservation note in ADR-0002 (which loosely flagged `5`/`6` as reserved for network/conflict) is superseded by `src/error.rs` — `5` and `6` are already in use and MUST NOT be reused here.
+> Phase 5.5 implementation MUST add `SunscreenError::PathConflict` and `SunscreenError::Network` variants, extend `exit_code()` to return `7` and `8`, and ship the ADR-0002 § 4.3 amendment that promotes `5`/`6`/`7`/`8` from "reserved" or undocumented to "assigned". Codes `5` and `6` MUST NOT be reused for any new meaning — they are already taken by `WorkspaceMissing`/`InstructionDrift`.
 
 ### 4.2 Actionable error contract
 
@@ -341,7 +341,7 @@ JSON equivalent (extends the canonical schema from ADR-0002 § 4.4 — keeps `er
 
 ## 9. Acceptance Criteria
 
-- [ ] Seven new commands implemented per the table in § 4.1 with `--json` and `--non-interactive` where applicable.
+- [ ] Six new commands implemented per the table in § 4.1 with `--json` and `--non-interactive` where applicable.
 - [ ] `next_step` contract covers 100% of `SunscreenError` variants (verified by a CI test).
 - [ ] `init` wizard produces a workspace **byte-identical** to `chain new` with equivalent flags (property test).
 - [ ] Five `quickstart` recipes (`token`, `nft`, `dao`, `blog`, + a generic one) execute on localnet in CI.

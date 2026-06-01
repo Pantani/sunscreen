@@ -220,15 +220,9 @@ fn scaffold_instruction_patches_lib_rs_dispatch_segment() {
     );
 
     // The patched dispatch segment should now contain the new wrapper.
+    // Snapshot the full file so format/marker drift is caught loudly.
     let lib_after = std::fs::read_to_string(&lib_rs).unwrap();
-    assert!(
-        lib_after.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()>"),
-        "lib.rs should have the deposit wrapper after patch:\n{lib_after}"
-    );
-    assert!(
-        lib_after.contains("instructions::deposit::handler(ctx, amount)"),
-        "lib.rs should forward to the handler:\n{lib_after}"
-    );
+    insta::assert_snapshot!("lib_rs_after_first_scaffold_deposit", lib_after);
 }
 
 #[test]

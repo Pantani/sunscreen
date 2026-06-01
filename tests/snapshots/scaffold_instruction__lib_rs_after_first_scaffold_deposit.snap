@@ -1,0 +1,22 @@
+---
+source: tests/scaffold_instruction.rs
+expression: lib_after
+---
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+#[allow(unused_imports)]
+use instructions::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod dispatch_app {
+    use super::*;
+
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=cli ===
+pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+    instructions::deposit::handler(ctx, amount)
+}
+    // === sunscreen:auto-generated:end segment=dispatch ===
+}

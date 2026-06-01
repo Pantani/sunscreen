@@ -22,15 +22,16 @@ Antes de qualquer ação, determine o modo de execução:
 Identifique o escopo dentro de `ROADMAP.md`. Estado atual do projeto:
 
 - Phase 0 e Phase 1 estão concluídas.
-- Phase 2 está concluída via PR #7; o único carry-over ativo é o reparo pequeno de empty-account instruction.
-- Phase 3 (Runtime Orchestration: `chain build`, `chain serve`, watcher, runtime e TUI) está em fatias iniciais.
+- Phase 2 está concluída e sem carry-overs conhecidos.
+- Phase 3 está concluída neste PR: `chain build`, `chain serve`, watcher, runtime supervisionado, fallback Surfpool→test-validator, frontend notify, serve model e teardown Ctrl-C.
+- Phase 4 (Codegen & Frontend Hooks) é a próxima fase.
 
 Escopo padrão para pedidos como "seguir próximos passos", "próxima fase" ou "pendências":
 
-1. Confirmar se há carry-over de Phase 2 que bloqueia a fatia.
-2. Implementar uma fatia testável de Phase 3 com TDD.
+1. Confirmar que Phase 2/3 continuam fechadas no `ROADMAP.md` e no `git status`.
+2. Implementar uma fatia testável de Phase 4 com TDD.
 3. Atualizar `ROADMAP.md` e `CLAUDE.md` quando o estado mudar.
-4. Manter `chain serve --headless` como caminho primário antes da TUI.
+4. Manter os comandos `generate *` JSON-friendly e compatíveis com o pipeline Codama existente.
 
 ## Phase 2: Execução
 
@@ -47,7 +48,7 @@ Use subagentes somente quando o ambiente disponibilizar essa capacidade e o pedi
 - `docs-writer`: ADRs, `ROADMAP.md`, docs de referência.
 - `qa-integrator`: verificação cruzada, fmt/clippy/build/test e comandos do binário.
 
-### R5 checklist
+### Phase 2 closure checklist
 
 - `tests/rustfmt_roundtrip.rs`: roda `rustfmt --edition=2021` sobre fixture com todos os segmentos documentados e reescaneia os markers.
 - Non-appendable recovery: `chain doctor --fix-markers` deve reparar sites seguros sem escrever Rust inválido; `dispatch` deve ser reconstruído dentro de `#[program]` quando o segmento inteiro tiver sumido e houver instruções suficientes, e `error_variants` só deve inserir markers quando o enum estiver vazio ou a região marcada existente for inequívoca.
@@ -55,19 +56,27 @@ Use subagentes somente quando o ambiente disponibilizar essa capacidade e o pedi
 - Golden tests: `tests/golden/render_{account,event,error,instruction_matrix,program_matrix}.rs` mantêm a cobertura de scaffolders.
 - Integrações reais: `tests/integration_anchor.rs` contém 5 cenários `anchor build`/IDL/codama, `#[ignore]` e skip quando a toolchain está ausente.
 
-### Phase 3 opening checklist
+### Phase 3 closure checklist
 
-Estado atual de Phase 3:
+Phase 3 deve permanecer fechada quando estes itens estiverem verdes:
 
-1. `chain build --headless` JSON-first já existe, reusa workspace discovery e chama `anchor build`.
+1. `chain build --headless` JSON-first reusa workspace discovery e chama `anchor build`.
 2. `src/runtime/subprocess.rs` já existe com trait mínimo e runner de subprocesso testável.
-3. `src/runtime/pipeline.rs` já existe com build → codama e runner injetável; `chain build` usa esse pipeline e aceita `--no-codama`.
-4. `src/runtime/watcher.rs` já existe com debounce determinístico testável para mudanças Rust/config relevantes, dedupe/sort de caminhos e filtro para saídas geradas/unrelated.
+3. `src/runtime/pipeline.rs` faz build → codama → frontend notify e aceita `--no-codama`/`--no-frontend` nos comandos relevantes.
+4. `src/runtime/watcher.rs` tem debounce determinístico testável para mudanças Rust/config relevantes, dedupe/sort de caminhos e filtro para saídas geradas/unrelated.
 5. `WatchBuildLoop` já conecta `notify::Event` → debounce → `BuildPipeline`, relativizando paths absolutos pelo workspace antes de filtrar.
-6. `src/runtime/serve.rs` e `chain serve --headless` já existem: o comando instancia `notify`, recebe eventos, faz tick do debounce e emite JSON para builds acionados pelo watcher.
-7. `src/runtime/surfpool.rs`, `testvalidator.rs`, `validator.rs` e `supervisor.rs` já existem: `Runtime` trait, endpoints, comandos de Surfpool/test-validator e supervisor mínimo start/stop com spawner injetável.
-8. Próxima fatia recomendada: integrar o `RuntimeSupervisor` ao `chain serve --headless`, com seleção/fallback de runtime e eventos JSON de start/stop.
-9. Depois frontend notify e TUI ratatui; teardown Ctrl-C deve fechar o ciclo da Phase 3.
+6. `src/runtime/serve.rs` e `chain serve --headless` instanciam `notify`, recebem eventos, fazem tick do debounce e emitem JSON para builds acionados pelo watcher.
+7. `src/runtime/surfpool.rs`, `testvalidator.rs`, `validator.rs` e `supervisor.rs` cobrem `Runtime` trait, endpoints, comandos de Surfpool/test-validator e supervisor start/stop com spawner injetável.
+8. `chain serve` integra runtime supervisor com seleção/fallback e eventos JSON de start/stop.
+9. `src/tui/serve_model.rs` cobre os painéis validator/build/faucet/frontend/logs e guarda 80x24.
+10. Ctrl-C para o runtime como process group Unix, com fallback SIGKILL depois de SIGTERM.
+
+### Phase 4 opening checklist
+
+1. Começar por `src/codegen/codama.rs` e `codama_config.rs`, reutilizando `CommandSpec`/`ProcessRunner`.
+2. Adicionar `sunscreen generate clients` e `generate idl` antes de hooks de frontend.
+3. Manter Codama como subprocesso fino (`pnpm exec codama run`) até a API exigir wrapper mais rico.
+4. Só depois adicionar `generate frontend-hooks`, com compile test em projeto Next.js/Vite gerado.
 
 ## Phase 3: Relatório
 

@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-01 (Phase 2 closed via PR #7)
+**Last updated:** 2026-06-01 (Phase 3 closed in PR)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -43,8 +43,8 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **0** | Foundations | ✅ DONE | 2 wk | 2 wk | CLI skeleton, config v1, toolchain detect, doctor, CI, golden infra | ADR-0001 §10.2 |
 | **1** | Workspace Bootstrap | ✅ DONE | 2 wk | 4 wk | `chain new` produces compilable Anchor workspace + frontend variants | ADR-0001 §10.3 |
 | **2** | Incremental Scaffolding | ✅ DONE | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `chain doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
-| **3** | Runtime Orchestration | 🚧 initial build slice | 3 wk | 11 wk | `chain serve` (Surfpool + watcher + codama + ratatui TUI), `chain build` | ADR-0001 §10.5 |
-| **4** | Codegen & Frontend Hooks | 📋 | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, codama wrapper | ADR-0001 §10.6 |
+| **3** | Runtime Orchestration | ✅ DONE | 3 wk | 11 wk | `chain serve` (Surfpool/test-validator + watcher + codama + frontend notify + serve model), `chain build` | ADR-0001 §10.5 |
+| **4** | Codegen & Frontend Hooks | ⏳ NEXT | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, codama wrapper | ADR-0001 §10.6 |
 | **5** | Recipes | 📋 | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
 | **5.5** | Onboarding Layer | 📋 NEW | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
 | **6** | Plugin System | 🔮 post-v1.0 | 4 wk | — | gRPC + stdio plugins, 2 reference plugins | ADR-0001 §10.8 |
@@ -106,7 +106,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 
 ### Phase 2 — Incremental Scaffolding ✅
 
-**Status.** ✅ DONE. R1–R5 shipped. 202 tests passing, 6 ignored (21 binaries), fmt + clippy clean. R4 shipped via PR #5 (`67b0338`); R5 polish shipped via PR #7. Strategy ratified in [`docs/adr/ADR-0004-incremental-scaffolding.md`](docs/adr/ADR-0004-incremental-scaffolding.md). Follow-up hardening for non-appendable `dispatch` and `error_variants` repair is tracked with the Phase 3 work now underway.
+**Status.** ✅ DONE. R1–R5 plus follow-up hardening shipped. Phase 2 has no remaining known carry-overs: non-appendable `dispatch` / `error_variants` repair is hardened, and the stale no-accounts instruction compile test is active again. Strategy ratified in [`docs/adr/ADR-0004-incremental-scaffolding.md`](docs/adr/ADR-0004-incremental-scaffolding.md).
 
 **Goal.** Idempotent, marker-driven scaffolders that surgically edit Rust source without disturbing user code.
 
@@ -162,14 +162,13 @@ Shipped via PR #7.
 - [x] `doctor --json` emits a flat `[ToolReport, …]` array where each report carries an `available` boolean (covers anchor, codama, solana, surfpool, rustfmt, …) + public `toolchain::detect_*` helpers for in-process callers
 - [x] Phase 2 DoD per ADR-0001 §10.4 satisfied end-to-end (202 passing, fmt + clippy clean)
 
-**Carry-overs into Phase 3 backlog:**
-- `scaffold instruction` without `--accounts` emits an empty `pub struct X<'info> {}` that fails E0392; one compile test `#[ignore]`'d with reason string as the signal — small template fix.
+**Phase 2 follow-up status.** ✅ Closed. The stale ignored compile test for `scaffold instruction` without `--accounts` is active again; the current template emits an empty `Accounts` struct without an unused lifetime.
 
 ---
 
-### Phase 3 — Runtime Orchestration 🚧
+### Phase 3 — Runtime Orchestration ✅
 
-**Status.** 🚧 Initial build slice started. `chain build --headless` now reuses workspace discovery and runs `anchor build` + optional Codama regeneration through a testable runtime pipeline with parseable line-delimited JSON events. The watcher debounce core, notify-event-to-pipeline bridge, `chain serve --headless` watcher loop, and local-runtime trait/adapters are also in place.
+**Status.** ✅ DONE in this PR. `chain build --headless` reuses workspace discovery and runs `anchor build` + optional Codama regeneration through a testable runtime pipeline with parseable line-delimited JSON events. `chain serve` now launches a managed Surfpool or `solana-test-validator` runtime, falls back automatically from implicit Surfpool to test-validator when Surfpool is missing, starts the watcher/build/Codama/frontend notification loop, and tears down the runtime process group on Ctrl-C.
 
 **Goal.** `sunscreen chain serve` orchestrates Surfpool, file-watcher, codama regen, and a ratatui TUI in one supervised process tree.
 
@@ -182,11 +181,11 @@ Shipped via PR #7.
 - [x] `src/runtime/pipeline.rs` initial build pipeline — runs `anchor build`, then `pnpm exec codama run` unless `--no-codama` is set, stops before Codama when Anchor fails, and keeps the runner injectable for tests
 - [x] Watch-triggered pipeline core — debounced file change batch → `BuildPipeline` with injectable subprocess runner
 - [x] Long-running watcher source — `chain serve --headless` instantiates `notify`, receives filesystem events, ticks debounce deadlines, and emits parseable line-delimited JSON for watcher-triggered builds
-- [ ] Frontend notify after Codama regeneration
-- [ ] `src/tui/serve_model.rs` — ratatui panels (validator / build / faucet / frontend / logs), 80×24 minimum
-- [ ] Integrate runtime supervisor into `chain serve --headless` — runtime selection/fallback, start event, stop event, and build watcher loop in one supervised path
-- [ ] `chain serve` full runtime — Surfpool/test-validator supervisor + watcher + build/codama + frontend notify; `--headless` remains parseable line-delimited JSON
-- [ ] Clean Ctrl-C teardown (process tree, no orphans)
+- [x] Frontend notify after Codama regeneration — successful Codama runs touch `app/.sunscreen/reload` when a scaffolded frontend exists and emit a `frontend_notified` JSON event
+- [x] `src/tui/serve_model.rs` — serve model with validator / build / faucet / frontend / logs panels and 80×24 minimum guard
+- [x] Integrate runtime supervisor into `chain serve --headless` — runtime selection/fallback, start event, stop event, and build watcher loop in one supervised path
+- [x] `chain serve` full runtime — Surfpool/test-validator supervisor + watcher + build/codama + frontend notify; `--headless` remains parseable line-delimited JSON
+- [x] Clean Ctrl-C teardown — runtime subprocesses are spawned in a Unix process group and stopped as a group, with SIGKILL fallback after SIGTERM
 
 **DoD.** ADR-0001 §10.5.
 
@@ -280,13 +279,13 @@ Explicitly deferred per ADR-0001 §10.9. Requires its own ADR before scoping; no
 Phase 2 R4 (program + doctor --fix-markers) ✅
    └─► Phase 2 R5 (polish, test counts)
          └─► Phase 3 (chain serve / build)
-               └─► Phase 4 (codegen, frontend hooks)
+               └─► Phase 4 (codegen, frontend hooks) ⏳ NEXT
                      └─► Phase 5 (recipes: crud, spl-token, metaplex-nft)
                            └─► Phase 5.5 (onboarding: quickstart wraps recipes)
                                  └─► Phase 8 (cargo-dist + docs site) ─► v1.0
 ```
 
-- **R5 is the immediate unblock.** Marker hardening, compile coverage, and golden coverage are landed. The initial Phase 3 `chain build` runner exists to support the remaining real integration target, but full Phase 3 should wait until that target is either met or intentionally rescoped.
+- **Phase 4 is the immediate unblock.** Phase 2 and Phase 3 are closed; the next critical-path surface is Codama wrapping plus generated IDL/client/frontend-hook commands.
 - **Phase 5.5 strictly follows Phase 5.** `quickstart nft` is a thin shell over `scaffold metaplex-nft`; without recipes there is nothing to wrap.
 - **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
 - **Docs (Phase 8) can start drafting during Phase 5.5** — content for `learn/*.md` overlaps with the user-facing tutorial pages.

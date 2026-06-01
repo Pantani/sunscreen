@@ -1,17 +1,21 @@
 //! Build pipeline orchestration for Phase 3.
 
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::render_event_path;
 use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
-/// One subprocess-backed step in the build pipeline.
+/// One step in the build pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStep {
     /// `anchor build`
     AnchorBuild,
     /// `pnpm exec codama run`
     CodamaRun,
+    /// Write the frontend reload sentinel after generated clients change.
+    FrontendNotify,
 }
 
 impl PipelineStep {
@@ -21,31 +25,43 @@ impl PipelineStep {
         match self {
             Self::AnchorBuild => "anchor_build",
             Self::CodamaRun => "codama_run",
+            Self::FrontendNotify => "frontend_notify",
         }
     }
 
-    fn command(self, cwd: &Path) -> CommandSpec {
+    fn command(self, cwd: &Path) -> Option<CommandSpec> {
         match self {
-            Self::AnchorBuild => CommandSpec::new("anchor").arg("build").cwd(cwd),
-            Self::CodamaRun => CommandSpec::new("pnpm")
-                .arg("exec")
-                .arg("codama")
-                .arg("run")
-                .cwd(cwd),
+            Self::AnchorBuild => Some(CommandSpec::new("anchor").arg("build").cwd(cwd)),
+            Self::CodamaRun => Some(
+                CommandSpec::new("pnpm")
+                    .arg("exec")
+                    .arg("codama")
+                    .arg("run")
+                    .cwd(cwd),
+            ),
+            Self::FrontendNotify => None,
         }
     }
 }
 
 /// Build pipeline options.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PipelineOptions {
     /// Run `pnpm exec codama run` after a successful `anchor build`.
     pub run_codama: bool,
+    /// Notify a scaffolded frontend after successful Codama regeneration.
+    pub notify_frontend: bool,
+    /// Frontend path relative to the workspace root. Defaults to `app`.
+    pub frontend_path: Option<PathBuf>,
 }
 
 impl Default for PipelineOptions {
     fn default() -> Self {
-        Self { run_codama: true }
+        Self {
+            run_codama: true,
+            notify_frontend: true,
+            frontend_path: None,
+        }
     }
 }
 
@@ -56,7 +72,7 @@ pub struct PipelineEvent {
     pub event: &'static str,
     /// Pipeline step that produced the event.
     pub step: PipelineStep,
-    /// Full command argv.
+    /// Full command argv for subprocess-backed events.
     pub command: Vec<String>,
     /// Working directory for the command.
     pub cwd: String,
@@ -70,6 +86,8 @@ pub struct PipelineEvent {
     pub stdout: Option<String>,
     /// Optional captured stderr for finished events.
     pub stderr: Option<String>,
+    /// Optional path affected by a non-subprocess pipeline event.
+    pub path: Option<String>,
 }
 
 impl PipelineEvent {
@@ -84,6 +102,7 @@ impl PipelineEvent {
             duration_ms: None,
             stdout: None,
             stderr: None,
+            path: None,
         }
     }
 
@@ -103,6 +122,22 @@ impl PipelineEvent {
             duration_ms: Some(output.duration_ms),
             stdout: Some(output.stdout.clone()),
             stderr: Some(output.stderr.clone()),
+            path: None,
+        }
+    }
+
+    fn frontend_notified(cwd: &Path, path: &Path) -> Self {
+        Self {
+            event: "frontend_notified",
+            step: PipelineStep::FrontendNotify,
+            command: Vec::new(),
+            cwd: render_event_path(cwd),
+            status: Some("ok".into()),
+            exit_code: Some(0),
+            duration_ms: Some(0),
+            stdout: None,
+            stderr: None,
+            path: Some(render_event_path(path)),
         }
     }
 
@@ -112,10 +147,12 @@ impl PipelineEvent {
         let mut payload = serde_json::json!({
             "event": self.event,
             "step": self.step.as_str(),
-            "command": self.command,
             "cwd": self.cwd,
         });
         if let serde_json::Value::Object(obj) = &mut payload {
+            if !self.command.is_empty() {
+                obj.insert("command".into(), serde_json::json!(self.command));
+            }
             if let Some(status) = &self.status {
                 obj.insert("status".into(), serde_json::json!(status));
             }
@@ -130,6 +167,9 @@ impl PipelineEvent {
             }
             if let Some(stderr) = &self.stderr {
                 obj.insert("stderr".into(), serde_json::json!(stderr));
+            }
+            if let Some(path) = &self.path {
+                obj.insert("path".into(), serde_json::json!(path));
             }
         }
         payload
@@ -202,7 +242,9 @@ impl BuildPipeline {
         }
 
         for step in steps {
-            let command = step.command(&self.workspace_root);
+            let command = step
+                .command(&self.workspace_root)
+                .expect("subprocess pipeline step must have a command");
             events.push(PipelineEvent::started(step, &command, &self.workspace_root));
             let output = runner
                 .run(command.clone())
@@ -221,9 +263,81 @@ impl BuildPipeline {
             }
         }
 
+        if options.run_codama && options.notify_frontend {
+            match notify_frontend(&self.workspace_root, options.frontend_path.as_deref()) {
+                Ok(Some(path)) => {
+                    events.push(PipelineEvent::frontend_notified(
+                        &self.workspace_root,
+                        &path,
+                    ));
+                }
+                Ok(None) => {}
+                Err(source) => {
+                    return Err(PipelineError {
+                        step: PipelineStep::FrontendNotify,
+                        source: ProcessError::from_io("frontend-notify", source),
+                    });
+                }
+            }
+        }
+
         Ok(PipelineReport {
             events,
             exit_code: 0,
         })
     }
+}
+
+fn frontend_reload_path(
+    workspace_root: &Path,
+    frontend_path: Option<&Path>,
+) -> Result<PathBuf, io::Error> {
+    let frontend_root = frontend_path.unwrap_or_else(|| Path::new("app"));
+    if !is_relative_frontend_subpath(frontend_root) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "workspace.frontend_path must be a non-empty relative subpath without `..` components",
+        ));
+    }
+    Ok(workspace_root
+        .join(frontend_root)
+        .join(".sunscreen")
+        .join("reload"))
+}
+
+fn is_relative_frontend_subpath(path: &Path) -> bool {
+    let mut has_component = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_component = true,
+            Component::CurDir
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => return false,
+        }
+    }
+    has_component
+}
+
+fn notify_frontend(
+    workspace_root: &Path,
+    frontend_path: Option<&Path>,
+) -> Result<Option<PathBuf>, io::Error> {
+    let path = frontend_reload_path(workspace_root, frontend_path)?;
+    let Some(frontend_dir) = path.parent().and_then(Path::parent) else {
+        return Ok(None);
+    };
+    if !frontend_dir.is_dir() {
+        return Ok(None);
+    }
+    let Some(parent) = path.parent() else {
+        return Ok(None);
+    };
+    std::fs::create_dir_all(parent)?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "0".into());
+    std::fs::write(&path, format!("{timestamp}\n"))?;
+    Ok(Some(path))
 }

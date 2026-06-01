@@ -1,5 +1,6 @@
 ---
 source: tests/golden/render_workspace.rs
+assertion_line: 78
 expression: corpus(tmp.path())
 ---
 === .gitignore ===

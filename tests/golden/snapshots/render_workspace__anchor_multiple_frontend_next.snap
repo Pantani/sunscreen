@@ -225,15 +225,8 @@ pub mod my_dapp {
     use super::*;
 
     // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=instruction ===
-    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
-        msg!("MyDapp initialized");
-        Ok(())
-    }
     // === sunscreen:auto-generated:end segment=dispatch ===
 }
-
-#[derive(Accounts)]
-pub struct Initialize {}
 === sunscreen.yml ===
 version: 1
 project:
@@ -267,9 +260,10 @@ describe("my-dapp", () => {
 
   const program = anchor.workspace.MyDapp as Program<MyDapp>;
 
-  it("Is initialized!", async () => {
-    const tx = await program.methods.initialize().rpc();
-    console.log("Your transaction signature", tx);
+  it("loads the program", () => {
+    // Scaffold an instruction with `sunscreen scaffold instruction <name> --program my_dapp`,
+    // then replace this with a real `program.methods.<name>(...).rpc()` call.
+    if (!program) throw new Error("program not loaded");
   });
 });
 === tsconfig.json ===

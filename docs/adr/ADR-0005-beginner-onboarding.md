@@ -187,14 +187,14 @@ The JSON serialization extends the canonical schema documented in ADR-0002 § 4.
 ### 5.2 Negative
 
 - **+2 sprints** of work (Block E of the roadmap; see § 6).
-- **+5–8 MB on the binary** for the examples + learn embed. Mitigation: `--features minimal` for CI/production builds without onboarding.
+- **+5–8 MB on the binary** for the examples + learn embed. Mitigation: introduce a Cargo feature-gating strategy (no `[features]` section exists in `Cargo.toml` today) — Phase 5.5 will add an `onboarding` feature enabled by default and a `--no-default-features` build path for CI/production where the embedded assets are not wanted.
 - Increases test surface: each wizard needs an interactive test (via `expectrl` or similar) + a `--non-interactive` test.
 - Risk of divergence between wizard and flags. Mitigation: single validator; property-based test that randomizes wizard inputs and compares with the equivalent `chain new`.
 - More top-level commands in `--help`. Mitigation: group via `clap` `help_heading`.
 
 ### 5.3 Neutral
 
-- Requires 3 new deps: `dialoguer ^0.11`, `termimad ^0.31`, `indicatif ^0.17` — all already planned for the Phase 6 TUI.
+- Requires 3 new deps: `dialoguer ^0.11`, `termimad ^0.31`, `indicatif ^0.17` — all already planned for the Phase 3 TUI (Runtime Orchestration, `chain serve`).
 - Strings centralized in `src/strings/` enable future i18n with no additional refactor.
 
 ### 5.4 Risk mitigations

@@ -114,14 +114,14 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen doctor --fix-markers` (R4) reconstructs from the IDL + heuristic |
+| `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen chain doctor --fix-markers` (R4) reconstructs from the IDL + heuristic |
 | `error: duplicate begin segment=instructions in src/instructions/mod.rs` | unresolved merge conflict | resolve the conflict; keep only one pair |
 | `error: marker drift: version=1 expected, found version=2` | CLI downgrade | upgrade `sunscreen` to a version that understands `version=2` (no reverse migrator exists yet — see § 7) |
 | `error: marker inside expression` | user moved the marker inside a `match` | move it back to item scope |
 
 > The scanner currently tolerates extra attributes on `user-region` markers silently (including a stray `version=`); enforcement is deferred until a real version bump exists for user regions. Treat extra attributes as a spec violation even though no warning is emitted today.
 
-`sunscreen doctor` (R4 of this phase) will validate markers across the entire workspace and offer `--fix-markers` for recoverable cases.
+`sunscreen chain doctor` (planned for Phase 2 R4) will validate markers across the entire workspace and offer `--fix-markers` for recoverable cases. Note: the existing top-level `sunscreen doctor` is the **toolchain** diagnostic (verifies `anchor`/`solana`/`cargo`/etc.); workspace-level marker auditing belongs under `chain doctor` per ADR-0001 §6.1 and does not exist yet.
 
 ---
 
@@ -225,4 +225,4 @@ Scaffolder implementations **must**:
 2. Validate pairing before applying any patch (fail-fast).
 3. Treat `user-region` regions as read-only after creation.
 4. Version every `auto-generated` segment with a numeric `version=`.
-5. Fail with an actionable message pointing to `sunscreen doctor --fix-markers` when corruption is encountered.
+5. Fail with an actionable message pointing to `sunscreen chain doctor --fix-markers` when corruption is encountered.

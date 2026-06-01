@@ -144,7 +144,7 @@ This decision is consistent with Sub-ADR-001 (ADR-0001 § 7.1).
 
 - Mutation of user-authored code is out of scope (except via `ast-grep`).
 - Markers visually "pollute" the files. Mitigation: the visual convention `=== … ===` makes them readable and visually segregable.
-- The user may accidentally delete a marker. Mitigation: `sunscreen doctor --fix-markers` (R4).
+- The user may accidentally delete a marker. Mitigation: `sunscreen chain doctor --fix-markers` (R4).
 - User rename/move of files can decouple markers from the scaffolder's expectation. See § 7 Open Questions.
 
 ### 5.3 Mitigations
@@ -164,7 +164,7 @@ Order of scaffolder implementation during Phase 2:
 | **R1** | `instruction` | `instructions` (mod.rs), `dispatch` (lib.rs), `file` + `handler` (instruction.rs) | bootstraps the mechanism; covers all marker types |
 | **R2** | dispatch carry-over | `dispatch` (lib.rs), `instructions` (mod.rs) | freshly-created workspace already ships markers so the first `scaffold instruction` patches cleanly |
 | **R3** | `account` + `event` + `error` | `accounts`/`state` (state/<acc>.rs), `events` (events.rs), `error_variants` (errors.rs) | three scaffolders delivered together with the same architecture as `instruction` |
-| **R4** | `program` + `doctor --fix-markers` | new sub-program + workspace-wide marker validation | composes R1–R3 over a new program inside an existing workspace; adds the recovery command |
+| **R4** | `program` + `chain doctor --fix-markers` | new sub-program + workspace-wide marker validation | composes R1–R3 over a new program inside an existing workspace; adds the recovery command |
 | **R5** | polish | golden + compile + integration coverage | reach the ≥75 golden / ≥25 compile / ≥5 integration targets from ADR-0001 §10.4 |
 
 Each round delivers: scaffolder + golden tests + entry in the `docs/reference/markers.md` table if it introduces a new segment.
@@ -210,4 +210,4 @@ src/
 - [ ] Scaffolders R1–R5 implemented with golden tests.
 - [ ] Specific golden test "markers survive `rustfmt --edition=2021`" passes in CI (planned for Phase 2 R4; not yet implemented).
 - [ ] Re-running any scaffold with the same args produces an empty diff.
-- [ ] `sunscreen doctor --fix-markers` recovers from a corrupted marker in at least the scenarios listed in `docs/reference/markers.md` § 6.
+- [ ] `sunscreen chain doctor --fix-markers` recovers from a corrupted marker in at least the scenarios listed in `docs/reference/markers.md` § 6.

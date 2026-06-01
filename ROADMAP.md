@@ -42,7 +42,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 |---|---|---|---:|---:|---|---|
 | **0** | Foundations | ✅ DONE | 2 wk | 2 wk | CLI skeleton, config v1, toolchain detect, doctor, CI, golden infra | ADR-0001 §10.2 |
 | **1** | Workspace Bootstrap | ✅ DONE | 2 wk | 4 wk | `chain new` produces compilable Anchor workspace + frontend variants | ADR-0001 §10.3 |
-| **2** | Incremental Scaffolding | 🚧 80% (R4 ⏳) | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
+| **2** | Incremental Scaffolding | 🚧 80% (R4 ⏳) | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `chain doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
 | **3** | Runtime Orchestration | 📋 | 3 wk | 11 wk | `chain serve` (Surfpool + watcher + codama + ratatui TUI), `chain build` | ADR-0001 §10.5 |
 | **4** | Codegen & Frontend Hooks | 📋 | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, codama wrapper | ADR-0001 §10.6 |
 | **5** | Recipes | 📋 | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
@@ -139,13 +139,13 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 - [x] `--dry-run` and `--json` honoured on all three
 - [x] 115/115 tests; fmt + clippy clean
 
-#### R4 — `program` scaffolder + `doctor --fix-markers` ⏳
+#### R4 — `program` scaffolder + `chain doctor --fix-markers` ⏳
 
 **This is the next concrete unit of work.**
 
 - [ ] `src/cli/scaffold.rs` — `scaffold program <name>` (adds a new program crate to `programs/`, registers in `Anchor.toml` and root `Cargo.toml`)
 - [ ] `templates/scaffold/program/` template tree
-- [ ] `sunscreen doctor --fix-markers` — detect corrupted / missing marker comments and offer repair
+- [ ] `sunscreen chain doctor --fix-markers` — detect corrupted / missing marker comments and offer repair
 - [ ] Auto-injection of `pub mod events;` / `pub mod errors;` / `pub mod state;` in `lib.rs` on first relevant scaffold (closes a R3 gap where users had to add the line manually)
 - [ ] `tests/scaffold_program.rs` + `tests/doctor_fix_markers.rs`
 - [ ] `tests/rustfmt_roundtrip.rs` — golden test that runs `rustfmt --edition=2021` over fixture files containing every documented marker segment and re-scans the result; matches the invariant promised in `docs/reference/markers.md` §5 and ADR-0004 §4

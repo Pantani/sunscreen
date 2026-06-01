@@ -512,16 +512,17 @@ fn expected_sites(program: &crate::workspace::ProgramView, ws_root: &Path) -> Ve
 }
 
 fn append_marker_block(existing: &str, segment: &str) -> String {
+    let nl = crate::cli::scaffold::detect_line_ending(existing);
     let mut out = existing.to_string();
     if !out.ends_with('\n') {
-        out.push('\n');
+        out.push_str(nl);
     }
-    out.push('\n');
+    out.push_str(nl);
     out.push_str(&format!(
-        "// === sunscreen:auto-generated:begin segment={segment} version=1 generator=doctor ===\n"
+        "// === sunscreen:auto-generated:begin segment={segment} version=1 generator=doctor ==={nl}"
     ));
     out.push_str(&format!(
-        "// === sunscreen:auto-generated:end segment={segment} ===\n"
+        "// === sunscreen:auto-generated:end segment={segment} ==={nl}"
     ));
     out
 }

@@ -1943,6 +1943,17 @@ fn validate_program_id(id: &str) -> Result<(), SunscreenError> {
     Ok(())
 }
 
+/// Detect the dominant line ending in `source`. Matches the convention used
+/// by `rustpatch::marker` so generated patches round-trip CRLF on Windows
+/// checkouts instead of silently normalising to LF.
+pub(crate) fn detect_line_ending(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
 /// Inject a `<program> = "<id>"` entry under `[programs.localnet]` and
 /// `[programs.devnet]` in `Anchor.toml`. Idempotent.
 fn patch_anchor_toml(
@@ -1952,6 +1963,7 @@ fn patch_anchor_toml(
 ) -> Result<String, SunscreenError> {
     let existing = std::fs::read_to_string(path)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let nl = detect_line_ending(&existing);
     let mut out = String::with_capacity(existing.len() + 128);
     let mut in_localnet = false;
     let mut in_devnet = false;
@@ -1965,7 +1977,7 @@ fn patch_anchor_toml(
 
     for (i, line) in lines.iter().enumerate() {
         out.push_str(line);
-        out.push('\n');
+        out.push_str(nl);
         let trimmed = line.trim();
         // When we hit a new section header, close out whichever we were in.
         if trimmed.starts_with('[') {
@@ -1978,14 +1990,14 @@ fn patch_anchor_toml(
         if in_localnet && !localnet_done && trimmed == needle_localnet {
             if !section_contains_key(&lines, i + 1, program_snake) {
                 out.push_str(&entry);
-                out.push('\n');
+                out.push_str(nl);
             }
             localnet_done = true;
         }
         if in_devnet && !devnet_done && trimmed == needle_devnet {
             if !section_contains_key(&lines, i + 1, program_snake) {
                 out.push_str(&entry);
-                out.push('\n');
+                out.push_str(nl);
             }
             devnet_done = true;
         }
@@ -1993,10 +2005,10 @@ fn patch_anchor_toml(
 
     // If sections were missing entirely, append them.
     if !localnet_done {
-        out.push_str(&format!("\n{needle_localnet}\n{entry}\n"));
+        out.push_str(&format!("{nl}{needle_localnet}{nl}{entry}{nl}"));
     }
     if !devnet_done {
-        out.push_str(&format!("\n{needle_devnet}\n{entry}\n"));
+        out.push_str(&format!("{nl}{needle_devnet}{nl}{entry}{nl}"));
     }
     Ok(out)
 }
@@ -2025,6 +2037,7 @@ fn patch_sunscreen_yml(
 ) -> Result<String, SunscreenError> {
     let existing = std::fs::read_to_string(path)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let nl = detect_line_ending(&existing);
     let lines: Vec<&str> = existing.lines().collect();
     // Find the column-0 `programs:` key. `trim_start` would also match an
     // indented `programs:` inside a nested map (e.g. `cluster.programs:`)
@@ -2033,7 +2046,7 @@ fn patch_sunscreen_yml(
     let programs_idx = lines
         .iter()
         .position(|l| !l.starts_with(char::is_whitespace) && l.trim_end() == "programs:");
-    let entry = format!("  - name: {program_kebab}\n    path: programs/{program_snake}\n");
+    let entry = format!("  - name: {program_kebab}{nl}    path: programs/{program_snake}{nl}");
     if let Some(idx) = programs_idx {
         // Find the end of the programs list (next top-level key, i.e. line
         // not starting with whitespace and not empty).
@@ -2051,20 +2064,21 @@ fn patch_sunscreen_yml(
         let mut out = String::with_capacity(existing.len() + entry.len());
         for line in &lines[..end] {
             out.push_str(line);
-            out.push('\n');
+            out.push_str(nl);
         }
         out.push_str(&entry);
         for line in &lines[end..] {
             out.push_str(line);
-            out.push('\n');
+            out.push_str(nl);
         }
         Ok(out)
     } else {
         let mut out = existing.clone();
         if !out.ends_with('\n') {
-            out.push('\n');
+            out.push_str(nl);
         }
-        out.push_str("programs:\n");
+        out.push_str("programs:");
+        out.push_str(nl);
         out.push_str(&entry);
         Ok(out)
     }

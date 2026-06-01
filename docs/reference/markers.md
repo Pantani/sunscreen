@@ -116,7 +116,7 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 |---|---|---|
 | `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen doctor --fix-markers` (R4) reconstructs from the IDL + heuristic |
 | `error: duplicate begin segment=instructions in src/instructions/mod.rs` | unresolved merge conflict | resolve the conflict; keep only one pair |
-| `error: marker drift: version=1 expected, found version=2` | CLI downgrade | upgrade `sunscreen` or run the reverse migration |
+| `error: marker drift: version=1 expected, found version=2` | CLI downgrade | upgrade `sunscreen` to a version that understands `version=2` (no reverse migrator exists yet — see § 7) |
 | `error: marker inside expression` | user moved the marker inside a `match` | move it back to item scope |
 | `warning: user-region with version=` | spec violation | sunscreen ignores the `version` and proceeds |
 

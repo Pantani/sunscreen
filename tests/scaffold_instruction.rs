@@ -152,6 +152,77 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
 }
 
 #[test]
+fn scaffold_instruction_patches_lib_rs_dispatch_segment() {
+    // Phase 2 R2 carry-over: a freshly scaffolded workspace must ship with
+    // the `segment=dispatch` markers in lib.rs so the first
+    // `scaffold instruction` actually patches them (instead of warning
+    // "no dispatch segment marker — skipped").
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("dispatch_app");
+    run_chain_new(&ws, "dispatch_app");
+
+    let programs_dir = ws.join("programs");
+    let entries: Vec<_> = std::fs::read_dir(&programs_dir)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+
+    // Sanity: the seeded lib.rs already has the dispatch markers.
+    let lib_rs = programs_dir.join(&program_name).join("src/lib.rs");
+    let lib_before = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(
+        lib_before.contains("sunscreen:auto-generated:begin segment=dispatch"),
+        "seeded lib.rs should ship with dispatch markers, got:\n{lib_before}"
+    );
+    // Sanity: the seeded instructions/mod.rs exists with markers.
+    let mod_rs = programs_dir
+        .join(&program_name)
+        .join("src/instructions/mod.rs");
+    let mod_before = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        mod_before.contains("sunscreen:auto-generated:begin segment=instructions"),
+        "seeded instructions/mod.rs should ship with instructions markers"
+    );
+
+    let out = run_scaffold(
+        &ws,
+        &[
+            "scaffold",
+            "instruction",
+            "deposit",
+            "--program",
+            &program_name,
+            "--args",
+            "amount:u64",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "scaffold failed: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("\"lib_rs_patched\":true") || stdout.contains("\"lib_rs_patched\": true"),
+        "expected lib_rs_patched=true; stdout={stdout}"
+    );
+
+    // The patched dispatch segment should now contain the new wrapper.
+    let lib_after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(
+        lib_after.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()>"),
+        "lib.rs should have the deposit wrapper after patch:\n{lib_after}"
+    );
+    assert!(
+        lib_after.contains("instructions::deposit::handler(ctx, amount)"),
+        "lib.rs should forward to the handler:\n{lib_after}"
+    );
+}
+
+#[test]
 fn scaffold_instruction_outside_workspace_errors() {
     let tmp = tempfile::tempdir().unwrap();
     let out = Command::new(sunscreen_bin())

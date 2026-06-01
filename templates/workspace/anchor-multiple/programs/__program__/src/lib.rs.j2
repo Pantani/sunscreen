@@ -1,15 +1,20 @@
 use anchor_lang::prelude::*;
 
+pub mod instructions;
+use instructions::*;
+
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
 #[program]
 pub mod {{ program_name | snake_case }} {
     use super::*;
 
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=instruction ===
     pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
         msg!("{{ program_name | pascal_case }} initialized");
         Ok(())
     }
+    // === sunscreen:auto-generated:end segment=dispatch ===
 }
 
 #[derive(Accounts)]

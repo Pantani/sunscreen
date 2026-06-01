@@ -1017,8 +1017,6 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
         vec!["accounts"]
     };
 
-    let unchanged = account_status == FileStatus::Unchanged && mod_status == FileStatus::Unchanged;
-
     // Ensure `pub mod state;` in lib.rs (idempotent — no-op if already present).
     let lib_new = ensure_lib_mod_decl(&program.lib_rs, "state")?;
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
@@ -1026,6 +1024,11 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
     if lib_new.is_some() {
         plan_files.push(to_fwd(&lib_rel));
     }
+
+    // `unchanged` covers the user-facing files and the lib.rs mod-decl patch.
+    let unchanged = account_status == FileStatus::Unchanged
+        && mod_status == FileStatus::Unchanged
+        && lib_new.is_none();
 
     if args.dry_run {
         emit_noun_dry_run(json, "account", &args.name, &args.program, &plan_files);
@@ -1260,8 +1263,6 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
     } else {
         vec!["events"]
     };
-    let unchanged = file_status == FileStatus::Unchanged;
-
     // Ensure `pub mod events;` in lib.rs (idempotent — no-op if already present).
     // This guarantees downstream `use crate::events::*` (e.g. from
     // `scaffold instruction --emit X`) resolves without manual edits, even if
@@ -1272,6 +1273,8 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
     if lib_new.is_some() {
         plan_files.push(to_fwd(&lib_rel));
     }
+
+    let unchanged = file_status == FileStatus::Unchanged && lib_new.is_none();
 
     if args.dry_run {
         emit_noun_dry_run(json, "event", &args.name, &args.program, &plan_files);
@@ -1517,8 +1520,6 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
     } else {
         vec!["error_variants"]
     };
-    let unchanged = file_status == FileStatus::Unchanged;
-
     // Ensure `pub mod errors;` in lib.rs (idempotent — no-op if already present).
     let lib_new = ensure_lib_mod_decl(&program.lib_rs, "errors")?;
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
@@ -1526,6 +1527,8 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
     if lib_new.is_some() {
         plan_files.push(to_fwd(&lib_rel));
     }
+
+    let unchanged = file_status == FileStatus::Unchanged && lib_new.is_none();
 
     if args.dry_run {
         emit_noun_dry_run(json, "error", &args.name, &args.program, &plan_files);

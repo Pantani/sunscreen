@@ -530,7 +530,7 @@ fn parse_accounts(raw: &str) -> Result<Vec<AccountSpec>, SunscreenError> {
 // mod.rs / lib.rs editing
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModAction {
     Create,
     Replace,
@@ -585,6 +585,60 @@ fn build_mod_rs(
 #[derive(Debug, Clone, Copy)]
 struct LibPatchStatus {
     patched: bool,
+}
+
+/// Ensure `pub mod <name>;` appears at the top level of `lib.rs`. Returns
+/// `Some(new_contents)` when the file changed, `None` when the declaration
+/// already exists (or `lib.rs` is missing — caller's responsibility).
+///
+/// Insertion site: immediately after the existing `pub mod instructions;`
+/// line (the canonical anchor produced by `chain new`). If that line is
+/// absent, insert before the first non-comment, non-`use`, non-blank line.
+/// This is a marker-free heuristic: top-level `pub mod` declarations are
+/// stable, idempotent text and don't require auto-generated marker blocks.
+fn ensure_lib_mod_decl(
+    lib_rs: &std::path::Path,
+    mod_name: &str,
+) -> Result<Option<String>, SunscreenError> {
+    if !lib_rs.exists() {
+        return Ok(None);
+    }
+    let existing = std::fs::read_to_string(lib_rs)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", lib_rs.display())))?;
+    let needle = format!("pub mod {mod_name};");
+    // Match exact line (ignoring leading whitespace) to avoid false positives
+    // like `pub mod events_foo;`.
+    if existing.lines().any(|l| l.trim() == needle) {
+        return Ok(None);
+    }
+    let lines: Vec<&str> = existing.lines().collect();
+    // Anchor: line after `pub mod instructions;` (canonical chain-new layout).
+    let anchor = lines
+        .iter()
+        .position(|l| l.trim() == "pub mod instructions;")
+        .map(|i| i + 1)
+        // Fallback: first line that isn't `use ...`, comment, or blank.
+        .or_else(|| {
+            lines.iter().position(|l| {
+                let t = l.trim();
+                !t.is_empty() && !t.starts_with("//") && !t.starts_with("use ")
+            })
+        })
+        .unwrap_or(lines.len());
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == anchor {
+            out.push_str(&needle);
+            out.push('\n');
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    if anchor >= lines.len() {
+        out.push_str(&needle);
+        out.push('\n');
+    }
+    Ok(Some(out))
 }
 
 fn try_patch_lib_rs(
@@ -949,6 +1003,18 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
 
     let unchanged = account_status == FileStatus::Unchanged && mod_status == FileStatus::Unchanged;
 
+    // First-time creation of state/mod.rs → ensure `pub mod state;` in lib.rs.
+    let lib_new = if mod_action == ModAction::Create {
+        ensure_lib_mod_decl(&program.lib_rs, "state")?
+    } else {
+        None
+    };
+    let lib_rel = relative_to(&ws.root, &program.lib_rs);
+    let mut plan_files = plan_files;
+    if lib_new.is_some() {
+        plan_files.push(to_fwd(&lib_rel));
+    }
+
     if args.dry_run {
         emit_noun_dry_run(json, "account", &args.name, &args.program, &plan_files);
         return Ok(0);
@@ -979,6 +1045,10 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
                 .map_err(map_tx_err)?;
         }
     }
+    if let Some(ref contents) = lib_new {
+        tx.stage_replace(&program.lib_rs, contents.as_bytes())
+            .map_err(map_tx_err)?;
+    }
     let _written = tx.commit().map_err(map_tx_err)?;
 
     emit_noun_result(
@@ -992,6 +1062,14 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
         &[
             ("account_file", account_status.as_str()),
             ("mod_file", mod_status.as_str()),
+            (
+                "lib_rs",
+                if lib_new.is_some() {
+                    "patched"
+                } else {
+                    "unchanged"
+                },
+            ),
         ],
     );
     Ok(0)
@@ -1179,6 +1257,20 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
     };
     let unchanged = file_status == FileStatus::Unchanged;
 
+    // If we are creating events.rs for the first time, ensure `pub mod events;`
+    // exists in lib.rs so downstream `use crate::events::*` (e.g. from
+    // `scaffold instruction --emit X`) resolves without manual edits.
+    let lib_new = if action == ModAction::Create {
+        ensure_lib_mod_decl(&program.lib_rs, "events")?
+    } else {
+        None
+    };
+    let lib_rel = relative_to(&ws.root, &program.lib_rs);
+    let mut plan_files = plan_files;
+    if lib_new.is_some() {
+        plan_files.push(to_fwd(&lib_rel));
+    }
+
     if args.dry_run {
         emit_noun_dry_run(json, "event", &args.name, &args.program, &plan_files);
         return Ok(0);
@@ -1196,6 +1288,10 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
                     .map_err(map_tx_err)?;
             }
         }
+        if let Some(ref contents) = lib_new {
+            tx.stage_replace(&program.lib_rs, contents.as_bytes())
+                .map_err(map_tx_err)?;
+        }
         let _ = tx.commit().map_err(map_tx_err)?;
     }
 
@@ -1207,7 +1303,17 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
         &plan_files,
         &segments_patched,
         unchanged,
-        &[("events_file", file_status.as_str())],
+        &[
+            ("events_file", file_status.as_str()),
+            (
+                "lib_rs",
+                if lib_new.is_some() {
+                    "patched"
+                } else {
+                    "unchanged"
+                },
+            ),
+        ],
     );
     Ok(0)
 }
@@ -1409,6 +1515,18 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
     };
     let unchanged = file_status == FileStatus::Unchanged;
 
+    // First-time creation of errors.rs → ensure `pub mod errors;` in lib.rs.
+    let lib_new = if action == ModAction::Create {
+        ensure_lib_mod_decl(&program.lib_rs, "errors")?
+    } else {
+        None
+    };
+    let lib_rel = relative_to(&ws.root, &program.lib_rs);
+    let mut plan_files = plan_files;
+    if lib_new.is_some() {
+        plan_files.push(to_fwd(&lib_rel));
+    }
+
     if args.dry_run {
         emit_noun_dry_run(json, "error", &args.name, &args.program, &plan_files);
         return Ok(0);
@@ -1426,6 +1544,10 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
                     .map_err(map_tx_err)?;
             }
         }
+        if let Some(ref contents) = lib_new {
+            tx.stage_replace(&program.lib_rs, contents.as_bytes())
+                .map_err(map_tx_err)?;
+        }
         let _ = tx.commit().map_err(map_tx_err)?;
     }
 
@@ -1437,7 +1559,17 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
         &plan_files,
         &segments_patched,
         unchanged,
-        &[("errors_file", file_status.as_str())],
+        &[
+            ("errors_file", file_status.as_str()),
+            (
+                "lib_rs",
+                if lib_new.is_some() {
+                    "patched"
+                } else {
+                    "unchanged"
+                },
+            ),
+        ],
     );
     Ok(0)
 }

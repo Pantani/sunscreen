@@ -79,6 +79,16 @@ fn scaffold_event_creates_events_rs_and_appends() {
     assert!(contents.contains("pub amount: u64"));
     assert!(contents.contains("segment=events"));
 
+    // First-time creation of events.rs must also patch lib.rs to declare
+    // `pub mod events;` — otherwise `use crate::events::*` (e.g. from
+    // `scaffold instruction --emit X`) would fail to resolve.
+    let lib_rs = ws.join("programs").join(&program_name).join("src/lib.rs");
+    let lib_contents = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(
+        lib_contents.lines().any(|l| l.trim() == "pub mod events;"),
+        "expected `pub mod events;` in lib.rs, got:\n{lib_contents}"
+    );
+
     // 2nd event appends.
     let out2 = run_scaffold(
         &ws,

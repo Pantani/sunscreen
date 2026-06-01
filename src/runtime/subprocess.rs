@@ -97,6 +97,13 @@ impl CommandOutput {
 pub struct ProcessError {
     program: OsString,
     source: io::Error,
+    kind: ProcessErrorKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessErrorKind {
+    Subprocess,
+    Io,
 }
 
 impl ProcessError {
@@ -106,6 +113,7 @@ impl ProcessError {
         Self {
             program: program.into(),
             source,
+            kind: ProcessErrorKind::Io,
         }
     }
 
@@ -125,18 +133,27 @@ impl ProcessError {
         Self {
             program: program.to_os_string(),
             source,
+            kind: ProcessErrorKind::Subprocess,
         }
     }
 }
 
 impl fmt::Display for ProcessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "failed to run {}: {}",
-            self.program.to_string_lossy(),
-            self.source
-        )
+        match self.kind {
+            ProcessErrorKind::Subprocess => write!(
+                f,
+                "failed to run {}: {}",
+                self.program.to_string_lossy(),
+                self.source
+            ),
+            ProcessErrorKind::Io => write!(
+                f,
+                "{} I/O error: {}",
+                self.program.to_string_lossy(),
+                self.source
+            ),
+        }
     }
 }
 

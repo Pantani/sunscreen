@@ -39,7 +39,10 @@ impl PipelineStep {
                 .cwd(cwd),
             Self::FrontendNotify => CommandSpec::new("sunscreen-internal")
                 .arg("frontend-notify")
-                .arg(path.unwrap_or_else(|| Path::new("<unresolved>")))
+                .arg(
+                    path.unwrap_or_else(|| Path::new("<unresolved>"))
+                        .as_os_str(),
+                )
                 .cwd(cwd),
         }
     }

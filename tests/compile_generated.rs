@@ -366,8 +366,7 @@ fn compile_scaffold_program_frontend_vite() {
 }
 
 // ---------------------------------------------------------------------
-// 6. `scaffold instruction` — only the with-accounts shape compiles
-//    today. See KNOWN-LIMITATION at the top of this file.
+// 6. `scaffold instruction` with and without explicit accounts.
 // ---------------------------------------------------------------------
 
 fn scaffold_instruction_with_accounts_case(ws_name: &str, frontend: &str) {

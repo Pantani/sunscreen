@@ -26,12 +26,16 @@
 //! snapshot testing.
 //!
 //! # Required context keys
+//! `render_program` returns an error if any of these are missing:
 //! - `program_name` (string)
 //! - `project_name` (string)
-//! - `anchor_version` (string)
-//! - `rust_edition` (string)
-//! - `program_id` (string) — base58 pubkey rendered into `declare_id!`.
-//!   Defaults to the canonical dummy id via Jinja `default()` if omitted.
+//!
+//! # Optional context keys
+//! Consumed by the Jinja templates with a documented fallback:
+//! - `anchor_version` (string) — defaults to the template's pinned version
+//! - `rust_edition` (string) — defaults to the template's pinned edition
+//! - `program_id` (string) — base58 pubkey rendered into `declare_id!`;
+//!   defaults to the canonical dummy id via Jinja `default()` when omitted
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

@@ -8,7 +8,8 @@
 //! ```
 //!
 //! Each test additionally probes for `anchor` (and `codama` for the regen
-//! test) at runtime via `which`. If the tool is missing the test prints a
+//! test) at runtime via `sunscreen::toolchain::is_available` (cross-platform,
+//! backed by the `which` crate). If the tool is missing the test prints a
 //! skip message and returns success — `--ignored` mode never fails because
 //! a dev box lacks the toolchain.
 //!
@@ -28,17 +29,8 @@ fn sunscreen_bin() -> &'static str {
     env!("CARGO_BIN_EXE_sunscreen")
 }
 
-/// Returns `true` if `name` is on `$PATH`.
-fn tool_available(name: &str) -> bool {
-    Command::new("which")
-        .arg(name)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 fn skip_if_missing(tool: &str) -> bool {
-    if !tool_available(tool) {
+    if !sunscreen::toolchain::is_available(tool) {
         eprintln!("SKIP: `{tool}` not installed — integration test skipped");
         return true;
     }

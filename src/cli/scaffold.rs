@@ -1790,8 +1790,9 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
             .strip_prefix(staging_tmp.path())
             .unwrap_or(abs)
             .to_path_buf();
-        // Files are emitted under `programs/__program__/...` — substitution was
-        // already done at render time, so prepend program_dir_rel.
+        // Files are already emitted under `programs/<program_snake>/...`
+        // because `render_program` substitutes `__program__` at render time.
+        // The relative path is workspace-relative as-is.
         let rel_str = to_fwd(&rel);
         planned.push(rel_str);
     }
@@ -2011,8 +2012,11 @@ fn patch_sunscreen_yml(
     let lines: Vec<&str> = existing.lines().collect();
     // Find the column-0 `programs:` key. `trim_start` would also match an
     // indented `programs:` inside a nested map (e.g. `cluster.programs:`)
-    // and patch the entry in the wrong place.
-    let programs_idx = lines.iter().position(|l| *l == "programs:");
+    // and patch the entry in the wrong place. `trim_end` strips CRLF and
+    // any trailing whitespace so the match survives mixed line endings.
+    let programs_idx = lines
+        .iter()
+        .position(|l| !l.starts_with(char::is_whitespace) && l.trim_end() == "programs:");
     let entry = format!("  - name: {program_kebab}\n    path: programs/{program_snake}\n");
     if let Some(idx) = programs_idx {
         // Find the end of the programs list (next top-level key, i.e. line

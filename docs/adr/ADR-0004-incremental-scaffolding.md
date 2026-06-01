@@ -150,7 +150,7 @@ This decision is consistent with Sub-ADR-001 (ADR-0001 § 7.1).
 ### 5.3 Mitigations
 
 - Marker validation runs on **every** invocation of `sunscreen scaffold` before any write.
-- Planned: a dedicated golden test for "markers survive `rustfmt --edition=2021`" (ADR-0001 § 9.5.1). CI currently runs `cargo fmt -- --check` over the workspace but not a fixture-format-then-re-scan loop; that test lands in Phase 2 R4.
+- Planned: a dedicated golden test for "markers survive `rustfmt --edition=2021`" (ADR-0001 § 9.5.1). CI currently runs `cargo fmt -- --check` over the workspace but not a fixture-format-then-re-scan loop; that test lands in Phase 2 R5.
 - Migrators ensure that `version=` bumps do not break existing workspaces.
 
 ---
@@ -182,10 +182,10 @@ src/
 ├── scaffold/
 │   ├── plan.rs         # FileSetPlan
 │   ├── instruction.rs  # R1
-│   ├── account.rs      # R2
+│   ├── account.rs      # R3
 │   ├── event.rs        # R3
-│   ├── error.rs        # R4
-│   └── program.rs      # R5
+│   ├── error.rs        # R3
+│   └── program.rs      # R4
 ```
 
 ---
@@ -208,6 +208,6 @@ src/
 
 - [ ] `docs/reference/markers.md` is the source of truth for the format and is linked from mdBook (ADR-0003).
 - [ ] Scaffolders R1–R5 implemented with golden tests.
-- [ ] Specific golden test "markers survive `rustfmt --edition=2021`" passes in CI (planned for Phase 2 R4; not yet implemented).
+- [ ] Specific golden test "markers survive `rustfmt --edition=2021`" passes in CI (planned for Phase 2 R5; not yet implemented).
 - [ ] Re-running any scaffold with the same args produces an empty diff.
 - [ ] `sunscreen chain doctor --fix-markers` recovers from a corrupted marker in at least the scenarios listed in `docs/reference/markers.md` § 6.

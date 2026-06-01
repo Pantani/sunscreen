@@ -106,13 +106,13 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 
 ### Phase 2 — Incremental Scaffolding 🚧
 
-**Status.** 🚧 ~80% delivered (R1, R2, R3 done; R4 next; R5 polish). 115/115 tests at end of R3. Strategy ratified in [`docs/adr/ADR-0004-incremental-scaffolding.md`](docs/adr/ADR-0004-incremental-scaffolding.md).
+**Status.** 🚧 ~95% delivered (R1–R4 done; R5 polish ⏳). 115/115 tests at end of R3, R4 shipped via PR #5 (`67b0338`). Strategy ratified in [`docs/adr/ADR-0004-incremental-scaffolding.md`](docs/adr/ADR-0004-incremental-scaffolding.md).
 
 **Goal.** Idempotent, marker-driven scaffolders that surgically edit Rust source without disturbing user code.
 
 #### R1 — rustpatch + `scaffold instruction` ✅
 
-- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) — scan/apply behaviour and line-ending preservation covered; a dedicated `rustfmt`-roundtrip golden test is planned for R4
+- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) — scan/apply behaviour and line-ending preservation covered; a dedicated `rustfmt`-roundtrip golden test is planned for R5
 - [x] `src/workspace/` — workspace discovery and program enumeration
 - [x] `src/cli/scaffold.rs` — `scaffold instruction <name>` subcommand
 - [x] `src/templates/instruction.rs`
@@ -265,7 +265,7 @@ Explicitly deferred per ADR-0001 §10.9. Requires its own ADR before scoping; no
 ## 3. Critical Path & Dependencies
 
 ```text
-Phase 2 R4 (program + doctor --fix-markers)
+Phase 2 R4 (program + doctor --fix-markers) ✅
    └─► Phase 2 R5 (polish, test counts)
          └─► Phase 3 (chain serve / build)
                └─► Phase 4 (codegen, frontend hooks)

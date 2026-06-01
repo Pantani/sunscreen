@@ -102,7 +102,7 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 ## 5. Invariants
 
-1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` is expected to preserve them. CI currently runs `cargo fmt -- --check` over the workspace itself; a dedicated golden test that formats a fixture file with `rustfmt` and re-scans markers is planned for Phase 2 R4 (cf. ADR-0001 § 9.5.1).
+1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` is expected to preserve them. CI currently runs `cargo fmt -- --check` over the workspace itself; a dedicated golden test that formats a fixture file with `rustfmt` and re-scans markers is planned for Phase 2 R5 (cf. ADR-0001 § 9.5.1).
 2. **Never inside `match`, `if`, `for`, `while`, `loop`, or arbitrary `{ … }` block.** Markers live only at item scope.
 3. **Line-grained.** Markers occupy entire lines; no inline marker alongside code.
 4. **Paired and ordered.** For each `begin segment=X` there is exactly one later `end segment=X` in the same file. No nesting.

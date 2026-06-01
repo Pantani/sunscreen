@@ -4,7 +4,7 @@
 
 `sunscreen` is a greenfield CLI that streamlines building on Solana: incremental scaffolding of Anchor 1.0 programs, dev-loop orchestration (Surfpool + Codama + frontend), and a plugin system for extending the toolchain.
 
-**Status:** Phase 0 — foundations. Not yet published to crates.io.
+**Status:** Phase 2 — incremental scaffolding (~95%, R4 shipped, R5 polish in flight). Not yet published to crates.io. Live tracker: [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -17,7 +17,7 @@ Building on Solana today means stitching together `anchor`, `solana`, `surfpool`
 - **Diagnoses** your environment so version drift surfaces before it bites.
 - **Extends** via a plugin protocol so teams can ship their own commands.
 
-The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](ADR-0001-solis-cli.md). CLI conventions and documentation strategy live in [`docs/adr/`](docs/adr/).
+The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md). CLI conventions, marker protocol, and the beginner-onboarding surface live in [`docs/adr/`](docs/adr/).
 
 ---
 
@@ -26,7 +26,7 @@ The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](ADR-0001-s
 From source (requires Rust 1.75+):
 
 ```bash
-git clone https://github.com/sunscreen-cli/sunscreen
+git clone https://github.com/Pantani/sunscreen
 cd sunscreen
 cargo install --path .
 ```
@@ -48,8 +48,18 @@ sunscreen doctor
 # Print version (supports --json)
 sunscreen version --json
 
-# Scaffold a new project (stub — coming in Phase 1)
-sunscreen scaffold <name>
+# Create a new Anchor workspace (Phase 1)
+sunscreen chain new my-dapp
+
+# Scaffold inside an existing workspace (Phase 2)
+sunscreen scaffold program  my_program
+sunscreen scaffold instruction transfer
+sunscreen scaffold account  Vault
+sunscreen scaffold event    Transferred
+sunscreen scaffold error    InsufficientFunds
+
+# Repair drifted markers in-place
+sunscreen chain doctor --fix-markers
 ```
 
 ### Global flags
@@ -69,9 +79,15 @@ sunscreen scaffold <name>
 |---------|--------|-------------|
 | `version` | ✅ | Print sunscreen version (text or JSON) |
 | `doctor` | ✅ | Diagnose toolchain & environment |
-| `scaffold` | 🚧 stub | Scaffold a new Solana project |
-| `chain` | 🚧 stub | Manage local validator / chain ops |
-| `generate` | 🚧 stub | Code generation utilities |
+| `chain new` | ✅ | Bootstrap a compilable Anchor workspace (+ frontend variants) |
+| `chain doctor --fix-markers` | ✅ | Repair drifted scaffolder markers in appendable hosts |
+| `scaffold program` | ✅ | Add a new program crate to an existing workspace |
+| `scaffold instruction` | ✅ | Add an instruction (idempotent, marker-based, `--dry-run`, `--json`) |
+| `scaffold account` | ✅ | Add an account struct |
+| `scaffold event` | ✅ | Add an event |
+| `scaffold error` | ✅ | Add an error variant |
+| `chain serve` / `chain build` | 📋 | Dev loop (Surfpool + watcher + codama + TUI) — Phase 3 |
+| `generate` | 🚧 stub | Code generation (clients, IDL, frontend hooks) — Phase 4 |
 | `app` | 🚧 stub | Application lifecycle commands |
 
 ---
@@ -112,12 +128,17 @@ docs/adr/      # architecture decision records
 
 ## Roadmap
 
-See [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md) for the phased plan.
+Live tracker: [`ROADMAP.md`](ROADMAP.md) (single source of truth). Total to v1.0: ~21 weeks.
 
-- **Phase 0** — Foundations: CLI shell, config, doctor, template engine. *(in progress)*
-- **Phase 1** — Anchor scaffolding from typed templates.
-- **Phase 2** — Dev-loop orchestration (Surfpool, Codama, frontend).
-- **Phase 3** — Plugin protocol.
+- **Phase 0** — Foundations: CLI shell, config, doctor, template engine. ✅
+- **Phase 1** — Workspace bootstrap (`chain new` + Anchor + frontend variants). ✅
+- **Phase 2** — Incremental scaffolding (program/instruction/account/event/error + `chain doctor --fix-markers`). 🚧 ~95%
+- **Phase 3** — Runtime orchestration (`chain serve`, Surfpool + Codama + ratatui TUI). 📋
+- **Phase 4** — Codegen & frontend hooks. 📋
+- **Phase 5** — Recipes (CRUD, SPL token, Metaplex NFT). 📋
+- **Phase 5.5** — Onboarding layer (`init`, `quickstart`, `wallet`, `deploy`, `learn`, actionable errors) — see [ADR-0005](docs/adr/ADR-0005-beginner-onboarding.md). 📋
+- **Phase 8** — Distribution & docs (cuts v1.0). 📋
+- **Phase 6** (plugins) and **Phase 7** (Pinocchio) — deferred post-v1.0. 🔮
 
 ---
 

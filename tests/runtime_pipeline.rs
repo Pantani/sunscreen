@@ -73,6 +73,31 @@ fn build_pipeline_runs_anchor_then_codama_in_workspace_root() {
 }
 
 #[test]
+fn build_pipeline_json_cwd_uses_forward_slashes() {
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok")]);
+    let root = PathBuf::from(r"C:\tmp\sunscreen-workspace");
+
+    let report = BuildPipeline::new(&root)
+        .run(&runner, PipelineOptions { run_codama: false })
+        .expect("pipeline run");
+
+    assert_eq!(
+        report.events[0]
+            .to_json()
+            .get("cwd")
+            .and_then(|v| v.as_str()),
+        Some("C:/tmp/sunscreen-workspace")
+    );
+    assert_eq!(
+        report.events[1]
+            .to_json()
+            .get("cwd")
+            .and_then(|v| v.as_str()),
+        Some("C:/tmp/sunscreen-workspace")
+    );
+}
+
+#[test]
 fn build_pipeline_can_skip_codama() {
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok")]);
     let root = PathBuf::from("/tmp/sunscreen-workspace");

@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use super::render_event_path;
 use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
 /// One subprocess-backed step in the build pipeline.
@@ -77,7 +78,7 @@ impl PipelineEvent {
             event: "command_started",
             step,
             command: command.display_argv(),
-            cwd: cwd.display().to_string(),
+            cwd: render_event_path(cwd),
             status: None,
             exit_code: None,
             duration_ms: None,
@@ -96,7 +97,7 @@ impl PipelineEvent {
             event: "command_finished",
             step,
             command: command.display_argv(),
-            cwd: cwd.display().to_string(),
+            cwd: render_event_path(cwd),
             status: Some(if output.success() { "ok" } else { "failed" }.into()),
             exit_code: Some(output.exit_code),
             duration_ms: Some(output.duration_ms),

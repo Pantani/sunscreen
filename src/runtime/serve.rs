@@ -1,12 +1,13 @@
 //! Headless serve-loop primitives for Phase 3.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use notify::{Event as NotifyEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
 use super::pipeline::{PipelineError, PipelineOptions};
+use super::render_event_path;
 use super::subprocess::ProcessRunner;
 use super::watcher::{WatchBuildLoop, WatchBuildReport};
 
@@ -36,12 +37,22 @@ pub struct NotifyWatchSource {
     rx: mpsc::Receiver<notify::Result<NotifyEvent>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WatchRoot {
+    path: PathBuf,
+    mode: RecursiveMode,
+}
+
 impl NotifyWatchSource {
-    /// Watch a sunscreen workspace recursively.
+    /// Watch the source and config files that can trigger a rebuild.
     pub fn new(workspace_root: impl AsRef<Path>) -> Result<Self, NotifyWatchError> {
         let (tx, rx) = mpsc::channel();
         let mut watcher = notify::recommended_watcher(tx)?;
-        watcher.watch(workspace_root.as_ref(), RecursiveMode::Recursive)?;
+        for root in watch_roots(workspace_root.as_ref()) {
+            if root.path.exists() {
+                watcher.watch(&root.path, root.mode)?;
+            }
+        }
         Ok(Self {
             _watcher: watcher,
             rx,
@@ -57,6 +68,20 @@ impl NotifyWatchSource {
             Err(RecvTimeoutError::Disconnected) => Err(NotifyWatchError::Disconnected),
         }
     }
+}
+
+fn watch_roots(workspace_root: &Path) -> Vec<WatchRoot> {
+    let mut roots = vec![WatchRoot {
+        path: workspace_root.join("programs"),
+        mode: RecursiveMode::Recursive,
+    }];
+    roots.extend(
+        ["Anchor.toml", "sunscreen.yml", "codama.json"].map(|file| WatchRoot {
+            path: workspace_root.join(file),
+            mode: RecursiveMode::NonRecursive,
+        }),
+    );
+    roots
 }
 
 /// Testable headless bridge for `chain serve`.
@@ -127,13 +152,11 @@ fn render_watch_build_report(report: &WatchBuildReport) -> Vec<serde_json::Value
     events
 }
 
-fn render_event_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+
+    use notify::RecursiveMode;
 
     use super::render_event_path;
 
@@ -143,5 +166,26 @@ mod tests {
             render_event_path(Path::new(r"programs\demo\src\instructions\deposit.rs")),
             "programs/demo/src/instructions/deposit.rs"
         );
+    }
+
+    #[test]
+    fn notify_watch_roots_avoid_recursive_workspace_watch() {
+        let root = Path::new("/tmp/sunscreen-workspace");
+        let roots = super::watch_roots(root);
+
+        assert_eq!(
+            roots
+                .iter()
+                .find(|entry| entry.path == root.join("programs"))
+                .map(|entry| entry.mode),
+            Some(RecursiveMode::Recursive)
+        );
+        assert!(roots
+            .iter()
+            .any(|entry| entry.path == root.join("Anchor.toml")
+                && entry.mode == RecursiveMode::NonRecursive));
+        assert!(!roots
+            .iter()
+            .any(|entry| entry.path == root && entry.mode == RecursiveMode::Recursive));
     }
 }

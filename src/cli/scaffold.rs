@@ -1772,6 +1772,7 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
         "project_name": project_name,
         "anchor_version": anchor_version,
         "rust_edition": rust_edition,
+        "program_id": program_id,
     });
     let rendered = render_program(&ctx, staging_tmp.path())
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render program: {e}")))?;

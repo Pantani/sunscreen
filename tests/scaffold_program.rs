@@ -138,6 +138,30 @@ fn scaffold_program_rejects_invalid_pubkey() {
 }
 
 #[test]
+fn scaffold_program_with_custom_id_propagates_to_lib_rs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("idapp");
+    run_chain_new(&ws, "idapp");
+    let custom_id = "11111111111111111111111111111111";
+    let out = run(&ws, &["scaffold", "program", "tagged", "--id", custom_id]);
+    assert!(
+        out.status.success(),
+        "scaffold failed: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let lib = std::fs::read_to_string(ws.join("programs/tagged/src/lib.rs")).unwrap();
+    assert!(
+        lib.contains(&format!("declare_id!(\"{custom_id}\")")),
+        "lib.rs declare_id mismatch; got:\n{lib}"
+    );
+    let anchor = std::fs::read_to_string(ws.join("Anchor.toml")).unwrap();
+    assert!(
+        anchor.contains(&format!("tagged = \"{custom_id}\"")),
+        "Anchor.toml missing custom id; got:\n{anchor}"
+    );
+}
+
+#[test]
 fn chain_doctor_clean_workspace_reports_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("doc_app");

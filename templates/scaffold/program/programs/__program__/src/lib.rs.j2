@@ -10,7 +10,7 @@ pub mod instructions;
 #[allow(unused_imports)]
 use instructions::*;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("{{ program_id | default('Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS') }}");
 
 #[program]
 pub mod {{ program_name | snake_case }} {

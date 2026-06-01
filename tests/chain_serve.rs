@@ -24,6 +24,8 @@ fn chain_serve_help_exposes_headless_watch_flags() {
     assert!(stdout.contains("--headless"), "{stdout}");
     assert!(stdout.contains("--debounce-ms"), "{stdout}");
     assert!(stdout.contains("--no-codama"), "{stdout}");
+    assert!(stdout.contains("--no-frontend"), "{stdout}");
+    assert!(stdout.contains("--runtime"), "{stdout}");
 }
 
 #[test]

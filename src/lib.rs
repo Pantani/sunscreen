@@ -10,6 +10,7 @@ pub mod runtime;
 pub mod rustpatch;
 pub mod templates;
 pub mod toolchain;
+pub mod tui;
 pub mod workspace;
 
 pub use error::SunscreenError;

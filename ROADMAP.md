@@ -110,7 +110,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 
 #### R1 — rustpatch + `scaffold instruction` ✅
 
-- [x] `src/rustpatch/{marker, segment, fmt}.rs` with rustfmt-preservation tests
+- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) with rustfmt-preservation tests
 - [x] `src/workspace/` — workspace discovery and program enumeration
 - [x] `src/cli/scaffold.rs` — `scaffold instruction <name>` subcommand
 - [x] `src/templates/instruction.rs`
@@ -143,7 +143,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 
 - [ ] `src/cli/scaffold.rs` — `scaffold program <name>` (adds a new program crate to `programs/`, registers in `Anchor.toml` and root `Cargo.toml`)
 - [ ] `templates/scaffold/program/` template tree
-- [ ] `sunscreen chain doctor --fix-markers` — detect corrupted / missing marker comments and offer repair
+- [ ] `sunscreen doctor --fix-markers` — detect corrupted / missing marker comments and offer repair
 - [ ] Auto-injection of `pub mod events;` / `pub mod errors;` / `pub mod state;` in `lib.rs` on first relevant scaffold (closes a R3 gap where users had to add the line manually)
 - [ ] `tests/scaffold_program.rs` + `tests/doctor_fix_markers.rs`
 

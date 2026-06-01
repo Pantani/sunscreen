@@ -30,7 +30,7 @@
 
 ### 1.1 Problem framing
 
-The original plan in ADR-0001 (Phases 0–8) assumes an **intermediate Solana dev** — someone who already understands `Pubkey`, knows the difference between `Account` and `AccountInfo`, knows the `anchor build → anchor deploy` cycle, and is comfortable editing `Anchor.toml`. Phases 0–2 R3 (already delivered) reflect that audience: `chain new` requires explicit flags (`--framework anchor --frontend next --clients ts,rs`), scaffolders expect the user to know what an "instruction" is, and `chain doctor` reports toolchain status in jargon (`anchor-cli 0.30.x`, `solana-cli 2.0.x`).
+The original plan in ADR-0001 (Phases 0–8) assumes an **intermediate Solana dev** — someone who already understands `Pubkey`, knows the difference between `Account` and `AccountInfo`, knows the `anchor build → anchor deploy` cycle, and is comfortable editing `Anchor.toml`. Phases 0–2 R3 (already delivered) reflect that audience: `chain new` requires explicit flags (`--framework anchor --frontend next --clients ts,rs`), scaffolders expect the user to know what an "instruction" is, and `doctor` reports toolchain status in jargon (`anchor-cli 0.30.x`, `solana-cli 2.0.x`).
 
 The **product vision**, however, is more ambitious: `sunscreen` should be **the entry point for devs who don't know Rust or Solana deeply** — a TypeScript developer curious about NFTs, a student who has heard of SPL tokens, an indie who wants to prototype a DAO in an afternoon. This audience:
 
@@ -57,7 +57,7 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 - **DD1 — Learning curve.** Time to "hello world → NFT deployed on devnet" < 10 min for an absolute beginner with no prior account.
 - **DD2 — Power-user non-blocking.** Every wizard has a flag-based equivalent; `--non-interactive` or TTY detection disables prompts; no new command appears in `chain new` or the existing scaffolders.
 - **DD3 — No mandatory network.** Examples and `learn` embedded via `rust-embed`; cluster ops (`wallet airdrop`, `deploy devnet`) are opt-in.
-- **DD4 — Reuse of existing infrastructure.** The wizard calls the same `ChainNewArgs::from_resolved(...)` that `chain new` uses; `quickstart` composes scaffolders via their Rust API, not via shellout.
+- **DD4 — Reuse of existing infrastructure.** The wizard ends by calling the same workspace-construction entry point as `chain new` (today `Config::new_for_workspace(...)` in `src/cli/chain.rs`); Phase 5.5 may extract a shared `ChainNewArgs` struct so the wizard and the flag parser feed it identically; `quickstart` composes scaffolders via their Rust API, not via shellout.
 - **DD5 — i18n-ready, en-US first.** Strings in a dedicated module; no literals in the control flow.
 - **DD6 — Actionable errors.** Every variant of `SunscreenError` carries `next_step: Option<String>`; 100% coverage verified in CI.
 - **DD7 — Discoverability.** Top-level commands (not flags), names oriented to the user's task (`wallet new`, not `keypair generate`).

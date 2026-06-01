@@ -40,7 +40,7 @@ These conventions apply to every subcommand currently stubbed in `src/cli/root.r
 - `mucho` introduces `Solana.toml` keys that do not match any flag spelling, forcing users to learn two vocabularies.
 - `cargo` (the gold standard) is rigorously kebab-case, single-letter shorts where idiomatic, `-v/-vv` for verbosity, `--quiet` for inverse.
 
-The CLI is the only artifact the user interacts with — IDE integrations, CI scripts, plugin authors, AI agents, and `sunscreen chain doctor --json` consumers all see this surface. Inconsistency here is a tax on every future feature.
+The CLI is the only artifact the user interacts with — IDE integrations, CI scripts, plugin authors, AI agents, and `sunscreen doctor --json` consumers all see this surface. Inconsistency here is a tax on every future feature.
 
 ### 1.2 Constraints inherited from ADR-0001
 

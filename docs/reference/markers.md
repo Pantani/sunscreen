@@ -102,7 +102,7 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 ## 5. Invariants
 
-1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2024` preserves them. This property is covered by a golden test in CI (cf. ADR-0001 § 9.5.1).
+1. **Survive `rustfmt`.** Because they are line comments outside any expression, `rustfmt --edition=2021` preserves them. This property is covered by a golden test in CI (cf. ADR-0001 § 9.5.1).
 2. **Never inside `match`, `if`, `for`, `while`, `loop`, or arbitrary `{ … }` block.** Markers live only at item scope.
 3. **Line-grained.** Markers occupy entire lines; no inline marker alongside code.
 4. **Paired and ordered.** For each `begin segment=X` there is exactly one later `end segment=X` in the same file. No nesting.
@@ -114,13 +114,13 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen chain doctor --fix-markers` (R2) reconstructs from the IDL + heuristic |
+| `error: marker pair mismatch: begin segment=dispatch without matching end` | user deleted the `end` line | `sunscreen doctor --fix-markers` (R2) reconstructs from the IDL + heuristic |
 | `error: duplicate begin segment=instructions in src/instructions/mod.rs` | unresolved merge conflict | resolve the conflict; keep only one pair |
 | `error: marker drift: version=1 expected, found version=2` | CLI downgrade | upgrade `sunscreen` or run the reverse migration |
 | `error: marker inside expression` | user moved the marker inside a `match` | move it back to item scope |
 | `warning: user-region with version=` | spec violation | sunscreen ignores the `version` and proceeds |
 
-`sunscreen chain doctor` (R2 of this phase) will validate markers across the entire workspace and offer `--fix-markers` for recoverable cases.
+`sunscreen doctor` (R2 of this phase) will validate markers across the entire workspace and offer `--fix-markers` for recoverable cases.
 
 ---
 
@@ -224,4 +224,4 @@ Scaffolder implementations **must**:
 2. Validate pairing before applying any patch (fail-fast).
 3. Treat `user-region` regions as read-only after creation.
 4. Version every `auto-generated` segment with a numeric `version=`.
-5. Fail with an actionable message pointing to `sunscreen chain doctor --fix-markers` when corruption is encountered.
+5. Fail with an actionable message pointing to `sunscreen doctor --fix-markers` when corruption is encountered.

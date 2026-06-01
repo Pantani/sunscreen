@@ -144,13 +144,13 @@ This decision is consistent with Sub-ADR-001 (ADR-0001 § 7.1).
 
 - Mutation of user-authored code is out of scope (except via `ast-grep`).
 - Markers visually "pollute" the files. Mitigation: the visual convention `=== … ===` makes them readable and visually segregable.
-- The user may accidentally delete a marker. Mitigation: `sunscreen chain doctor --fix-markers` (R2).
+- The user may accidentally delete a marker. Mitigation: `sunscreen doctor --fix-markers` (R2).
 - User rename/move of files can decouple markers from the scaffolder's expectation. See § 7 Open Questions.
 
 ### 5.3 Mitigations
 
 - Marker validation runs on **every** invocation of `sunscreen scaffold` before any write.
-- CI has a specific golden test for "markers survive `rustfmt --edition=2024`" (ADR-0001 § 9.5.1).
+- CI has a specific golden test for "markers survive `rustfmt --edition=2021`" (ADR-0001 § 9.5.1).
 - Migrators ensure that `version=` bumps do not break existing workspaces.
 
 ---
@@ -162,10 +162,10 @@ Order of scaffolder implementation during Phase 2:
 | Round | Scaffolder | Segments touched | Notes |
 |---|---|---|---|
 | **R1** | `instruction` | `instructions` (mod.rs), `dispatch` (lib.rs), `file` + `handler` (instruction.rs) | bootstraps the mechanism; covers all marker types |
-| **R2** | `account` | `accounts` (state/mod.rs), `state` (state/<acc>.rs) | adds `chain doctor --fix-markers` |
-| **R3** | `event` | `events` (events.rs) | first potential use of the `ast-grep` fallback |
-| **R4** | `error` | `errors` (errors.rs) | `#[error_code]` enum variants |
-| **R5** | `program` | entire sub-workspace | composes R1–R4 over a new program inside an existing workspace |
+| **R2** | dispatch carry-over | `dispatch` (lib.rs), `instructions` (mod.rs) | freshly-created workspace already ships markers so the first `scaffold instruction` patches cleanly |
+| **R3** | `account` + `event` + `error` | `accounts`/`state` (state/<acc>.rs), `events` (events.rs), `error_variants` (errors.rs) | three scaffolders delivered together with the same architecture as `instruction` |
+| **R4** | `program` + `doctor --fix-markers` | new sub-program + workspace-wide marker validation | composes R1–R3 over a new program inside an existing workspace; adds the recovery command |
+| **R5** | polish | golden + compile + integration coverage | reach the ≥75 golden / ≥25 compile / ≥5 integration targets from ADR-0001 §10.4 |
 
 Each round delivers: scaffolder + golden tests + entry in the `docs/reference/markers.md` table if it introduces a new segment.
 
@@ -198,7 +198,7 @@ src/
    - (iii) Full re-scan of `src/` looking for all markers on every invocation (O(n) — likely choice).
    - **Current attempt:** (iii) + warning if an expected segment disappears.
 2. **Drift between IDL and code.** The user may edit the `Deposit<'info>` struct manually, diverging from what `sunscreen` would generate. How to detect?
-   - Option: re-running `scaffold instruction <name>` always regenerates the `file` segment (which is `auto-generated`) — so divergence is the user's *intent* by **not** running the command. `chain doctor` can compare the IDL produced by Anchor against the IDL inferred from the original args persisted in `.sunscreen/manifest.json` and warn.
+   - Option: re-running `scaffold instruction <name>` always regenerates the `file` segment (which is `auto-generated`) — so divergence is the user's *intent* by **not** running the command. `doctor` can compare the IDL produced by Anchor against the IDL inferred from the original args persisted in `.sunscreen/manifest.json` and warn.
 3. **Multiple programs in the workspace.** R5 needs to decide whether markers carry a program qualifier or whether the file path is enough as context. Inclination: the path is enough; markers stay local to the file.
 4. **Support for future Rust editions.** If Rust 2027 changes the behavior of line comments inside `mod`, the CI golden test will break first — reactive policy, not preventive.
 
@@ -208,6 +208,6 @@ src/
 
 - [ ] `docs/reference/markers.md` is the source of truth for the format and is linked from mdBook (ADR-0003).
 - [ ] Scaffolders R1–R5 implemented with golden tests.
-- [ ] Specific golden test "markers survive `rustfmt --edition=2024`" passes in CI.
+- [ ] Specific golden test "markers survive `rustfmt --edition=2021`" passes in CI.
 - [ ] Re-running any scaffold with the same args produces an empty diff.
-- [ ] `sunscreen chain doctor --fix-markers` recovers from a corrupted marker in at least the scenarios listed in `docs/reference/markers.md` § 6.
+- [ ] `sunscreen doctor --fix-markers` recovers from a corrupted marker in at least the scenarios listed in `docs/reference/markers.md` § 6.

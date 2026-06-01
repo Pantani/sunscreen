@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-01 (Phase 2 closed via PR #7)
+**Last updated:** 2026-06-01 (Phase 3 frontend notify slice)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -162,14 +162,13 @@ Shipped via PR #7.
 - [x] `doctor --json` emits a flat `[ToolReport, …]` array where each report carries an `available` boolean (covers anchor, codama, solana, surfpool, rustfmt, …) + public `toolchain::detect_*` helpers for in-process callers
 - [x] Phase 2 DoD per ADR-0001 §10.4 satisfied end-to-end (202 passing, fmt + clippy clean)
 
-**Carry-overs into Phase 3 backlog:**
-- `scaffold instruction` without `--accounts` emits an empty `pub struct X<'info> {}` that fails E0392; one compile test `#[ignore]`'d with reason string as the signal — small template fix.
+**Phase 2 follow-up status.** ✅ Closed. The stale ignored compile test for `scaffold instruction` without `--accounts` is active again; the current template emits an empty `Accounts` struct without an unused lifetime.
 
 ---
 
 ### Phase 3 — Runtime Orchestration 🚧
 
-**Status.** 🚧 Initial build slice started. `chain build --headless` now reuses workspace discovery and runs `anchor build` + optional Codama regeneration through a testable runtime pipeline with parseable line-delimited JSON events. The watcher debounce core, notify-event-to-pipeline bridge, `chain serve --headless` watcher loop, and local-runtime trait/adapters are also in place.
+**Status.** 🚧 Initial build slice plus watcher/runtime foundations are in place. `chain build --headless` now reuses workspace discovery and runs `anchor build` + optional Codama regeneration through a testable runtime pipeline with parseable line-delimited JSON events. The watcher debounce core, notify-event-to-pipeline bridge, `chain serve --headless` watcher loop, frontend reload notification, and local-runtime trait/adapters are also in place.
 
 **Goal.** `sunscreen chain serve` orchestrates Surfpool, file-watcher, codama regen, and a ratatui TUI in one supervised process tree.
 
@@ -182,7 +181,7 @@ Shipped via PR #7.
 - [x] `src/runtime/pipeline.rs` initial build pipeline — runs `anchor build`, then `pnpm exec codama run` unless `--no-codama` is set, stops before Codama when Anchor fails, and keeps the runner injectable for tests
 - [x] Watch-triggered pipeline core — debounced file change batch → `BuildPipeline` with injectable subprocess runner
 - [x] Long-running watcher source — `chain serve --headless` instantiates `notify`, receives filesystem events, ticks debounce deadlines, and emits parseable line-delimited JSON for watcher-triggered builds
-- [ ] Frontend notify after Codama regeneration
+- [x] Frontend notify after Codama regeneration — successful Codama runs touch `app/.sunscreen/reload` when a scaffolded frontend exists and emit a `frontend_notified` JSON event
 - [ ] `src/tui/serve_model.rs` — ratatui panels (validator / build / faucet / frontend / logs), 80×24 minimum
 - [ ] Integrate runtime supervisor into `chain serve --headless` — runtime selection/fallback, start event, stop event, and build watcher loop in one supervised path
 - [ ] `chain serve` full runtime — Surfpool/test-validator supervisor + watcher + build/codama + frontend notify; `--headless` remains parseable line-delimited JSON

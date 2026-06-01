@@ -1,6 +1,7 @@
 //! Build pipeline orchestration for Phase 3.
 
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::render_event_path;
 use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
@@ -12,6 +13,8 @@ pub enum PipelineStep {
     AnchorBuild,
     /// `pnpm exec codama run`
     CodamaRun,
+    /// Notify the frontend dev server that generated clients changed.
+    FrontendNotify,
 }
 
 impl PipelineStep {
@@ -21,6 +24,7 @@ impl PipelineStep {
         match self {
             Self::AnchorBuild => "anchor_build",
             Self::CodamaRun => "codama_run",
+            Self::FrontendNotify => "frontend_notify",
         }
     }
 
@@ -32,6 +36,9 @@ impl PipelineStep {
                 .arg("codama")
                 .arg("run")
                 .cwd(cwd),
+            Self::FrontendNotify => CommandSpec::new("touch")
+                .arg(frontend_reload_path(cwd))
+                .cwd(cwd),
         }
     }
 }
@@ -41,11 +48,16 @@ impl PipelineStep {
 pub struct PipelineOptions {
     /// Run `pnpm exec codama run` after a successful `anchor build`.
     pub run_codama: bool,
+    /// Notify a scaffolded frontend after successful Codama regeneration.
+    pub notify_frontend: bool,
 }
 
 impl Default for PipelineOptions {
     fn default() -> Self {
-        Self { run_codama: true }
+        Self {
+            run_codama: true,
+            notify_frontend: true,
+        }
     }
 }
 
@@ -70,6 +82,8 @@ pub struct PipelineEvent {
     pub stdout: Option<String>,
     /// Optional captured stderr for finished events.
     pub stderr: Option<String>,
+    /// Optional path affected by a non-subprocess pipeline event.
+    pub path: Option<String>,
 }
 
 impl PipelineEvent {
@@ -84,6 +98,7 @@ impl PipelineEvent {
             duration_ms: None,
             stdout: None,
             stderr: None,
+            path: None,
         }
     }
 
@@ -103,6 +118,22 @@ impl PipelineEvent {
             duration_ms: Some(output.duration_ms),
             stdout: Some(output.stdout.clone()),
             stderr: Some(output.stderr.clone()),
+            path: None,
+        }
+    }
+
+    fn frontend_notified(command: &CommandSpec, cwd: &Path, path: &Path) -> Self {
+        Self {
+            event: "frontend_notified",
+            step: PipelineStep::FrontendNotify,
+            command: command.display_argv(),
+            cwd: render_event_path(cwd),
+            status: Some("ok".into()),
+            exit_code: Some(0),
+            duration_ms: Some(0),
+            stdout: None,
+            stderr: None,
+            path: Some(render_event_path(path)),
         }
     }
 
@@ -130,6 +161,9 @@ impl PipelineEvent {
             }
             if let Some(stderr) = &self.stderr {
                 obj.insert("stderr".into(), serde_json::json!(stderr));
+            }
+            if let Some(path) = &self.path {
+                obj.insert("path".into(), serde_json::json!(path));
             }
         }
         payload
@@ -221,9 +255,40 @@ impl BuildPipeline {
             }
         }
 
+        if options.run_codama && options.notify_frontend {
+            if let Some(path) = notify_frontend(&self.workspace_root) {
+                let command = PipelineStep::FrontendNotify.command(&self.workspace_root);
+                events.push(PipelineEvent::frontend_notified(
+                    &command,
+                    &self.workspace_root,
+                    &path,
+                ));
+            }
+        }
+
         Ok(PipelineReport {
             events,
             exit_code: 0,
         })
     }
+}
+
+fn frontend_reload_path(workspace_root: &Path) -> PathBuf {
+    workspace_root.join("app").join(".sunscreen").join("reload")
+}
+
+fn notify_frontend(workspace_root: &Path) -> Option<PathBuf> {
+    let app_dir = workspace_root.join("app");
+    if !app_dir.is_dir() {
+        return None;
+    }
+    let path = frontend_reload_path(workspace_root);
+    let parent = path.parent()?;
+    std::fs::create_dir_all(parent).ok()?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "0".into());
+    std::fs::write(&path, format!("{timestamp}\n")).ok()?;
+    Some(path)
 }

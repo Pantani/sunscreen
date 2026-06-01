@@ -83,11 +83,8 @@ fn watch_build_loop_runs_pipeline_when_debounced_batch_is_due() {
     let start = Instant::now();
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
     let root = PathBuf::from("/tmp/sunscreen-workspace");
-    let mut loop_ = WatchBuildLoop::new(
-        &root,
-        Duration::from_millis(25),
-        PipelineOptions { run_codama: true },
-    );
+    let mut loop_ =
+        WatchBuildLoop::new(&root, Duration::from_millis(25), PipelineOptions::default());
     let event =
         Event::new(EventKind::Any).add_path(root.join("programs/demo/src/instructions/deposit.rs"));
 

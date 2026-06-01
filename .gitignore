@@ -13,6 +13,10 @@
 /_workspace/
 /_workspace_prev_*
 
+# Insta pending-snapshot artifacts (review with `cargo insta review`)
+*.snap.new
+.pending-snap
+
 # Local env
 .env
 .env.local

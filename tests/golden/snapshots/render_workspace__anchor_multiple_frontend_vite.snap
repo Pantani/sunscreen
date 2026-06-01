@@ -199,8 +199,21 @@ anchor-lang = "0.30.1"
 === programs/my_dapp/Xargo.toml ===
 [target.bpfel-unknown-unknown.dependencies.std]
 features = []
+=== programs/my_dapp/src/instructions/mod.rs ===
+//! Instruction module registry.
+//!
+//! The `segment=instructions` block below is managed by
+//! `sunscreen scaffold instruction` — edits inside the markers will be
+//! overwritten. Code outside the markers is preserved across re-runs.
+
+// === sunscreen:auto-generated:begin segment=instructions version=1 generator=cli ===
+// === sunscreen:auto-generated:end segment=instructions ===
 === programs/my_dapp/src/lib.rs ===
 use anchor_lang::prelude::*;
+
+pub mod instructions;
+#[allow(unused_imports)]
+use instructions::*;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -208,14 +221,9 @@ declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 pub mod my_dapp {
     use super::*;
 
-    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
-        msg!("MyDapp initialized");
-        Ok(())
-    }
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=cli ===
+    // === sunscreen:auto-generated:end segment=dispatch ===
 }
-
-#[derive(Accounts)]
-pub struct Initialize {}
 === sunscreen.yml ===
 version: 1
 project:
@@ -249,9 +257,10 @@ describe("my-dapp", () => {
 
   const program = anchor.workspace.MyDapp as Program<MyDapp>;
 
-  it("Is initialized!", async () => {
-    const tx = await program.methods.initialize().rpc();
-    console.log("Your transaction signature", tx);
+  it("loads the program", () => {
+    // Scaffold an instruction with `sunscreen scaffold instruction <name> --program my_dapp`,
+    // then replace this with a real `program.methods.<name>(...).rpc()` call.
+    if (!program) throw new Error("program not loaded");
   });
 });
 === tsconfig.json ===

@@ -42,13 +42,20 @@ fn output(exit_code: i32, stdout: &str) -> CommandOutput {
     }
 }
 
+fn no_frontend_notify() -> PipelineOptions {
+    PipelineOptions {
+        notify_frontend: false,
+        ..PipelineOptions::default()
+    }
+}
+
 #[test]
 fn build_pipeline_runs_anchor_then_codama_in_workspace_root() {
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
     let root = PathBuf::from("/tmp/sunscreen-workspace");
 
     let report = BuildPipeline::new(&root)
-        .run(&runner, PipelineOptions::default())
+        .run(&runner, no_frontend_notify())
         .expect("pipeline run");
 
     assert!(report.success());
@@ -82,7 +89,7 @@ fn build_pipeline_json_cwd_uses_forward_slashes() {
             &runner,
             PipelineOptions {
                 run_codama: false,
-                ..PipelineOptions::default()
+                ..no_frontend_notify()
             },
         )
         .expect("pipeline run");
@@ -113,7 +120,7 @@ fn build_pipeline_can_skip_codama() {
             &runner,
             PipelineOptions {
                 run_codama: false,
-                ..PipelineOptions::default()
+                ..no_frontend_notify()
             },
         )
         .expect("pipeline run");
@@ -130,7 +137,7 @@ fn build_pipeline_stops_before_codama_when_anchor_fails() {
     let root = PathBuf::from("/tmp/sunscreen-workspace");
 
     let report = BuildPipeline::new(&root)
-        .run(&runner, PipelineOptions::default())
+        .run(&runner, no_frontend_notify())
         .expect("pipeline run");
 
     assert!(!report.success());
@@ -171,12 +178,57 @@ fn build_pipeline_notifies_scaffolded_frontend_after_codama_success() {
     assert_eq!(notify.event, "frontend_notified");
     let expected_path = format!("{}/app/.sunscreen/reload", root.display()).replace('\\', "/");
     assert_eq!(
+        notify.command,
+        [
+            "sunscreen-internal",
+            "frontend-notify",
+            expected_path.as_str()
+        ]
+    );
+    assert_eq!(
         notify
             .to_json()
             .get("path")
             .and_then(|value| value.as_str()),
         Some(expected_path.as_str())
     );
+}
+
+#[test]
+fn build_pipeline_notifies_configured_frontend_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    std::fs::create_dir(root.join("web")).expect("create custom frontend dir");
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
+
+    let report = BuildPipeline::new(root)
+        .run(
+            &runner,
+            PipelineOptions {
+                frontend_path: Some(PathBuf::from("web")),
+                ..PipelineOptions::default()
+            },
+        )
+        .expect("pipeline run");
+
+    assert!(report.success());
+    assert!(root.join("web/.sunscreen/reload").exists());
+    assert!(!root.join("app/.sunscreen/reload").exists());
+}
+
+#[test]
+fn build_pipeline_surfaces_frontend_notify_write_errors() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    std::fs::create_dir(root.join("app")).expect("create app dir");
+    std::fs::write(root.join("app/.sunscreen"), "not a dir").expect("create blocking file");
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
+
+    let err = BuildPipeline::new(root)
+        .run(&runner, PipelineOptions::default())
+        .expect_err("frontend notify write failure should fail pipeline");
+
+    assert_eq!(err.step, PipelineStep::FrontendNotify);
 }
 
 #[test]

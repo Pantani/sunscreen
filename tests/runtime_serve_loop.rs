@@ -45,13 +45,19 @@ fn output(exit_code: i32, stdout: &str) -> CommandOutput {
     }
 }
 
+fn no_frontend_notify() -> PipelineOptions {
+    PipelineOptions {
+        notify_frontend: false,
+        ..PipelineOptions::default()
+    }
+}
+
 #[test]
 fn headless_serve_loop_emits_json_when_debounced_event_runs_pipeline() {
     let start = Instant::now();
     let root = PathBuf::from("/tmp/sunscreen-workspace");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
-    let mut loop_ =
-        HeadlessServeLoop::new(&root, Duration::from_millis(25), PipelineOptions::default());
+    let mut loop_ = HeadlessServeLoop::new(&root, Duration::from_millis(25), no_frontend_notify());
     let event =
         Event::new(EventKind::Any).add_path(root.join("programs/demo/src/instructions/deposit.rs"));
 
@@ -113,8 +119,7 @@ fn headless_serve_loop_flushes_due_batch_after_notify_event() {
     let start = Instant::now();
     let root = PathBuf::from("/tmp/sunscreen-workspace");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
-    let mut loop_ =
-        HeadlessServeLoop::new(&root, Duration::from_millis(25), PipelineOptions::default());
+    let mut loop_ = HeadlessServeLoop::new(&root, Duration::from_millis(25), no_frontend_notify());
     let source_event =
         Event::new(EventKind::Any).add_path(root.join("programs/demo/src/instructions/deposit.rs"));
     let ignored_event = Event::new(EventKind::Any).add_path(root.join("README.md"));

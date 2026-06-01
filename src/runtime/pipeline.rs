@@ -1,5 +1,6 @@
 //! Build pipeline orchestration for Phase 3.
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -28,7 +29,7 @@ impl PipelineStep {
         }
     }
 
-    fn command(self, cwd: &Path) -> CommandSpec {
+    fn command(self, cwd: &Path, path: Option<&Path>) -> CommandSpec {
         match self {
             Self::AnchorBuild => CommandSpec::new("anchor").arg("build").cwd(cwd),
             Self::CodamaRun => CommandSpec::new("pnpm")
@@ -36,20 +37,23 @@ impl PipelineStep {
                 .arg("codama")
                 .arg("run")
                 .cwd(cwd),
-            Self::FrontendNotify => CommandSpec::new("touch")
-                .arg(frontend_reload_path(cwd))
+            Self::FrontendNotify => CommandSpec::new("sunscreen-internal")
+                .arg("frontend-notify")
+                .arg(path.unwrap_or_else(|| Path::new("<unresolved>")))
                 .cwd(cwd),
         }
     }
 }
 
 /// Build pipeline options.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PipelineOptions {
     /// Run `pnpm exec codama run` after a successful `anchor build`.
     pub run_codama: bool,
     /// Notify a scaffolded frontend after successful Codama regeneration.
     pub notify_frontend: bool,
+    /// Frontend path relative to the workspace root. Defaults to `app`.
+    pub frontend_path: Option<PathBuf>,
 }
 
 impl Default for PipelineOptions {
@@ -57,6 +61,7 @@ impl Default for PipelineOptions {
         Self {
             run_codama: true,
             notify_frontend: true,
+            frontend_path: None,
         }
     }
 }
@@ -236,7 +241,7 @@ impl BuildPipeline {
         }
 
         for step in steps {
-            let command = step.command(&self.workspace_root);
+            let command = step.command(&self.workspace_root, None);
             events.push(PipelineEvent::started(step, &command, &self.workspace_root));
             let output = runner
                 .run(command.clone())
@@ -256,13 +261,23 @@ impl BuildPipeline {
         }
 
         if options.run_codama && options.notify_frontend {
-            if let Some(path) = notify_frontend(&self.workspace_root) {
-                let command = PipelineStep::FrontendNotify.command(&self.workspace_root);
-                events.push(PipelineEvent::frontend_notified(
-                    &command,
-                    &self.workspace_root,
-                    &path,
-                ));
+            match notify_frontend(&self.workspace_root, options.frontend_path.as_deref()) {
+                Ok(Some(path)) => {
+                    let command =
+                        PipelineStep::FrontendNotify.command(&self.workspace_root, Some(&path));
+                    events.push(PipelineEvent::frontend_notified(
+                        &command,
+                        &self.workspace_root,
+                        &path,
+                    ));
+                }
+                Ok(None) => {}
+                Err(source) => {
+                    return Err(PipelineError {
+                        step: PipelineStep::FrontendNotify,
+                        source: ProcessError::from_io("frontend-notify", source),
+                    });
+                }
             }
         }
 
@@ -273,22 +288,35 @@ impl BuildPipeline {
     }
 }
 
-fn frontend_reload_path(workspace_root: &Path) -> PathBuf {
-    workspace_root.join("app").join(".sunscreen").join("reload")
+fn frontend_reload_path(workspace_root: &Path, frontend_path: Option<&Path>) -> PathBuf {
+    let frontend_root = frontend_path.unwrap_or_else(|| Path::new("app"));
+    let frontend_root = if frontend_root.is_absolute() {
+        frontend_root.to_path_buf()
+    } else {
+        workspace_root.join(frontend_root)
+    };
+    frontend_root.join(".sunscreen").join("reload")
 }
 
-fn notify_frontend(workspace_root: &Path) -> Option<PathBuf> {
-    let app_dir = workspace_root.join("app");
-    if !app_dir.is_dir() {
-        return None;
+fn notify_frontend(
+    workspace_root: &Path,
+    frontend_path: Option<&Path>,
+) -> Result<Option<PathBuf>, io::Error> {
+    let path = frontend_reload_path(workspace_root, frontend_path);
+    let Some(frontend_dir) = path.parent().and_then(Path::parent) else {
+        return Ok(None);
+    };
+    if !frontend_dir.is_dir() {
+        return Ok(None);
     }
-    let path = frontend_reload_path(workspace_root);
-    let parent = path.parent()?;
-    std::fs::create_dir_all(parent).ok()?;
+    let Some(parent) = path.parent() else {
+        return Ok(None);
+    };
+    std::fs::create_dir_all(parent)?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().to_string())
         .unwrap_or_else(|_| "0".into());
-    std::fs::write(&path, format!("{timestamp}\n")).ok()?;
-    Some(path)
+    std::fs::write(&path, format!("{timestamp}\n"))?;
+    Ok(Some(path))
 }

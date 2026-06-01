@@ -244,6 +244,7 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
         PipelineOptions {
             run_codama: !args.no_codama,
             notify_frontend: !args.no_frontend,
+            frontend_path: ws.config.workspace.frontend_path.clone().map(PathBuf::from),
         },
     );
 
@@ -312,6 +313,7 @@ fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
             PipelineOptions {
                 run_codama: !args.no_codama,
                 notify_frontend: true,
+                frontend_path: ws.config.workspace.frontend_path.clone().map(PathBuf::from),
             },
         )
         .map_err(|err| map_pipeline_err(err, "sunscreen chain build"))?;
@@ -454,7 +456,12 @@ fn map_pipeline_err(err: PipelineError, command: &str) -> SunscreenError {
         let (tool, install_hint) = match err.step {
             PipelineStep::AnchorBuild => ("anchor", "install Anchor"),
             PipelineStep::CodamaRun => ("pnpm", "install pnpm before running Codama"),
-            PipelineStep::FrontendNotify => ("frontend notify", "check frontend reload path"),
+            PipelineStep::FrontendNotify => {
+                return SunscreenError::Other(anyhow::anyhow!(
+                    "notify frontend reload sentinel: {}",
+                    err.source
+                ));
+            }
         };
         SunscreenError::ToolchainMissing(format!(
             "{tool} not found on PATH; {install_hint} before running `{command}`"

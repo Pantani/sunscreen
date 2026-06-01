@@ -6,13 +6,16 @@
 //!
 //! At render time the crate is seeded with only the two markers that exist
 //! up front: `segment=dispatch` (inside `#[program] mod {}`) and
-//! `segment=instructions` (in `instructions/mod.rs`). The other four
-//! segments (`accounts`, `events`, `errors`, `state`) are added lazily by
-//! the subsequent scaffolders (`instruction`, `account`, `event`, `error`)
-//! when the user first creates one — see `ensure_lib_mod_decl` in
-//! `src/cli/scaffold.rs`. This keeps the freshly scaffolded crate
-//! `cargo check`-clean (no `mod` declarations pointing at non-existent
-//! files).
+//! `segment=instructions` (in `instructions/mod.rs`). The remaining
+//! segments — `segment=accounts` in `state/mod.rs`, `segment=events` in
+//! `events.rs`, and `segment=error_variants` in `errors.rs` — are added
+//! lazily by the `account`, `event`, and `error` scaffolders when the user
+//! first creates one. Each of those scaffolders also calls
+//! `ensure_lib_mod_decl` (`src/cli/scaffold.rs`) to inject the matching
+//! `pub mod ...;` declaration in `lib.rs` on the same run. This keeps the
+//! freshly scaffolded crate `cargo check`-clean (no `mod` declarations
+//! pointing at non-existent files) and matches the marker sites enumerated
+//! by `chain doctor`.
 //!
 //! Path placeholders mirror the workspace renderer:
 //!

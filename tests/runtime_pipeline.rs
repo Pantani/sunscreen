@@ -177,14 +177,8 @@ fn build_pipeline_notifies_scaffolded_frontend_after_codama_success() {
         .expect("frontend notify event");
     assert_eq!(notify.event, "frontend_notified");
     let expected_path = format!("{}/app/.sunscreen/reload", root.display()).replace('\\', "/");
-    assert_eq!(
-        notify.command,
-        [
-            "sunscreen-internal",
-            "frontend-notify",
-            expected_path.as_str()
-        ]
-    );
+    assert!(notify.command.is_empty());
+    assert!(notify.to_json().get("command").is_none());
     assert_eq!(
         notify
             .to_json()
@@ -214,6 +208,32 @@ fn build_pipeline_notifies_configured_frontend_path() {
     assert!(report.success());
     assert!(root.join("web/.sunscreen/reload").exists());
     assert!(!root.join("app/.sunscreen/reload").exists());
+}
+
+#[test]
+fn build_pipeline_rejects_absolute_frontend_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("workspace");
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&root).expect("create workspace dir");
+    std::fs::create_dir_all(&outside).expect("create outside frontend dir");
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
+
+    let err = BuildPipeline::new(&root)
+        .run(
+            &runner,
+            PipelineOptions {
+                frontend_path: Some(outside.clone()),
+                ..PipelineOptions::default()
+            },
+        )
+        .expect_err("absolute frontend path should be rejected");
+
+    assert_eq!(err.step, PipelineStep::FrontendNotify);
+    assert!(err
+        .to_string()
+        .contains("workspace.frontend_path must be relative"));
+    assert!(!outside.join(".sunscreen/reload").exists());
 }
 
 #[test]

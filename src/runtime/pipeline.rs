@@ -7,14 +7,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::render_event_path;
 use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
-/// One subprocess-backed step in the build pipeline.
+/// One step in the build pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStep {
     /// `anchor build`
     AnchorBuild,
     /// `pnpm exec codama run`
     CodamaRun,
-    /// Notify the frontend dev server that generated clients changed.
+    /// Write the frontend reload sentinel after generated clients change.
     FrontendNotify,
 }
 
@@ -29,21 +29,17 @@ impl PipelineStep {
         }
     }
 
-    fn command(self, cwd: &Path, path: Option<&Path>) -> CommandSpec {
+    fn command(self, cwd: &Path) -> Option<CommandSpec> {
         match self {
-            Self::AnchorBuild => CommandSpec::new("anchor").arg("build").cwd(cwd),
-            Self::CodamaRun => CommandSpec::new("pnpm")
-                .arg("exec")
-                .arg("codama")
-                .arg("run")
-                .cwd(cwd),
-            Self::FrontendNotify => CommandSpec::new("sunscreen-internal")
-                .arg("frontend-notify")
-                .arg(
-                    path.unwrap_or_else(|| Path::new("<unresolved>"))
-                        .as_os_str(),
-                )
-                .cwd(cwd),
+            Self::AnchorBuild => Some(CommandSpec::new("anchor").arg("build").cwd(cwd)),
+            Self::CodamaRun => Some(
+                CommandSpec::new("pnpm")
+                    .arg("exec")
+                    .arg("codama")
+                    .arg("run")
+                    .cwd(cwd),
+            ),
+            Self::FrontendNotify => None,
         }
     }
 }
@@ -76,7 +72,7 @@ pub struct PipelineEvent {
     pub event: &'static str,
     /// Pipeline step that produced the event.
     pub step: PipelineStep,
-    /// Full command argv.
+    /// Full command argv for subprocess-backed events.
     pub command: Vec<String>,
     /// Working directory for the command.
     pub cwd: String,
@@ -130,11 +126,11 @@ impl PipelineEvent {
         }
     }
 
-    fn frontend_notified(command: &CommandSpec, cwd: &Path, path: &Path) -> Self {
+    fn frontend_notified(cwd: &Path, path: &Path) -> Self {
         Self {
             event: "frontend_notified",
             step: PipelineStep::FrontendNotify,
-            command: command.display_argv(),
+            command: Vec::new(),
             cwd: render_event_path(cwd),
             status: Some("ok".into()),
             exit_code: Some(0),
@@ -151,10 +147,12 @@ impl PipelineEvent {
         let mut payload = serde_json::json!({
             "event": self.event,
             "step": self.step.as_str(),
-            "command": self.command,
             "cwd": self.cwd,
         });
         if let serde_json::Value::Object(obj) = &mut payload {
+            if !self.command.is_empty() {
+                obj.insert("command".into(), serde_json::json!(self.command));
+            }
             if let Some(status) = &self.status {
                 obj.insert("status".into(), serde_json::json!(status));
             }
@@ -244,7 +242,9 @@ impl BuildPipeline {
         }
 
         for step in steps {
-            let command = step.command(&self.workspace_root, None);
+            let command = step
+                .command(&self.workspace_root)
+                .expect("subprocess pipeline step must have a command");
             events.push(PipelineEvent::started(step, &command, &self.workspace_root));
             let output = runner
                 .run(command.clone())
@@ -266,10 +266,7 @@ impl BuildPipeline {
         if options.run_codama && options.notify_frontend {
             match notify_frontend(&self.workspace_root, options.frontend_path.as_deref()) {
                 Ok(Some(path)) => {
-                    let command =
-                        PipelineStep::FrontendNotify.command(&self.workspace_root, Some(&path));
                     events.push(PipelineEvent::frontend_notified(
-                        &command,
                         &self.workspace_root,
                         &path,
                     ));
@@ -291,21 +288,28 @@ impl BuildPipeline {
     }
 }
 
-fn frontend_reload_path(workspace_root: &Path, frontend_path: Option<&Path>) -> PathBuf {
+fn frontend_reload_path(
+    workspace_root: &Path,
+    frontend_path: Option<&Path>,
+) -> Result<PathBuf, io::Error> {
     let frontend_root = frontend_path.unwrap_or_else(|| Path::new("app"));
-    let frontend_root = if frontend_root.is_absolute() {
-        frontend_root.to_path_buf()
-    } else {
-        workspace_root.join(frontend_root)
-    };
-    frontend_root.join(".sunscreen").join("reload")
+    if frontend_root.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "workspace.frontend_path must be relative to the workspace root",
+        ));
+    }
+    Ok(workspace_root
+        .join(frontend_root)
+        .join(".sunscreen")
+        .join("reload"))
 }
 
 fn notify_frontend(
     workspace_root: &Path,
     frontend_path: Option<&Path>,
 ) -> Result<Option<PathBuf>, io::Error> {
-    let path = frontend_reload_path(workspace_root, frontend_path);
+    let path = frontend_reload_path(workspace_root, frontend_path)?;
     let Some(frontend_dir) = path.parent().and_then(Path::parent) else {
         return Ok(None);
     };

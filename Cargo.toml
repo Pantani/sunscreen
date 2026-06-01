@@ -34,6 +34,26 @@ path = "tests/golden/render_instruction.rs"
 name = "render_program"
 path = "tests/golden/render_program.rs"
 
+[[test]]
+name = "render_account"
+path = "tests/golden/render_account.rs"
+
+[[test]]
+name = "render_event"
+path = "tests/golden/render_event.rs"
+
+[[test]]
+name = "render_error"
+path = "tests/golden/render_error.rs"
+
+[[test]]
+name = "render_instruction_matrix"
+path = "tests/golden/render_instruction_matrix.rs"
+
+[[test]]
+name = "render_program_matrix"
+path = "tests/golden/render_program_matrix.rs"
+
 [[bench]]
 name = "cold_start"
 path = "benches/cold_start.rs"

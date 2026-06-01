@@ -1,0 +1,11 @@
+---
+source: tests/golden/render_account.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct Marker {
+}
+// === sunscreen:auto-generated:end segment=file ===

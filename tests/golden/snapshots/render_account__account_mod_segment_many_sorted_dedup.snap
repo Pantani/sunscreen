@@ -1,0 +1,12 @@
+---
+source: tests/golden/render_account.rs
+expression: out
+---
+pub mod audit_log;
+pub use audit_log::*;
+pub mod treasury;
+pub use treasury::*;
+pub mod user_profile;
+pub use user_profile::*;
+pub mod vault;
+pub use vault::*;

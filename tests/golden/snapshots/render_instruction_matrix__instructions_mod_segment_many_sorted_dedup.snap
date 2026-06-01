@@ -1,0 +1,12 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+pub mod close;
+pub use close::*;
+pub mod deposit;
+pub use deposit::*;
+pub mod initialize;
+pub use initialize::*;
+pub mod withdraw;
+pub use withdraw::*;

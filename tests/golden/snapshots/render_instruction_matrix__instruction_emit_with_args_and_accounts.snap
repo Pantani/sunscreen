@@ -1,0 +1,29 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::Deposited;
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct Deposit<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    #[account(mut)]
+    pub vault: AccountInfo<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<Deposit>,
+    amount: u64,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &amount;
+    emit!(Deposited {});
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

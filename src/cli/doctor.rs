@@ -40,7 +40,24 @@ pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> a
     let reports = detect_all(&runner, &specs, &cfg.toolchain.required);
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&reports)?);
+        // Stable machine-readable schema:
+        //   {
+        //     "tools": [ ToolReport, ... ],         // full per-tool detail
+        //     "available": { "<name>": bool, ... }  // flat skip-helper map
+        //   }
+        // The flat `available` map is what downstream integration tests
+        // consume to decide whether to skip Anchor / codama / surfpool
+        // suites. The per-tool reports also each carry an `available`
+        // boolean so single-tool consumers don't need the top-level map.
+        let available: std::collections::BTreeMap<&str, bool> = reports
+            .iter()
+            .map(|r| (r.name.as_str(), r.available))
+            .collect();
+        let envelope = serde_json::json!({
+            "tools": &reports,
+            "available": available,
+        });
+        println!("{}", serde_json::to_string_pretty(&envelope)?);
     } else {
         print_table(&reports);
     }

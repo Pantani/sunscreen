@@ -1,0 +1,24 @@
+---
+source: tests/golden/render_instruction_matrix.rs
+expression: out
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct InitUserRecord<'info> {
+    #[account(mut, seeds = [b"record", user.key().as_ref(), &epoch.to_le_bytes()], bump)]
+    pub record: AccountInfo<'info>,
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<InitUserRecord>,
+) -> Result<()> {
+    let _ = ctx;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

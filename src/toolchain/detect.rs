@@ -66,10 +66,18 @@ pub enum Status {
 }
 
 /// Per-tool detection report.
+///
+/// `available` is a coarse boolean intended for downstream skip-logic
+/// (e.g. integration tests that need `anchor build` or `codama`): it is
+/// `true` iff the binary was found on `$PATH` *and* the probe yielded a
+/// usable version at or above the configured minimum. Tools whose
+/// version could not be parsed are treated as unavailable for skip
+/// purposes even though `found` is `true`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolReport {
     pub name: String,
     pub found: bool,
+    pub available: bool,
     pub path: Option<PathBuf>,
     #[serde(serialize_with = "ser_version")]
     pub version: Option<Version>,
@@ -77,6 +85,16 @@ pub struct ToolReport {
     #[serde(serialize_with = "ser_version")]
     pub min_version: Option<Version>,
     pub status: Status,
+}
+
+impl ToolReport {
+    /// Returns true when the tool is on `$PATH` and meets the minimum
+    /// version requirement (or has no minimum). Convenient for callers
+    /// that just want a yes/no.
+    #[must_use]
+    pub fn is_available(&self) -> bool {
+        self.available
+    }
 }
 
 fn ser_version<S: Serializer>(v: &Option<Version>, s: S) -> Result<S::Ok, S::Error> {
@@ -127,6 +145,7 @@ fn probe_one<R: CommandRunner>(runner: &R, spec: &ToolSpec, min: Option<Version>
         return ToolReport {
             name: spec.name.to_string(),
             found: false,
+            available: false,
             path: None,
             version: None,
             required: spec.required,
@@ -146,15 +165,77 @@ fn probe_one<R: CommandRunner>(runner: &R, spec: &ToolSpec, min: Option<Version>
         (Some(_), _) => Status::Ok,
     };
 
+    let available = matches!(status, Status::Ok);
+
     ToolReport {
         name: spec.name.to_string(),
         found: true,
+        available,
         path: Some(path),
         version,
         required: spec.required,
         min_version: min,
         status,
     }
+}
+
+/// Probe a single tool by registry name. Returns `None` when `name`
+/// does not match any known [`ToolSpec`].
+#[must_use]
+pub fn detect_one<R: CommandRunner>(
+    runner: &R,
+    name: &str,
+    overrides: &BTreeMap<String, String>,
+) -> Option<ToolReport> {
+    let specs = super::registry::known();
+    let spec = specs.iter().find(|s| s.name == name)?;
+    let min = overrides
+        .get(spec.name)
+        .and_then(|s| Version::parse(s).ok())
+        .or_else(|| spec.default_min.and_then(|s| Version::parse(s).ok()));
+    Some(probe_one(runner, spec, min))
+}
+
+/// Convenience: is `name` available on the current `$PATH` and meeting
+/// its minimum version? Uses [`RealRunner`] with no overrides.
+///
+/// Intended for integration tests that need to skip when an external
+/// toolchain dependency is absent (e.g. `anchor build`, `codama`).
+#[must_use]
+pub fn is_available(name: &str) -> bool {
+    detect_one(&RealRunner, name, &BTreeMap::new())
+        .map(|r| r.is_available())
+        .unwrap_or(false)
+}
+
+/// Shorthand: `anchor` available?
+#[must_use]
+pub fn detect_anchor() -> bool {
+    is_available("anchor")
+}
+
+/// Shorthand: `codama` available?
+#[must_use]
+pub fn detect_codama() -> bool {
+    is_available("codama")
+}
+
+/// Shorthand: `solana` available?
+#[must_use]
+pub fn detect_solana() -> bool {
+    is_available("solana")
+}
+
+/// Shorthand: `surfpool` available?
+#[must_use]
+pub fn detect_surfpool() -> bool {
+    is_available("surfpool")
+}
+
+/// Shorthand: `rustfmt` available?
+#[must_use]
+pub fn detect_rustfmt() -> bool {
+    is_available("rustfmt")
 }
 
 fn parse_version(haystack: &str, pattern: &str) -> Option<Version> {
@@ -207,6 +288,10 @@ mod tests {
         responses.insert("pnpm".into(), "9.4.0\n".into());
         responses.insert("codama".into(), "0.1.0\n".into());
         responses.insert("surfpool".into(), "0.2.0\n".into());
+        responses.insert(
+            "rustfmt".into(),
+            "rustfmt 1.7.0-stable (abc 2024-01-01)\n".into(),
+        );
         MockRunner { responses, paths }
     }
 
@@ -283,6 +368,63 @@ mod tests {
         let codama = reports.iter().find(|r| r.name == "codama").unwrap();
         assert_eq!(codama.status, Status::MissingOptional);
         assert!(!any_required_failed(&reports));
+    }
+
+    #[test]
+    fn test_report_available_flag_when_present() {
+        let runner = all_ok_runner();
+        let reports = detect_all(&runner, &specs(), &BTreeMap::new());
+        for r in &reports {
+            assert!(
+                r.available,
+                "tool {} should be available (status={:?})",
+                r.name, r.status
+            );
+            assert!(r.version.is_some(), "tool {} should have version", r.name);
+        }
+    }
+
+    #[test]
+    fn test_report_available_false_when_missing() {
+        let mut runner = all_ok_runner();
+        runner.paths.remove("anchor");
+        runner.responses.remove("anchor");
+        runner.paths.remove("codama");
+        runner.responses.remove("codama");
+        let reports = detect_all(&runner, &specs(), &BTreeMap::new());
+        let anchor = reports.iter().find(|r| r.name == "anchor").unwrap();
+        let codama = reports.iter().find(|r| r.name == "codama").unwrap();
+        assert!(!anchor.available, "missing anchor must be unavailable");
+        assert!(!codama.available, "missing codama must be unavailable");
+    }
+
+    #[test]
+    fn test_report_available_false_when_below_min() {
+        let mut runner = all_ok_runner();
+        runner
+            .responses
+            .insert("rustc".into(), "rustc 1.60.0 (abc 2022-01-01)\n".into());
+        let reports = detect_all(&runner, &specs(), &BTreeMap::new());
+        let rustc = reports.iter().find(|r| r.name == "rustc").unwrap();
+        assert!(
+            !rustc.available,
+            "below-min rustc must not report available=true"
+        );
+    }
+
+    #[test]
+    fn test_detect_one_unknown_returns_none() {
+        let runner = all_ok_runner();
+        assert!(detect_one(&runner, "nonexistent-tool", &BTreeMap::new()).is_none());
+    }
+
+    #[test]
+    fn test_detect_one_returns_single_report() {
+        let runner = all_ok_runner();
+        let r = detect_one(&runner, "anchor", &BTreeMap::new()).expect("anchor spec exists");
+        assert_eq!(r.name, "anchor");
+        assert!(r.available);
+        assert!(r.version.is_some());
     }
 
     #[test]

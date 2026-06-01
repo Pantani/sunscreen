@@ -5,7 +5,15 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::time::Duration;
 use std::time::Instant;
+
+#[cfg(unix)]
+use nix::sys::signal::{killpg, Signal};
+#[cfg(unix)]
+use nix::unistd::Pid;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 /// A command plus execution context.
 #[derive(Debug, Clone)]
@@ -89,9 +97,26 @@ impl CommandOutput {
 pub struct ProcessError {
     program: OsString,
     source: io::Error,
+    kind: ProcessErrorKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessErrorKind {
+    Subprocess,
+    Io,
 }
 
 impl ProcessError {
+    /// Create a process error from an I/O failure.
+    #[must_use]
+    pub fn from_io(program: impl Into<OsString>, source: io::Error) -> Self {
+        Self {
+            program: program.into(),
+            source,
+            kind: ProcessErrorKind::Io,
+        }
+    }
+
     /// True when the executable could not be found.
     #[must_use]
     pub fn is_not_found(&self) -> bool {
@@ -108,18 +133,27 @@ impl ProcessError {
         Self {
             program: program.to_os_string(),
             source,
+            kind: ProcessErrorKind::Subprocess,
         }
     }
 }
 
 impl fmt::Display for ProcessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "failed to run {}: {}",
-            self.program.to_string_lossy(),
-            self.source
-        )
+        match self.kind {
+            ProcessErrorKind::Subprocess => write!(
+                f,
+                "failed to run {}: {}",
+                self.program.to_string_lossy(),
+                self.source
+            ),
+            ProcessErrorKind::Io => write!(
+                f,
+                "{} I/O error: {}",
+                self.program.to_string_lossy(),
+                self.source
+            ),
+        }
     }
 }
 
@@ -191,6 +225,10 @@ impl ProcessSpawner for SubprocessRunner {
         for (key, value) in &spec.env {
             command.env(key, value);
         }
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
         let child = command
             .spawn()
             .map_err(|e| ProcessError::new(&spec.program, e))?;
@@ -215,8 +253,22 @@ impl ManagedProcess for SubprocessChild {
 
     fn stop(&mut self) -> io::Result<()> {
         if self.try_wait()?.is_none() {
-            self.child.kill()?;
-            let _ = self.child.wait()?;
+            #[cfg(unix)]
+            {
+                let pgid = Pid::from_raw(self.child.id() as i32);
+                let _ = killpg(pgid, Signal::SIGTERM);
+                std::thread::sleep(Duration::from_millis(50));
+                if self.try_wait()?.is_none() {
+                    let _ = killpg(pgid, Signal::SIGKILL);
+                    let _ = self.child.wait()?;
+                }
+                return Ok(());
+            }
+            #[cfg(not(unix))]
+            {
+                self.child.kill()?;
+                let _ = self.child.wait()?;
+            }
         }
         Ok(())
     }

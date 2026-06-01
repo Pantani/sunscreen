@@ -48,19 +48,9 @@
 //!   anyway guards against future template drift.
 //! - Covers each `scaffold` subcommand (account / event / error /
 //!   program) applied to each frontend variant.
-//! - Covers `scaffold instruction` only when accounts are supplied
-//!   (see KNOWN-LIMITATION below).
+//! - Covers `scaffold instruction` with and without explicit accounts.
 //! - Covers cumulative scenarios (all scaffolders applied to the same
 //!   workspace) and idempotent re-runs.
-//!
-//! ## KNOWN-LIMITATION
-//!
-//! `scaffold instruction <name> --args ...` without `--accounts ...`
-//! emits an empty `pub struct <Name><'info> {}`, which rustc rejects
-//! with `E0392: lifetime parameter 'info is never used`. The
-//! `compile_scaffold_instruction_without_accounts_FAILS` test is gated
-//! with `#[ignore]` and documents this gap so a future scaffolder fix
-//! can simply remove the gate.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -376,8 +366,7 @@ fn compile_scaffold_program_frontend_vite() {
 }
 
 // ---------------------------------------------------------------------
-// 6. `scaffold instruction` — only the with-accounts shape compiles
-//    today. See KNOWN-LIMITATION at the top of this file.
+// 6. `scaffold instruction` with and without explicit accounts.
 // ---------------------------------------------------------------------
 
 fn scaffold_instruction_with_accounts_case(ws_name: &str, frontend: &str) {
@@ -416,8 +405,7 @@ fn compile_scaffold_instruction_with_accounts_vite() {
 }
 
 #[test]
-#[ignore = "scaffolder gap: empty Accounts struct yields E0392 (unused 'info lifetime); enable once scaffolder drops the lifetime when no fields are emitted"]
-fn compile_scaffold_instruction_without_accounts_fails() {
+fn compile_scaffold_instruction_without_accounts() {
     let (_tmp, ws) = fresh_workspace("ix_bare", "none");
     let prog = discover_program(&ws);
     scaffold(

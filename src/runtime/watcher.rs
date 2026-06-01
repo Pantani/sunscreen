@@ -149,7 +149,8 @@ impl WatchBuildLoop {
         let Some(batch) = self.debouncer.flush_due(now) else {
             return Ok(None);
         };
-        let pipeline = BuildPipeline::new(&self.workspace_root).run(runner, self.options)?;
+        let pipeline =
+            BuildPipeline::new(&self.workspace_root).run(runner, self.options.clone())?;
         Ok(Some(WatchBuildReport { batch, pipeline }))
     }
 

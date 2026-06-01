@@ -1,73 +1,77 @@
 ---
 name: sunscreen-orchestrator
-description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar/continuar/expandir/corrigir/refatorar/atualizar/revisar qualquer parte do sunscreen CLI — incluindo "começar implementação", "phase 0", "adicionar scaffold X", "rodar de novo", "corrigir doctor", "atualizar config", ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer e qa-integrator em paralelo via TeamCreate quando possível, ou via Agent calls com run_in_background. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
+description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 2", "Phase 3", "Phase 4", "chain serve", "chain build", "generate", "codama", "scaffold", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
 ---
 
 # Sunscreen Orchestrator
 
-Coordena a implementação do CLI `sunscreen` (Rust, inspirado em Ignite CLI, alvo: ecossistema Solana). Fonte de verdade de design: `ADR-0001-solis-cli.md` (substituir "Go"→"Rust" e "solis"→"sunscreen"). Roadmap tático: `IMPLEMENTATION-KICKOFF.md`.
+Coordena a implementação do CLI `sunscreen` (Rust, inspirado em Ignite CLI, alvo: ecossistema Solana). Fonte de verdade viva: `ROADMAP.md`. `docs/adr/ADR-0001-solis-cli.md` e `IMPLEMENTATION-KICKOFF.md` são contexto histórico; preserve as decisões estratégicas, mas traduza Go/solis para Rust/sunscreen.
 
 ## Phase 0: Contexto
 
-Antes de qualquer ação, determine o modo de execução:
+Antes de qualquer ação:
 
-1. `ls _workspace/ 2>/dev/null` — existe?
-2. Se **não existe** → modo **inicial**. Crie `_workspace/`. Vá para Phase 1.
-3. Se **existe** + usuário pediu mudança específica (ex: "corrige doctor", "adiciona campo X") → modo **parcial**. Releia `_workspace/done_*.md` e `_workspace/qa_final.md`. Acione só os agentes afetados.
-4. Se **existe** + usuário pediu reinício completo → modo **novo**. Mova `_workspace/` para `_workspace_prev_<timestamp>/` (timestamp passado via args, não use Date.now). Vá para Phase 1.
+1. Releia `CLAUDE.md`, `AGENTS.md`, `ROADMAP.md` e `git status`.
+2. Trate `ROADMAP.md` como fonte viva de escopo/status.
+3. Se houver drift entre harness, AGENTS/CLAUDE e roadmap, sincronize no mesmo PR.
+4. Preserve mudanças locais do usuário.
 
-## Phase 1: Plano
+## Estado Atual
 
-Identifique o escopo dentro do roadmap (Phase 0 Week 1? Week 2? Scaffold de instrução? Plugin system?). Atualmente, escopo padrão para primeira execução = **Phase 0 Week 1 completa** (cli skeleton + config + doctor + templates + golden infra).
+- Phase 0, Phase 1 e Phase 2 estão concluídas.
+- Phase 2 não tem carry-overs conhecidos: marker hardening, no-accounts instruction compile test e R5 polish estão fechados.
+- Phase 3 está concluída neste PR: `chain build`, `chain serve`, watcher, runtime supervisionado, fallback Surfpool→test-validator, frontend notify, serve model e teardown Ctrl-C.
+- Phase 4 (Codegen & Frontend Hooks) é a próxima fase.
 
-## Phase 2: Execução paralela (modo hybrid)
+## Execução
 
-**Modo de execução: hybrid.**
+**Modo de execução: hybrid.** Use subagentes somente quando o ambiente disponibilizar essa capacidade; sem subagentes, execute localmente seguindo os donos abaixo.
 
-### Stage A — Fan-out paralelo (Agent calls, run_in_background)
+### Donos por área
 
-Dispare em paralelo, **um único bloco com 4 Agent calls simultâneos**:
-- `cli-architect` (subagent_type: cli-architect, model: opus)
-- `config-engineer` (subagent_type: config-engineer, model: opus)
-- `toolchain-detector` (subagent_type: toolchain-detector, model: opus)
-- `template-engineer` (subagent_type: template-engineer, model: opus)
+- `cli-architect`: `src/cli/**`, contratos de comando, exit codes.
+- `config-engineer`: `src/config/**`, schemas, migrações.
+- `toolchain-detector`: `src/toolchain/**`, `sunscreen doctor`.
+- `template-engineer`: `src/templates/**`, `templates/**`, golden tests e marker templates.
+- `docs-writer`: ADRs, `ROADMAP.md`, docs de referência.
+- `qa-integrator`: verificação cruzada, fmt/clippy/build/test e comandos do binário.
 
-Cada um recebe: escopo do round, instrução de coordenação via `_workspace/` (markers), e a referência ao ADR/kickoff.
+## Checklists
 
-### Stage B — Barreira
+### Phase 2 closure
 
-Aguarde os 4 sinalizarem (`_workspace/done_<agent>.md`). Resolva conflitos no `Cargo.toml` se houver (merge manual de seções `[dependencies]`).
+- `tests/rustfmt_roundtrip.rs` preserva todos os segmentos documentados.
+- `chain doctor --fix-markers` repara `dispatch` e `error_variants` apenas em casos seguros.
+- `tests/compile_generated.rs` cobre 25 cenários de workspaces gerados.
+- `tests/integration_anchor.rs` contém 5 cenários reais ignorados por padrão com skip de toolchain.
 
-### Stage C — QA integrador
+### Phase 3 closure
 
-Dispare `qa-integrator` (model: opus). Se reportar defeitos em `_workspace/qa_report_*.md`:
-- Para cada defeito, re-dispare o agente responsável com o report como input.
-- Loop até `qa_final.md` indicar green ou após 3 rounds (escalar ao usuário).
+- `chain build --headless` emite NDJSON e roda build → Codama.
+- Watcher faz debounce e aciona pipeline com paths relativos.
+- `chain serve` lança runtime Surfpool/test-validator com fallback quando Surfpool implícito está ausente.
+- Frontend notify toca `app/.sunscreen/reload`.
+- `src/tui/serve_model.rs` cobre painéis validator/build/faucet/frontend/logs e 80x24.
+- Ctrl-C para process group Unix com fallback SIGKILL.
 
-## Phase 3: Relatório
+### Phase 4 opening
+
+1. Começar por `src/codegen/codama.rs` e `codama_config.rs`, reutilizando `CommandSpec`/`ProcessRunner`.
+2. Adicionar `sunscreen generate clients` e `generate idl` antes de hooks de frontend.
+3. Manter Codama como subprocesso fino (`pnpm exec codama run`) até a API exigir wrapper mais rico.
+4. Só depois adicionar `generate frontend-hooks`, com compile test em projeto Next.js/Vite gerado.
+
+## Relatório
 
 Resuma ao usuário:
-- Arquivos criados (lista compacta agrupada por módulo)
-- `cargo build` status
-- `cargo test` resumo (n passed)
-- Comandos verificados manualmente
-- Próximo passo sugerido do roadmap
 
-## Data Protocol
-
-- **Workspace**: `_workspace/` na raiz do projeto.
-- **Sinais**: `_workspace/done_<agent>.md` quando agente termina.
-- **QA**: `_workspace/qa_report_<round>.md`, `_workspace/qa_final.md`.
-- **Conflitos de Cargo.toml**: cli-architect é o owner, demais agentes propõem deps via `_workspace/deps_<agent>.toml`.
+- Arquivos criados/alterados agrupados por módulo.
+- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`, `cargo test` status.
+- Pendências remanescentes do roadmap.
+- Próximo passo sugerido.
 
 ## Error Handling
 
-- Agente falha → 1 retry com error message como input → se falhar de novo, marcar `_workspace/failed_<agent>.md` e seguir sem ele (reportar ao usuário).
-- QA falha persistente (3 rounds) → escalar.
-- Conflito de design entre agentes → orquestrador decide; registra em `_workspace/decisions.md`.
-
-## Test Scenarios
-
-**Normal**: usuário diz "implementa Phase 0 Week 1" → 4 paralelos + QA + report. Resultado: `cargo build` passa, `sunscreen --help`, `sunscreen version`, `sunscreen doctor --json` funcionam.
-
-**Erro**: `toolchain-detector` falha porque `Config::toolchain` não existe ainda → QA detecta no round 1 → SendMessage para `config-engineer` adicionar campo → re-run toolchain-detector → green.
+- Etapa falha → 1 retry com a mensagem de erro.
+- Repetiu → reporte bloqueio com comando, saída e arquivo provável.
+- Conflito de design → preserve alternativas no relatório e escolha o caminho que mantém `ROADMAP.md` coerente.

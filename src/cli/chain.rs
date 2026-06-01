@@ -4,18 +4,29 @@
 //! (`serve`, `build`, `deploy`) are stubs.
 
 use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand, ValueEnum};
 
-use crate::config::schema::{Config, Framework as CfgFramework, Frontend as CfgFrontend};
+use crate::config::schema::{
+    Config, Framework as CfgFramework, Frontend as CfgFrontend, RuntimeEngine,
+};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
 use crate::runtime::pipeline::{BuildPipeline, PipelineError, PipelineOptions, PipelineStep};
 use crate::runtime::serve::{HeadlessServeLoop, NotifyWatchSource, ServeLoopInput};
-use crate::runtime::subprocess::SubprocessRunner;
+use crate::runtime::subprocess::{ProcessSpawner, SubprocessRunner};
+use crate::runtime::supervisor::{RuntimeStartReport, RuntimeSupervisor, RuntimeSupervisorError};
+use crate::runtime::surfpool::SurfpoolRuntime;
+use crate::runtime::testvalidator::TestValidatorRuntime;
+use crate::runtime::validator::RuntimePorts;
 use crate::templates::{render_dispatch_segment, render_workspace, ArgSpec, InstructionDispatch};
 use crate::toolchain::preflight::{self, PreflightError};
+use crate::tui::serve_model::ServeModel;
 
 const ANCHOR_VERSION: &str = "0.30.1";
 const SOLANA_VERSION: &str = "1.18.18";
@@ -82,6 +93,24 @@ impl From<Frontend> for preflight::Frontend {
     }
 }
 
+/// Local validator runtime selector for `chain serve`.
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum RuntimeChoice {
+    /// Surfpool local runtime.
+    Surfpool,
+    /// Agave `solana-test-validator` fallback runtime.
+    TestValidator,
+}
+
+impl From<RuntimeEngine> for RuntimeChoice {
+    fn from(engine: RuntimeEngine) -> Self {
+        match engine {
+            RuntimeEngine::Surfpool => Self::Surfpool,
+            RuntimeEngine::TestValidator => Self::TestValidator,
+        }
+    }
+}
+
 /// Flags for `sunscreen chain new`.
 #[derive(Debug, Args)]
 pub struct NewArgs {
@@ -121,6 +150,13 @@ pub struct ServeArgs {
     /// Skip Codama client regeneration after a successful Anchor build.
     #[arg(long, default_value_t = false)]
     pub no_codama: bool,
+    /// Skip frontend reload notifications.
+    #[arg(long, default_value_t = false)]
+    pub no_frontend: bool,
+    /// Local runtime to launch. Defaults to `sunscreen.yml`; Surfpool falls
+    /// back to `solana-test-validator` when not explicitly requested.
+    #[arg(long, value_enum)]
+    pub runtime: Option<RuntimeChoice>,
     /// Debounce filesystem changes before running the build pipeline.
     #[arg(long, default_value_t = 150)]
     pub debounce_ms: u64,
@@ -146,10 +182,6 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
     use crate::workspace;
 
     let structured = json || args.headless;
-    if !structured {
-        eprintln!("chain serve: TUI mode TODO (Phase 3); use --headless for the watcher loop");
-        return Ok(0);
-    }
     if args.debounce_ms == 0 {
         return Err(SunscreenError::UserInput(
             "--debounce-ms must be greater than zero".into(),
@@ -158,39 +190,102 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
 
     let ws = workspace::find_root(None)?;
     let debounce = Duration::from_millis(args.debounce_ms);
-    emit_serve_event(serde_json::json!({
-        "event": "chain_serve_started",
-        "workspace": ws.root.display().to_string(),
-        "codama": !args.no_codama,
-        "debounce_ms": args.debounce_ms,
-    }));
+    let runtime_choice = args
+        .runtime
+        .unwrap_or_else(|| ws.config.runtime.engine.into());
+    let ports = runtime_ports(ws.config.runtime.port)?;
+    let runner = SubprocessRunner;
+    let mut runtime = start_runtime_with_fallback(
+        &ws.root,
+        runtime_choice,
+        args.runtime.is_some(),
+        ports,
+        &runner,
+    )?;
+    let runtime_report = runtime.report().clone();
+    let shutdown = install_ctrlc_flag()?;
 
-    let source = NotifyWatchSource::new(&ws.root)
-        .map_err(|err| SunscreenError::Other(anyhow::anyhow!("watch workspace: {err}")))?;
+    if !structured {
+        let model = ServeModel::new(runtime_report.runtime, !args.no_frontend);
+        println!("{}", model.render_text());
+    }
+
+    if structured {
+        emit_serve_event(serde_json::json!({
+            "event": "chain_serve_started",
+            "workspace": ws.root.display().to_string(),
+            "runtime": runtime_report.runtime,
+            "rpc_endpoint": runtime_report.rpc_endpoint,
+            "ws_endpoint": runtime_report.ws_endpoint,
+            "codama": !args.no_codama,
+            "frontend": !args.no_frontend,
+            "debounce_ms": args.debounce_ms,
+        }));
+
+        emit_serve_event(serde_json::json!({
+            "event": "runtime_started",
+            "runtime": runtime_report.runtime,
+            "pid": runtime_report.pid,
+            "rpc_endpoint": runtime_report.rpc_endpoint,
+            "ws_endpoint": runtime_report.ws_endpoint,
+        }));
+    }
+
+    let source = match NotifyWatchSource::new(&ws.root) {
+        Ok(source) => source,
+        Err(err) => {
+            let _ = runtime.stop();
+            return Err(SunscreenError::Other(anyhow::anyhow!(
+                "watch workspace: {err}"
+            )));
+        }
+    };
     let mut loop_ = HeadlessServeLoop::new(
         &ws.root,
         debounce,
         PipelineOptions {
             run_codama: !args.no_codama,
+            notify_frontend: !args.no_frontend,
+            frontend_path: ws.config.workspace.frontend_path.clone().map(PathBuf::from),
         },
     );
-    let runner = SubprocessRunner;
 
-    loop {
-        let input = match source
-            .recv_timeout(debounce)
-            .map_err(|err| SunscreenError::Other(anyhow::anyhow!("watch workspace: {err}")))?
-        {
+    while !shutdown.load(Ordering::SeqCst) {
+        let input = match source.recv_timeout(debounce) {
+            Ok(input) => input,
+            Err(err) => {
+                let _ = runtime.stop();
+                return Err(SunscreenError::Other(anyhow::anyhow!(
+                    "watch workspace: {err}"
+                )));
+            }
+        };
+        let input = match input {
             Some(event) => ServeLoopInput::NotifyEvent(event, Instant::now()),
             None => ServeLoopInput::Tick(Instant::now()),
         };
-        let events = loop_
-            .handle_input(input, &runner)
-            .map_err(|err| map_pipeline_err(err, "sunscreen chain serve"))?;
+        let events = match loop_.handle_input(input, &runner) {
+            Ok(events) => events,
+            Err(err) => {
+                let _ = runtime.stop();
+                return Err(map_pipeline_err(err, "sunscreen chain serve"));
+            }
+        };
         for event in events {
-            emit_serve_event(event);
+            if structured {
+                emit_serve_event(event);
+            }
         }
     }
+
+    runtime.stop().map_err(map_runtime_stop_err)?;
+    if structured {
+        emit_serve_event(serde_json::json!({
+            "event": "chain_serve_stopped",
+            "runtime": runtime_report.runtime,
+        }));
+    }
+    Ok(0)
 }
 
 fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
@@ -223,6 +318,8 @@ fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
             &SubprocessRunner,
             PipelineOptions {
                 run_codama: !args.no_codama,
+                notify_frontend: true,
+                frontend_path: ws.config.workspace.frontend_path.clone().map(PathBuf::from),
             },
         )
         .map_err(|err| map_pipeline_err(err, "sunscreen chain build"))?;
@@ -269,11 +366,117 @@ fn emit_serve_event(payload: serde_json::Value) {
     println!("{payload}");
 }
 
+fn runtime_ports(rpc_port: u16) -> Result<RuntimePorts, SunscreenError> {
+    let ws_port = rpc_port.checked_add(1).ok_or_else(|| {
+        SunscreenError::UserInput(
+            "runtime.port must be less than 65535 so a websocket port can be allocated".into(),
+        )
+    })?;
+    Ok(RuntimePorts::new(rpc_port, ws_port))
+}
+
+enum ManagedRuntime {
+    Surfpool {
+        supervisor: RuntimeSupervisor<SurfpoolRuntime>,
+        report: RuntimeStartReport,
+    },
+    TestValidator {
+        supervisor: RuntimeSupervisor<TestValidatorRuntime>,
+        report: RuntimeStartReport,
+    },
+}
+
+impl ManagedRuntime {
+    fn report(&self) -> &RuntimeStartReport {
+        match self {
+            Self::Surfpool { report, .. } | Self::TestValidator { report, .. } => report,
+        }
+    }
+
+    fn stop(&mut self) -> Result<(), RuntimeSupervisorError> {
+        match self {
+            Self::Surfpool { supervisor, .. } => supervisor.stop(),
+            Self::TestValidator { supervisor, .. } => supervisor.stop(),
+        }
+    }
+}
+
+fn start_runtime_with_fallback<S: ProcessSpawner>(
+    workspace_root: &Path,
+    choice: RuntimeChoice,
+    explicit: bool,
+    ports: RuntimePorts,
+    spawner: &S,
+) -> Result<ManagedRuntime, SunscreenError> {
+    match choice {
+        RuntimeChoice::Surfpool => {
+            let mut supervisor =
+                RuntimeSupervisor::new(SurfpoolRuntime::new(ports), workspace_root);
+            match supervisor.start(spawner) {
+                Ok(report) => Ok(ManagedRuntime::Surfpool { supervisor, report }),
+                Err(RuntimeSupervisorError::Start(err)) if err.is_not_found() && !explicit => {
+                    eprintln!(
+                        "warning: surfpool not found on PATH; falling back to solana-test-validator"
+                    );
+                    start_test_validator_runtime(workspace_root, ports, spawner)
+                }
+                Err(err) => Err(map_runtime_start_err(err, "surfpool")),
+            }
+        }
+        RuntimeChoice::TestValidator => {
+            start_test_validator_runtime(workspace_root, ports, spawner)
+        }
+    }
+}
+
+fn start_test_validator_runtime<S: ProcessSpawner>(
+    workspace_root: &Path,
+    ports: RuntimePorts,
+    spawner: &S,
+) -> Result<ManagedRuntime, SunscreenError> {
+    let mut supervisor = RuntimeSupervisor::new(TestValidatorRuntime::new(ports), workspace_root);
+    let report = supervisor
+        .start(spawner)
+        .map_err(|err| map_runtime_start_err(err, "solana-test-validator"))?;
+    Ok(ManagedRuntime::TestValidator { supervisor, report })
+}
+
+fn map_runtime_start_err(err: RuntimeSupervisorError, tool: &str) -> SunscreenError {
+    match err {
+        RuntimeSupervisorError::Start(source) if source.is_not_found() => {
+            SunscreenError::ToolchainMissing(format!(
+                "{tool} not found on PATH; install {tool} before running `sunscreen chain serve`"
+            ))
+        }
+        other => SunscreenError::Other(anyhow::anyhow!("start local runtime: {other}")),
+    }
+}
+
+fn map_runtime_stop_err(err: RuntimeSupervisorError) -> SunscreenError {
+    SunscreenError::Other(anyhow::anyhow!("stop local runtime: {err}"))
+}
+
+fn install_ctrlc_flag() -> Result<Arc<AtomicBool>, SunscreenError> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let handler_flag = Arc::clone(&flag);
+    ctrlc::set_handler(move || {
+        handler_flag.store(true, Ordering::SeqCst);
+    })
+    .map_err(|err| SunscreenError::Other(anyhow::anyhow!("install Ctrl-C handler: {err}")))?;
+    Ok(flag)
+}
+
 fn map_pipeline_err(err: PipelineError, command: &str) -> SunscreenError {
     if err.source.is_not_found() {
         let (tool, install_hint) = match err.step {
             PipelineStep::AnchorBuild => ("anchor", "install Anchor"),
             PipelineStep::CodamaRun => ("pnpm", "install pnpm before running Codama"),
+            PipelineStep::FrontendNotify => {
+                return SunscreenError::Other(anyhow::anyhow!(
+                    "notify frontend reload sentinel: {}",
+                    err.source
+                ));
+            }
         };
         SunscreenError::ToolchainMissing(format!(
             "{tool} not found on PATH; {install_hint} before running `{command}`"
@@ -1202,7 +1405,13 @@ fn insert_error_variants_marker_block(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::io;
+    use std::path::PathBuf;
+    use std::rc::Rc;
+
     use super::*;
+    use crate::runtime::subprocess::{CommandSpec, ManagedProcess, ProcessError};
 
     #[test]
     fn validate_name_accepts_basic() {
@@ -1274,5 +1483,112 @@ pub enum DemoError {
 pub enum DemoError {}
 "#;
         assert!(rewrap_error_variants_marker_block(single_line).is_none());
+    }
+
+    #[test]
+    fn runtime_ports_rejects_u16_overflow() {
+        let ports = runtime_ports(8899).expect("valid ports");
+        assert_eq!(ports.rpc, 8899);
+        assert_eq!(ports.ws, 8900);
+
+        let err = runtime_ports(u16::MAX).expect_err("65535 cannot allocate ws port");
+        assert_eq!(err.exit_code(), 4);
+    }
+
+    #[test]
+    fn runtime_start_falls_back_to_test_validator_when_surfpool_missing_and_implicit() {
+        let root = PathBuf::from("/tmp/sunscreen-workspace");
+        let killed = Rc::new(RefCell::new(false));
+        let spawner = RuntimeFakeSpawner {
+            calls: RefCell::new(Vec::new()),
+            killed: Rc::clone(&killed),
+            missing_surfpool: true,
+        };
+
+        let mut runtime = start_runtime_with_fallback(
+            &root,
+            RuntimeChoice::Surfpool,
+            false,
+            RuntimePorts::new(8899, 8900),
+            &spawner,
+        )
+        .expect("fallback runtime");
+
+        assert_eq!(runtime.report().runtime, "test-validator");
+        let calls = spawner.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].display_argv()[0], "surfpool");
+        assert_eq!(calls[1].display_argv()[0], "solana-test-validator");
+        drop(calls);
+        runtime.stop().expect("stop fallback runtime");
+        assert!(*killed.borrow());
+    }
+
+    #[test]
+    fn runtime_start_errors_when_explicit_surfpool_missing() {
+        let root = PathBuf::from("/tmp/sunscreen-workspace");
+        let spawner = RuntimeFakeSpawner {
+            calls: RefCell::new(Vec::new()),
+            killed: Rc::new(RefCell::new(false)),
+            missing_surfpool: true,
+        };
+
+        let err = match start_runtime_with_fallback(
+            &root,
+            RuntimeChoice::Surfpool,
+            true,
+            RuntimePorts::new(8899, 8900),
+            &spawner,
+        ) {
+            Ok(_) => panic!("explicit missing surfpool should fail"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.exit_code(), 2);
+        assert!(err.to_string().contains("surfpool not found"));
+        assert_eq!(spawner.calls.borrow().len(), 1);
+    }
+
+    struct RuntimeFakeSpawner {
+        calls: RefCell<Vec<CommandSpec>>,
+        killed: Rc<RefCell<bool>>,
+        missing_surfpool: bool,
+    }
+
+    impl ProcessSpawner for RuntimeFakeSpawner {
+        fn spawn(&self, spec: CommandSpec) -> Result<Box<dyn ManagedProcess>, ProcessError> {
+            let program = spec.display_argv()[0].clone();
+            self.calls.borrow_mut().push(spec);
+            if self.missing_surfpool && program == "surfpool" {
+                return Err(ProcessError::from_io(
+                    "surfpool",
+                    io::Error::new(io::ErrorKind::NotFound, "missing surfpool"),
+                ));
+            }
+            Ok(Box::new(RuntimeFakeProcess {
+                pid: 42,
+                killed: Rc::clone(&self.killed),
+            }))
+        }
+    }
+
+    struct RuntimeFakeProcess {
+        pid: u32,
+        killed: Rc<RefCell<bool>>,
+    }
+
+    impl ManagedProcess for RuntimeFakeProcess {
+        fn id(&self) -> u32 {
+            self.pid
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<i32>> {
+            Ok(None)
+        }
+
+        fn stop(&mut self) -> io::Result<()> {
+            *self.killed.borrow_mut() = true;
+            Ok(())
+        }
     }
 }

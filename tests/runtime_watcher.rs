@@ -72,6 +72,22 @@ fn watcher_ignores_generated_and_unrelated_paths() {
 }
 
 #[test]
+fn watcher_does_not_flush_due_batch_on_irrelevant_path() {
+    let start = Instant::now();
+    let mut watcher = WatchDebouncer::new(Duration::from_millis(100));
+
+    watcher.observe("programs/demo/src/lib.rs", start);
+    assert!(watcher
+        .observe("README.md", start + Duration::from_millis(100))
+        .is_none());
+
+    let batch = watcher
+        .flush_due(start + Duration::from_millis(100))
+        .expect("irrelevant path must not clear due batch");
+    assert_eq!(batch.paths, [PathBuf::from("programs/demo/src/lib.rs")]);
+}
+
+#[test]
 fn watcher_tracks_workspace_config_changes() {
     let start = Instant::now();
     let mut watcher = WatchDebouncer::new(Duration::from_millis(25));

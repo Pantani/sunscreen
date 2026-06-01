@@ -52,7 +52,7 @@ impl WatchDebouncer {
     pub fn observe(&mut self, path: impl AsRef<Path>, now: Instant) -> Option<WatchBatch> {
         let path = path.as_ref();
         if !is_pipeline_relevant(path) {
-            return self.flush_due(now);
+            return None;
         }
         self.pending.insert(normalize_path(path));
         self.deadline = Some(now + self.debounce);
@@ -69,13 +69,10 @@ impl WatchDebouncer {
         event: &NotifyEvent,
         now: Instant,
     ) -> Option<WatchBatch> {
-        let mut emitted = None;
         for path in &event.paths {
-            if let Some(batch) = self.observe(path, now) {
-                emitted = Some(batch);
-            }
+            self.observe(path, now);
         }
-        emitted.or_else(|| self.flush_due(now))
+        None
     }
 
     /// Emit the pending batch when the quiet period has elapsed.
@@ -137,13 +134,10 @@ impl WatchBuildLoop {
         event: &NotifyEvent,
         now: Instant,
     ) -> Option<WatchBatch> {
-        let mut emitted = None;
         for path in &event.paths {
-            if let Some(batch) = self.observe_path(path, now) {
-                emitted = Some(batch);
-            }
+            self.observe_path(path, now);
         }
-        emitted.or_else(|| self.debouncer.flush_due(now))
+        None
     }
 
     /// Run the build pipeline once a debounced batch is due.

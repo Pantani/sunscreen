@@ -110,3 +110,36 @@ fn headless_serve_loop_emits_json_when_debounced_event_runs_pipeline() {
     assert_eq!(calls[0].display_argv(), ["anchor", "build"]);
     assert_eq!(calls[1].display_argv(), ["pnpm", "exec", "codama", "run"]);
 }
+
+#[test]
+fn headless_serve_loop_flushes_due_batch_after_notify_event() {
+    let start = Instant::now();
+    let root = PathBuf::from("/tmp/sunscreen-workspace");
+    let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
+    let mut loop_ = HeadlessServeLoop::new(
+        &root,
+        Duration::from_millis(25),
+        PipelineOptions { run_codama: true },
+    );
+    let source_event =
+        Event::new(EventKind::Any).add_path(root.join("programs/demo/src/instructions/deposit.rs"));
+    let ignored_event = Event::new(EventKind::Any).add_path(root.join("README.md"));
+
+    assert!(loop_
+        .handle_input(ServeLoopInput::NotifyEvent(source_event, start), &runner)
+        .expect("serve event")
+        .is_empty());
+
+    let events = loop_
+        .handle_input(
+            ServeLoopInput::NotifyEvent(ignored_event, start + Duration::from_millis(25)),
+            &runner,
+        )
+        .expect("serve event should flush due batch");
+
+    assert_eq!(
+        events[0].get("event").and_then(|v| v.as_str()),
+        Some("chain_serve_build_started")
+    );
+    assert_eq!(runner.calls().len(), 2);
+}

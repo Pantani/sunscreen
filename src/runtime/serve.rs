@@ -87,7 +87,10 @@ impl HeadlessServeLoop {
         match input {
             ServeLoopInput::NotifyEvent(event, now) => {
                 self.watch_loop.observe_notify_event(&event, now);
-                Ok(Vec::new())
+                let Some(report) = self.watch_loop.flush_due(now, runner)? else {
+                    return Ok(Vec::new());
+                };
+                Ok(render_watch_build_report(&report))
             }
             ServeLoopInput::Tick(now) => {
                 let Some(report) = self.watch_loop.flush_due(now, runner)? else {

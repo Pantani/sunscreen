@@ -62,6 +62,23 @@ fn debouncer_accepts_notify_events() {
 }
 
 #[test]
+fn debouncer_notify_event_does_not_flush_due_batch() {
+    let start = Instant::now();
+    let mut watcher = WatchDebouncer::new(Duration::from_millis(50));
+    watcher.observe("programs/demo/src/lib.rs", start);
+    let event = Event::new(EventKind::Any).add_path(PathBuf::from("README.md"));
+
+    assert!(watcher
+        .observe_notify_event(&event, start + Duration::from_millis(50))
+        .is_none());
+
+    let batch = watcher
+        .flush_due(start + Duration::from_millis(50))
+        .expect("notify adapter must leave due batch for explicit flush");
+    assert_eq!(batch.paths, [PathBuf::from("programs/demo/src/lib.rs")]);
+}
+
+#[test]
 fn watch_build_loop_runs_pipeline_when_debounced_batch_is_due() {
     let start = Instant::now();
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);

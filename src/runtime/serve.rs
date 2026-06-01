@@ -115,7 +115,7 @@ fn render_watch_build_report(report: &WatchBuildReport) -> Vec<serde_json::Value
             .batch
             .paths
             .iter()
-            .map(|path| path.display().to_string())
+            .map(|path| render_event_path(path))
             .collect::<Vec<_>>(),
     }));
     events.extend(report.pipeline.events.iter().map(|event| event.to_json()));
@@ -125,4 +125,23 @@ fn render_watch_build_report(report: &WatchBuildReport) -> Vec<serde_json::Value
         "exit_code": report.pipeline.exit_code,
     }));
     events
+}
+
+fn render_event_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::render_event_path;
+
+    #[test]
+    fn render_event_path_uses_forward_slashes() {
+        assert_eq!(
+            render_event_path(Path::new(r"programs\demo\src\instructions\deposit.rs")),
+            "programs/demo/src/instructions/deposit.rs"
+        );
+    }
 }

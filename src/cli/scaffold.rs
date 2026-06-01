@@ -1277,16 +1277,18 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
         return Ok(0);
     }
 
-    if file_status != FileStatus::Unchanged {
+    if file_status != FileStatus::Unchanged || lib_new.is_some() {
         let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-        match action {
-            ModAction::Create => {
-                tx.stage(&to_fwd(&events_rel), new_contents.as_bytes())
-                    .map_err(map_tx_err)?;
-            }
-            ModAction::Replace => {
-                tx.stage_replace(&events_abs, new_contents.as_bytes())
-                    .map_err(map_tx_err)?;
+        if file_status != FileStatus::Unchanged {
+            match action {
+                ModAction::Create => {
+                    tx.stage(&to_fwd(&events_rel), new_contents.as_bytes())
+                        .map_err(map_tx_err)?;
+                }
+                ModAction::Replace => {
+                    tx.stage_replace(&events_abs, new_contents.as_bytes())
+                        .map_err(map_tx_err)?;
+                }
             }
         }
         if let Some(ref contents) = lib_new {
@@ -1529,16 +1531,18 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
         return Ok(0);
     }
 
-    if file_status != FileStatus::Unchanged {
+    if file_status != FileStatus::Unchanged || lib_new.is_some() {
         let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-        match action {
-            ModAction::Create => {
-                tx.stage(&to_fwd(&errors_rel), new_contents.as_bytes())
-                    .map_err(map_tx_err)?;
-            }
-            ModAction::Replace => {
-                tx.stage_replace(&errors_abs, new_contents.as_bytes())
-                    .map_err(map_tx_err)?;
+        if file_status != FileStatus::Unchanged {
+            match action {
+                ModAction::Create => {
+                    tx.stage(&to_fwd(&errors_rel), new_contents.as_bytes())
+                        .map_err(map_tx_err)?;
+                }
+                ModAction::Replace => {
+                    tx.stage_replace(&errors_abs, new_contents.as_bytes())
+                        .map_err(map_tx_err)?;
+                }
             }
         }
         if let Some(ref contents) = lib_new {

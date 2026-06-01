@@ -10,7 +10,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use crate::config::schema::{Config, Framework as CfgFramework, Frontend as CfgFrontend};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
-use crate::templates::render_workspace;
+use crate::templates::{render_dispatch_segment, render_workspace, ArgSpec, InstructionDispatch};
 use crate::toolchain::preflight::{self, PreflightError};
 
 const ANCHOR_VERSION: &str = "0.30.1";
@@ -406,18 +406,34 @@ fn run_doctor(args: &DoctorArgs, json: bool) -> Result<i32, SunscreenError> {
                 continue;
             }
             drift_count += 1;
-            if args.fix_markers && site.appendable {
-                let patched = append_marker_block(&contents, site.segment);
-                std::fs::write(&site.abs_path, &patched).map_err(|e| {
-                    SunscreenError::Other(anyhow::anyhow!("write {}: {e}", site.abs_path.display()))
-                })?;
-                fixed_files.push(rel_str.clone());
-                findings.push(serde_json::json!({
-                    "program": program.name,
-                    "file": rel_str,
-                    "segment": site.segment,
-                    "status": "fixed",
-                }));
+            if args.fix_markers {
+                let patched = if site.appendable {
+                    Some(append_marker_block(&contents, site.segment))
+                } else {
+                    repair_non_appendable_site(&contents, site, program)?
+                };
+                if let Some(patched) = patched {
+                    std::fs::write(&site.abs_path, &patched).map_err(|e| {
+                        SunscreenError::Other(anyhow::anyhow!(
+                            "write {}: {e}",
+                            site.abs_path.display()
+                        ))
+                    })?;
+                    fixed_files.push(rel_str.clone());
+                    findings.push(serde_json::json!({
+                        "program": program.name,
+                        "file": rel_str,
+                        "segment": site.segment,
+                        "status": "fixed",
+                    }));
+                } else {
+                    findings.push(serde_json::json!({
+                        "program": program.name,
+                        "file": rel_str,
+                        "segment": site.segment,
+                        "status": "missing_marker",
+                    }));
+                }
             } else {
                 findings.push(serde_json::json!({
                     "program": program.name,
@@ -544,6 +560,295 @@ fn append_marker_block(existing: &str, segment: &str) -> String {
         "// === sunscreen:auto-generated:end segment={segment} ==={nl}"
     ));
     out
+}
+
+fn repair_non_appendable_site(
+    existing: &str,
+    site: &MarkerSite,
+    program: &crate::workspace::ProgramView,
+) -> Result<Option<String>, SunscreenError> {
+    match site.segment {
+        "dispatch" => rebuild_dispatch_marker_block(existing, program),
+        "error_variants" => Ok(rewrap_error_variants_marker_block(existing)),
+        _ => Ok(None),
+    }
+}
+
+fn rebuild_dispatch_marker_block(
+    existing: &str,
+    program: &crate::workspace::ProgramView,
+) -> Result<Option<String>, SunscreenError> {
+    let insert_line = match find_program_module_close_line(existing) {
+        Some(line) => line,
+        None => return Ok(None),
+    };
+    let dispatches = collect_instruction_dispatches(program)?;
+    let body = render_dispatch_segment(&program.name, &dispatches);
+    Ok(Some(insert_dispatch_marker_block(
+        existing,
+        insert_line,
+        &body,
+    )))
+}
+
+fn collect_instruction_dispatches(
+    program: &crate::workspace::ProgramView,
+) -> Result<Vec<InstructionDispatch>, SunscreenError> {
+    let mut out = Vec::new();
+    let entries = std::fs::read_dir(&program.instructions_dir).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!(
+            "read {}: {e}",
+            program.instructions_dir.display()
+        ))
+    })?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if stem == "mod" {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path)
+            .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+        out.push(InstructionDispatch {
+            name: stem.to_string(),
+            args: parse_handler_args(&source),
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+fn parse_handler_args(source: &str) -> Vec<ArgSpec> {
+    let Some(start) = source.find("pub fn handler(") else {
+        return Vec::new();
+    };
+    let tail = &source[start + "pub fn handler(".len()..];
+    let Some(params) = take_param_list(tail) else {
+        return Vec::new();
+    };
+    split_params(params)
+        .into_iter()
+        .filter_map(|param| {
+            let param = param.trim();
+            if param.is_empty() || param.starts_with("ctx:") || param.starts_with("ctx :") {
+                return None;
+            }
+            let (name, ty) = param.split_once(':')?;
+            let name = name.trim();
+            let ty = ty.trim();
+            if name.is_empty() || ty.is_empty() {
+                return None;
+            }
+            Some(ArgSpec {
+                name: name.to_string(),
+                ty: ty.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn take_param_list(tail: &str) -> Option<&str> {
+    let mut angle_depth = 0usize;
+    for (idx, ch) in tail.char_indices() {
+        match ch {
+            '<' => angle_depth += 1,
+            '>' if angle_depth > 0 => angle_depth -= 1,
+            ')' if angle_depth == 0 => return Some(&tail[..idx]),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn split_params(params: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut angle_depth = 0usize;
+    let mut paren_depth = 0usize;
+    for (idx, ch) in params.char_indices() {
+        match ch {
+            '<' => angle_depth += 1,
+            '>' if angle_depth > 0 => angle_depth -= 1,
+            '(' => paren_depth += 1,
+            ')' if paren_depth > 0 => paren_depth -= 1,
+            ',' if angle_depth == 0 && paren_depth == 0 => {
+                parts.push(&params[start..idx]);
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(&params[start..]);
+    parts
+}
+
+fn find_program_module_close_line(existing: &str) -> Option<usize> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut saw_program_attr = false;
+    let mut start = None;
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed == "#[program]" {
+            saw_program_attr = true;
+            continue;
+        }
+        if saw_program_attr && trimmed.starts_with("pub mod ") && trimmed.contains('{') {
+            start = Some(idx);
+            break;
+        }
+        if saw_program_attr && !trimmed.is_empty() && !trimmed.starts_with("#[") {
+            saw_program_attr = false;
+        }
+    }
+
+    let start = start?;
+    let mut depth = 0isize;
+    let mut saw_open = false;
+    for (idx, line) in lines.iter().enumerate().skip(start) {
+        for ch in line.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    saw_open = true;
+                }
+                '}' if saw_open => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(idx);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn insert_dispatch_marker_block(existing: &str, insert_line: usize, body: &str) -> String {
+    let nl = crate::cli::scaffold::detect_line_ending(existing);
+    let trailing_nl = existing.ends_with('\n');
+    let lines: Vec<&str> = existing.lines().collect();
+    let close_indent: String = lines
+        .get(insert_line)
+        .map(|line| line.chars().take_while(|ch| ch.is_whitespace()).collect())
+        .unwrap_or_default();
+    let marker_indent = format!("{close_indent}    ");
+
+    let mut out = Vec::with_capacity(lines.len() + body.lines().count() + 4);
+    for (idx, line) in lines.iter().enumerate() {
+        if idx == insert_line {
+            if out
+                .last()
+                .is_some_and(|prev: &String| !prev.trim().is_empty())
+            {
+                out.push(String::new());
+            }
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:begin segment=dispatch version=1 generator=doctor ==="
+            ));
+            for body_line in body.strip_suffix('\n').unwrap_or(body).lines() {
+                out.push(body_line.to_string());
+            }
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:end segment=dispatch ==="
+            ));
+        }
+        out.push((*line).to_string());
+    }
+    let mut joined = out.join(nl);
+    if trailing_nl {
+        joined.push_str(nl);
+    }
+    joined
+}
+
+fn rewrap_error_variants_marker_block(existing: &str) -> Option<String> {
+    let (open_line, close_line) = find_error_enum_bounds(existing)?;
+    Some(insert_error_variants_marker_block(
+        existing, open_line, close_line,
+    ))
+}
+
+fn find_error_enum_bounds(existing: &str) -> Option<(usize, usize)> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut saw_error_attr = false;
+    let mut start = None;
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed == "#[error_code]" {
+            saw_error_attr = true;
+            continue;
+        }
+        if saw_error_attr && trimmed.starts_with("pub enum ") && trimmed.contains('{') {
+            start = Some(idx);
+            break;
+        }
+        if saw_error_attr && !trimmed.is_empty() && !trimmed.starts_with("#[") {
+            saw_error_attr = false;
+        }
+    }
+
+    let start = start?;
+    let mut depth = 0isize;
+    let mut saw_open = false;
+    for (idx, line) in lines.iter().enumerate().skip(start) {
+        for ch in line.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    saw_open = true;
+                }
+                '}' if saw_open => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some((start, idx));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn insert_error_variants_marker_block(
+    existing: &str,
+    open_line: usize,
+    close_line: usize,
+) -> String {
+    let nl = crate::cli::scaffold::detect_line_ending(existing);
+    let trailing_nl = existing.ends_with('\n');
+    let lines: Vec<&str> = existing.lines().collect();
+    let enum_indent: String = lines
+        .get(open_line)
+        .map(|line| line.chars().take_while(|ch| ch.is_whitespace()).collect())
+        .unwrap_or_default();
+    let marker_indent = format!("{enum_indent}    ");
+
+    let mut out = Vec::with_capacity(lines.len() + 2);
+    for (idx, line) in lines.iter().enumerate() {
+        out.push((*line).to_string());
+        if idx == open_line {
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=doctor ==="
+            ));
+        }
+        if idx + 1 == close_line {
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:end segment=error_variants ==="
+            ));
+        }
+    }
+    let mut joined = out.join(nl);
+    if trailing_nl {
+        joined.push_str(nl);
+    }
+    joined
 }
 
 #[cfg(test)]

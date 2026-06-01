@@ -29,6 +29,41 @@ fn run(ws: &Path, args: &[&str]) -> std::process::Output {
         .expect("invoke sunscreen")
 }
 
+fn strip_auto_segment(source: &str, segment: &str) -> String {
+    let begin = format!("sunscreen:auto-generated:begin segment={segment}");
+    let end = format!("sunscreen:auto-generated:end segment={segment}");
+    let mut out = Vec::new();
+    let mut skipping = false;
+    for line in source.lines() {
+        if line.contains(&begin) {
+            skipping = true;
+            continue;
+        }
+        if skipping && line.contains(&end) {
+            skipping = false;
+            continue;
+        }
+        if !skipping {
+            out.push(line);
+        }
+    }
+    let mut joined = out.join("\n");
+    joined.push('\n');
+    joined
+}
+
+fn remove_auto_marker_lines(source: &str, segment: &str) -> String {
+    let begin = format!("sunscreen:auto-generated:begin segment={segment}");
+    let end = format!("sunscreen:auto-generated:end segment={segment}");
+    let mut joined = source
+        .lines()
+        .filter(|line| !line.contains(&begin) && !line.contains(&end))
+        .collect::<Vec<_>>()
+        .join("\n");
+    joined.push('\n');
+    joined
+}
+
 #[test]
 fn scaffold_program_creates_crate_and_patches_manifests() {
     let tmp = tempfile::tempdir().unwrap();
@@ -218,4 +253,133 @@ fn chain_doctor_fix_markers_repairs_drift() {
 
     let after = std::fs::read_to_string(&mod_rs).unwrap();
     assert!(after.contains("sunscreen:auto-generated:begin segment=instructions"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_rebuilds_dispatch_inside_program_module() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("dispatch_repair_app");
+    run_chain_new(&ws, "dispatch_repair_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "instruction",
+            "deposit",
+            "--program",
+            &program_name,
+            "--args",
+            "amount:u64",
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold instruction failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let lib_rs = program_dir.join("src/lib.rs");
+    let original = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(original.contains("sunscreen:auto-generated:begin segment=dispatch"));
+    assert!(original.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+
+    let scrubbed = strip_auto_segment(&original, "dispatch");
+    assert!(!scrubbed.contains("sunscreen:auto-generated:begin segment=dispatch"));
+    assert!(!scrubbed.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+    std::fs::write(&lib_rs, scrubbed).unwrap();
+
+    let report = run(&ws, &["chain", "doctor", "--json"]);
+    assert_eq!(report.status.code(), Some(6));
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(0),
+        "dispatch repair should succeed; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(after.contains("sunscreen:auto-generated:begin segment=dispatch"));
+    assert!(after.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
+    assert!(after.contains("instructions::deposit::handler(ctx, amount)"));
+}
+
+#[test]
+fn chain_doctor_fix_markers_rewraps_error_variants_inside_error_enum() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("error_repair_app");
+    run_chain_new(&ws, "error_repair_app");
+
+    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    let program_dir = entries[0].path();
+
+    let scaffold = run(
+        &ws,
+        &[
+            "scaffold",
+            "error",
+            "Unauthorized",
+            "--program",
+            &program_name,
+            "--msg",
+            "caller is not authorized",
+            "--json",
+        ],
+    );
+    assert!(
+        scaffold.status.success(),
+        "scaffold error failed: stderr={}",
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+
+    let errors_rs = program_dir.join("src/errors.rs");
+    let original = std::fs::read_to_string(&errors_rs).unwrap();
+    assert!(original.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(original.contains("Unauthorized,"));
+
+    let scrubbed = remove_auto_marker_lines(&original, "error_variants");
+    assert!(!scrubbed.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(scrubbed.contains("Unauthorized,"));
+    std::fs::write(&errors_rs, scrubbed).unwrap();
+
+    let report = run(&ws, &["chain", "doctor", "--json"]);
+    assert_eq!(report.status.code(), Some(6));
+
+    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    assert_eq!(
+        fix.status.code(),
+        Some(0),
+        "error variant repair should succeed; stdout={} stderr={}",
+        String::from_utf8_lossy(&fix.stdout),
+        String::from_utf8_lossy(&fix.stderr)
+    );
+
+    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    assert!(after.contains("sunscreen:auto-generated:begin segment=error_variants"));
+    assert!(after.contains("Unauthorized,"));
+    assert!(
+        after.find("sunscreen:auto-generated:begin segment=error_variants")
+            < after.find("Unauthorized,")
+    );
+    assert!(
+        after.find("Unauthorized,")
+            < after.find("sunscreen:auto-generated:end segment=error_variants")
+    );
 }

@@ -42,7 +42,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 |---|---|---|---:|---:|---|---|
 | **0** | Foundations | ✅ DONE | 2 wk | 2 wk | CLI skeleton, config v1, toolchain detect, doctor, CI, golden infra | ADR-0001 §10.2 |
 | **1** | Workspace Bootstrap | ✅ DONE | 2 wk | 4 wk | `chain new` produces compilable Anchor workspace + frontend variants | ADR-0001 §10.3 |
-| **2** | Incremental Scaffolding | 🚧 ~95% (R4 ✅, R5 polish ⏳) | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `chain doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
+| **2** | Incremental Scaffolding | 🚧 R5 polish in progress | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `chain doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
 | **3** | Runtime Orchestration | 📋 | 3 wk | 11 wk | `chain serve` (Surfpool + watcher + codama + ratatui TUI), `chain build` | ADR-0001 §10.5 |
 | **4** | Codegen & Frontend Hooks | 📋 | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, codama wrapper | ADR-0001 §10.6 |
 | **5** | Recipes | 📋 | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
@@ -106,13 +106,13 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 
 ### Phase 2 — Incremental Scaffolding 🚧
 
-**Status.** 🚧 ~95% delivered (R1–R4 done; R5 polish ⏳). 115/115 tests at end of R3, R4 shipped via PR #5 (`67b0338`). Strategy ratified in [`docs/adr/ADR-0004-incremental-scaffolding.md`](docs/adr/ADR-0004-incremental-scaffolding.md).
+**Status.** 🚧 R5 polish in progress. R1–R4 are done; R5 has marker-hardening work landed, with broader golden/compile/integration count targets still open. Strategy ratified in [`docs/adr/ADR-0004-incremental-scaffolding.md`](docs/adr/ADR-0004-incremental-scaffolding.md).
 
 **Goal.** Idempotent, marker-driven scaffolders that surgically edit Rust source without disturbing user code.
 
 #### R1 — rustpatch + `scaffold instruction` ✅
 
-- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) — scan/apply behaviour and line-ending preservation covered; a dedicated `rustfmt`-roundtrip golden test is planned for R5
+- [x] `src/rustpatch/marker.rs` (+ `mod.rs`) — scan/apply behaviour, line-ending preservation, and R5 `rustfmt` roundtrip coverage are covered
 - [x] `src/workspace/` — workspace discovery and program enumeration
 - [x] `src/cli/scaffold.rs` — `scaffold instruction <name>` subcommand
 - [x] `src/templates/instruction.rs`
@@ -145,20 +145,22 @@ Shipped via #5 (`67b0338`).
 
 - [x] `src/cli/scaffold.rs::run_program` — `scaffold program <name>` (adds a new program crate to `programs/`, registers in `Anchor.toml` and root `Cargo.toml`)
 - [x] `templates/scaffold/program/` template tree
-- [x] `sunscreen chain doctor --fix-markers` (`src/cli/chain.rs::run_doctor`) — scans the workspace for marker corruption and appends missing marker pairs for **appendable** host files (state/mod.rs, instructions/mod.rs, etc.). Non-appendable sites like `dispatch` (inside `#[program]`) are reported but not auto-rewritten — see open item below.
+- [x] `sunscreen chain doctor --fix-markers` (`src/cli/chain.rs::run_doctor`) — scans the workspace for marker corruption, appends missing marker pairs for **appendable** host files (state/mod.rs, instructions/mod.rs, etc.), reconstructs the non-appendable `dispatch` segment inside `#[program]` when instruction files provide enough information, and rewraps `error_variants` inside `#[error_code]` enums while preserving existing variants.
 - [x] Auto-injection of `pub mod events;` / `pub mod errors;` / `pub mod state;` in `lib.rs` on first relevant scaffold (closes a R3 gap where users had to add the line manually)
 - [x] `tests/scaffold_program.rs` (also covers `chain doctor --fix-markers` paths)
-- [ ] `tests/rustfmt_roundtrip.rs` — golden test that runs `rustfmt --edition=2021` over fixture files containing every documented marker segment and re-scans the result; matches the invariant promised in `docs/reference/markers.md` §5 and ADR-0004 §4 (deferred to R5)
-- [ ] Reconstruction of non-appendable sites (e.g. `dispatch` arms) from the IDL when both `begin` and body are gone — kept as a follow-up; today the command only repairs append-friendly hosts
+- [x] `tests/rustfmt_roundtrip.rs` — golden test that runs `rustfmt --edition=2021` over a fixture containing every documented marker segment and re-scans the result; matches the invariant promised in `docs/reference/markers.md` §5 and ADR-0004 §4
+- [x] Reconstruction of the non-appendable `dispatch` site when both `begin` and body are gone — `chain doctor --fix-markers` now inserts a fresh `dispatch` marker block inside `#[program]` and rebuilds wrappers from `instructions/*.rs`
+- [x] Safe recovery for the remaining non-appendable `error_variants` site — `chain doctor --fix-markers` rewraps existing enum contents instead of appending invalid Rust at EOF
 
 #### R5 — Polish target 📋
 
+- [x] Marker hardening: rustfmt roundtrip coverage + safe `dispatch` and `error_variants` repair paths
 - [ ] ≥ 75 golden tests across all five scaffolders
 - [ ] ≥ 25 compile tests (`cargo check` of generated workspaces)
 - [ ] 5 integration tests: full `anchor build` + IDL inspection + codama regen
 - [ ] Phase 2 DoD per ADR-0001 §10.4 satisfied end-to-end
 
-**Carry-over.** R4 → R5 → close Phase 2.
+**Carry-over.** R5 coverage-count expansion → close Phase 2 → open Phase 3.
 
 ---
 
@@ -274,7 +276,7 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
                                  └─► Phase 8 (cargo-dist + docs site) ─► v1.0
 ```
 
-- **R4 is the single immediate unblock.** Closing it puts Phase 2 in polish mode and frees Phase 3 staffing.
+- **R5 is the immediate unblock.** Marker hardening has started, but Phase 3 should wait until the remaining golden/compile/integration count targets are either met or intentionally rescoped.
 - **Phase 5.5 strictly follows Phase 5.** `quickstart nft` is a thin shell over `scaffold metaplex-nft`; without recipes there is nothing to wrap.
 - **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
 - **Docs (Phase 8) can start drafting during Phase 5.5** — content for `learn/*.md` overlaps with the user-facing tutorial pages.

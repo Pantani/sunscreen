@@ -149,18 +149,17 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 
 ### 4.2 Actionable error contract
 
-```rust
-pub struct SunscreenError {
-    pub kind: ErrorKind,
-    pub message: String,
-    pub next_step: Option<String>, // <-- new contract: 100% of variants
-    pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
-}
+`SunscreenError` is and remains the existing **enum** in `src/error.rs` (do **not** redefine it as a struct). Phase 5.5 extends it with an optional `next_step` field carried alongside each variant — implemented either as an associated value per variant or via a parallel `fn next_step(&self) -> Option<&str>` method that pattern-matches on `self`. The chosen shape is left to the implementation PR; the contract below is what matters externally.
+
+The JSON serialization extends the canonical schema documented in ADR-0002 § 4.4 (`{"error": "...", "kind": "..."}`, written to stderr by `src/cli/root.rs::execute`) by appending two optional fields. Existing field names are preserved verbatim — no renames, no removals — so parsers built against ADR-0002 keep working:
+
+```json
+{"error":"no default wallet configured","kind":"user_input","next_step":"sunscreen wallet new --out ~/.config/solana/id.json","exit_code":4}
 ```
 
-- CI test (`tests/errors_contract.rs`) uses `strum::IntoEnumIterator` to ensure each `ErrorKind` has at least one constructor with `next_step.is_some()`.
-- `--json` serializes `next_step` as a top-level field (cf. ADR-0002 § 5).
-- TTY rendering: extra line `→ try: <next_step>` in cyan.
+- New optional fields: `next_step` (string, suggested remediation command) and `exit_code` (integer, mirrors the process exit code for callers that capture stderr without inspecting `$?`).
+- CI test (`tests/errors_contract.rs`) iterates every `SunscreenError` variant via `strum::EnumIter` (or an equivalent `all_variants()` helper) and asserts that **every** variant returns `Some(next_step)` from at least one canonical constructor — i.e. 100% variant coverage, not "at least one variant has one". Variants with no meaningful remediation MAY return `Some("")` and the test SHALL allow that explicitly, with a code-comment justification per variant.
+- TTY rendering: extra line `→ try: <next_step>` in cyan, emitted only when stderr is a TTY and the value is non-empty.
 
 ### 4.3 Asset distribution
 
@@ -310,13 +309,12 @@ error: no default wallet configured
   → try: sunscreen wallet new --out ~/.config/solana/id.json
 ```
 
-JSON equivalent:
+JSON equivalent (extends the canonical schema from ADR-0002 § 4.4 — keeps `error` and `kind` verbatim, adds `next_step` and `exit_code`):
 
 ```json
 {
-  "ok": false,
+  "error": "no default wallet configured",
   "kind": "user_input",
-  "message": "no default wallet configured",
   "next_step": "sunscreen wallet new --out ~/.config/solana/id.json",
   "exit_code": 4
 }

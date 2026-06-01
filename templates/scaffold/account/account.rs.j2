@@ -1,0 +1,10 @@
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct {{ account_name | pascal_case }} {
+{%- for f in fields %}
+    pub {{ f.name | snake_case }}: {{ f.ty }},
+{%- endfor %}
+}
+// === sunscreen:auto-generated:end segment=file ===

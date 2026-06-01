@@ -30,6 +30,7 @@ fn run(ws: &Path, args: &[&str]) -> std::process::Output {
 }
 
 fn strip_auto_segment(source: &str, segment: &str) -> String {
+    let line_ending = detect_line_ending(source);
     let begin = format!("sunscreen:auto-generated:begin segment={segment}");
     let end = format!("sunscreen:auto-generated:end segment={segment}");
     let mut out = Vec::new();
@@ -47,21 +48,59 @@ fn strip_auto_segment(source: &str, segment: &str) -> String {
             out.push(line);
         }
     }
-    let mut joined = out.join("\n");
-    joined.push('\n');
+    let mut joined = out.join(line_ending);
+    joined.push_str(line_ending);
     joined
 }
 
 fn remove_auto_marker_lines(source: &str, segment: &str) -> String {
+    let line_ending = detect_line_ending(source);
     let begin = format!("sunscreen:auto-generated:begin segment={segment}");
     let end = format!("sunscreen:auto-generated:end segment={segment}");
     let mut joined = source
         .lines()
         .filter(|line| !line.contains(&begin) && !line.contains(&end))
         .collect::<Vec<_>>()
-        .join("\n");
-    joined.push('\n');
+        .join(line_ending);
+    joined.push_str(line_ending);
     joined
+}
+
+fn detect_line_ending(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+#[test]
+fn strip_auto_segment_preserves_crlf_line_endings() {
+    let source = concat!(
+        "alpha\r\n",
+        "// sunscreen:auto-generated:begin segment=dispatch version=1\r\n",
+        "generated\r\n",
+        "// sunscreen:auto-generated:end segment=dispatch\r\n",
+        "omega\r\n",
+    );
+
+    assert_eq!(strip_auto_segment(source, "dispatch"), "alpha\r\nomega\r\n");
+}
+
+#[test]
+fn remove_auto_marker_lines_preserves_crlf_line_endings() {
+    let source = concat!(
+        "alpha\r\n",
+        "// sunscreen:auto-generated:begin segment=dispatch version=1\r\n",
+        "generated\r\n",
+        "// sunscreen:auto-generated:end segment=dispatch\r\n",
+        "omega\r\n",
+    );
+
+    assert_eq!(
+        remove_auto_marker_lines(source, "dispatch"),
+        "alpha\r\ngenerated\r\nomega\r\n"
+    );
 }
 
 #[test]

@@ -109,3 +109,29 @@ fn watcher_tracks_workspace_config_changes() {
     );
     assert_eq!(batch.kind, WatchKind::Pipeline);
 }
+
+#[test]
+fn watcher_tracks_cargo_manifest_changes() {
+    let start = Instant::now();
+    let mut watcher = WatchDebouncer::new(Duration::from_millis(25));
+
+    watcher.observe("Cargo.toml", start);
+    watcher.observe("Cargo.lock", start + Duration::from_millis(5));
+    watcher.observe(
+        "programs/demo/Cargo.toml",
+        start + Duration::from_millis(10),
+    );
+
+    let batch = watcher
+        .flush_due(start + Duration::from_millis(35))
+        .expect("cargo manifest batch");
+    assert_eq!(
+        batch.paths,
+        [
+            PathBuf::from("Cargo.lock"),
+            PathBuf::from("Cargo.toml"),
+            PathBuf::from("programs/demo/Cargo.toml"),
+        ]
+    );
+    assert_eq!(batch.kind, WatchKind::Pipeline);
+}

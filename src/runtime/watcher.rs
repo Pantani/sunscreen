@@ -164,12 +164,6 @@ fn is_pipeline_relevant(path: &Path) -> bool {
     if has_ignored_component(path) {
         return false;
     }
-    if matches!(
-        path.file_name().and_then(|name| name.to_str()),
-        Some("Anchor.toml" | "sunscreen.yml" | "codama.json")
-    ) {
-        return true;
-    }
     let components: Vec<_> = path
         .components()
         .filter_map(|component| match component {
@@ -177,12 +171,31 @@ fn is_pipeline_relevant(path: &Path) -> bool {
             _ => None,
         })
         .collect();
+    if matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("Anchor.toml" | "sunscreen.yml" | "codama.json")
+    ) {
+        return true;
+    }
+    if is_cargo_manifest(path, &components) {
+        return true;
+    }
     if components.len() < 4 {
         return false;
     }
     components[0] == "programs"
         && components.contains(&"src")
         && path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+}
+
+fn is_cargo_manifest(path: &Path, components: &[&str]) -> bool {
+    if !matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("Cargo.toml" | "Cargo.lock")
+    ) {
+        return false;
+    }
+    components.len() == 1 || components.first() == Some(&"programs")
 }
 
 fn has_ignored_component(path: &Path) -> bool {

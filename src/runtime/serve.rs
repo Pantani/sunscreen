@@ -76,7 +76,14 @@ fn watch_roots(workspace_root: &Path) -> Vec<WatchRoot> {
         mode: RecursiveMode::Recursive,
     }];
     roots.extend(
-        ["Anchor.toml", "sunscreen.yml", "codama.json"].map(|file| WatchRoot {
+        [
+            "Anchor.toml",
+            "sunscreen.yml",
+            "codama.json",
+            "Cargo.toml",
+            "Cargo.lock",
+        ]
+        .map(|file| WatchRoot {
             path: workspace_root.join(file),
             mode: RecursiveMode::NonRecursive,
         }),
@@ -183,6 +190,14 @@ mod tests {
         assert!(roots
             .iter()
             .any(|entry| entry.path == root.join("Anchor.toml")
+                && entry.mode == RecursiveMode::NonRecursive));
+        assert!(roots
+            .iter()
+            .any(|entry| entry.path == root.join("Cargo.toml")
+                && entry.mode == RecursiveMode::NonRecursive));
+        assert!(roots
+            .iter()
+            .any(|entry| entry.path == root.join("Cargo.lock")
                 && entry.mode == RecursiveMode::NonRecursive));
         assert!(!roots
             .iter()

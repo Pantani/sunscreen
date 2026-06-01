@@ -59,7 +59,7 @@ UR_BEGIN := "// === sunscreen:user-region:begin segment=" NAME " ==="
 UR_END   := "// === sunscreen:user-region:end segment=" NAME " ==="
 
 NAME  := [a-z][a-z0-9_-]*
-INT   := [1-9][0-9]*
+INT   := [0-9]+        // any u32; leading zeros and 0 are accepted by the scanner
 IDENT := [a-z][a-z0-9_-]*
 ```
 

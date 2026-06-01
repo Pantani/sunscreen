@@ -8,7 +8,7 @@
 | **Tags** | scaffolding, codegen, markers, anchor, rust-mutation |
 | **Supersedes** | — |
 | **Superseded by** | — |
-| **Related** | ADR-0001 § 7.1 e § 8.4 (sunscreen CLI), ADR-0002 (CLI Design Conventions), ADR-0003 (Documentation Strategy), `docs/reference/markers.md` |
+| **Related** | ADR-0001 § 7.1 and § 8.4 (sunscreen CLI), ADR-0002 (CLI Design Conventions), ADR-0003 (Documentation Strategy), `docs/reference/markers.md` |
 
 ---
 
@@ -22,7 +22,7 @@
 
 ## TL;DR
 
-`sunscreen` adota **scaffolding incremental por edição baseada em markers** como estratégia primária para mutações em arquivos Rust de workspaces Anchor 1.0 existentes (`lib.rs`, `instructions/mod.rs`, `state/mod.rs`, `errors.rs`, `events.rs`). Cada scaffolder (`instruction`, `account`, `event`, `error`, `program`) opera exclusivamente dentro de regiões delimitadas por comentários `// === sunscreen:auto-generated:begin segment=… ===` (cf. `docs/reference/markers.md`). Código de usuário vive em regiões `user-region` e é tratado como imutável. Para casos raros em que insertion em território não-marcado é inevitável (referenciar uma struct nomeada pelo usuário), `sunscreen` faz fallback para **`ast-grep` como subprocess** — sem dependência de toolchain Rust em tempo de execução. Esta decisão segue Sub-ADR-001 do ADR-0001 § 7.1 e formaliza o roteiro R1→R5 de implementação dos scaffolders na Phase 2.
+`sunscreen` adopts **incremental scaffolding via marker-based editing** as the primary strategy for mutations in Rust files of existing Anchor 1.0 workspaces (`lib.rs`, `instructions/mod.rs`, `state/mod.rs`, `errors.rs`, `events.rs`). Each scaffolder (`instruction`, `account`, `event`, `error`, `program`) operates exclusively within regions delimited by `// === sunscreen:auto-generated:begin segment=… ===` comments (cf. `docs/reference/markers.md`). User code lives in `user-region` regions and is treated as immutable. For the rare cases where insertion into unmarked territory is unavoidable (referencing a user-named struct), `sunscreen` falls back to **`ast-grep` as a subprocess** — without any runtime dependency on the Rust toolchain. This decision follows Sub-ADR-001 of ADR-0001 § 7.1 and formalizes the R1→R5 implementation roadmap for the scaffolders in Phase 2.
 
 ---
 
@@ -30,155 +30,155 @@
 
 ### 1.1 Problem framing
 
-O diferencial de `sunscreen` versus um simples template-renderer (à la `cargo generate`) é a capacidade de **continuar gerando código depois do bootstrap**. Um usuário roda `sunscreen chain new escrow`, edita os handlers, e depois roda `sunscreen scaffold instruction deposit` — a ferramenta precisa:
+The differentiator of `sunscreen` versus a simple template renderer (à la `cargo generate`) is the ability to **keep generating code after bootstrap**. A user runs `sunscreen chain new escrow`, edits the handlers, and then runs `sunscreen scaffold instruction deposit` — the tool must:
 
-1. Adicionar `pub mod deposit;` em `instructions/mod.rs`.
-2. Adicionar uma arm em `#[program] pub mod escrow { … }` dentro de `lib.rs`.
-3. Criar `instructions/deposit.rs` com `#[derive(Accounts)]` struct + skeleton de `handler`.
-4. **Não tocar** em nenhum byte de lógica que o usuário já escreveu nas outras instruções.
+1. Add `pub mod deposit;` to `instructions/mod.rs`.
+2. Add an arm in `#[program] pub mod escrow { … }` inside `lib.rs`.
+3. Create `instructions/deposit.rs` with a `#[derive(Accounts)]` struct + `handler` skeleton.
+4. **Not touch** a single byte of logic that the user already wrote in the other instructions.
 
-Esta restrição (preservar código do usuário) é a tensão central. Anchor 1.0 + IDL como fonte de verdade reduz o problema (a maior parte do código gerado é mecanicamente derivável dos args do CLI), mas não o elimina: `lib.rs` mistura código gerado (dispatch arms) com código que pode ter sido tocado pelo usuário (imports, attributes do `#[program]`).
+This constraint (preserving user code) is the central tension. Anchor 1.0 + IDL as the source of truth reduces the problem (most of the generated code is mechanically derivable from the CLI args), but does not eliminate it: `lib.rs` mixes generated code (dispatch arms) with code that may have been touched by the user (imports, `#[program]` attributes).
 
-### 1.2 Restrições
+### 1.2 Constraints
 
-- **Reentrância.** Rodar o mesmo comando de scaffold duas vezes com mesmos args ⇒ no-op binário (sem diff).
-- **Segurança.** Não corromper o workspace silenciosamente. Falhas devem ser detectadas antes de qualquer escrita em disco.
-- **Sem dependência de toolchain Rust em runtime para edição.** `sunscreen` é um binário standalone; não pode depender de `cargo` ou de uma biblioteca C dinâmica de `tree-sitter`.
-- **Anchor 1.0 + IDL primeiro.** A maior parte das mutações é mecanicamente derivável dos args + IDL — não precisamos de AST completo para inserir uma `pub mod` em um lugar conhecido.
+- **Reentrancy.** Running the same scaffold command twice with the same args ⇒ binary no-op (no diff).
+- **Safety.** Do not silently corrupt the workspace. Failures must be detected before any disk write.
+- **No runtime dependency on the Rust toolchain for editing.** `sunscreen` is a standalone binary; it cannot depend on `cargo` or on a dynamic `tree-sitter` C library.
+- **Anchor 1.0 + IDL first.** Most mutations are mechanically derivable from args + IDL — we do not need a full AST to insert a `pub mod` in a known location.
 
 ---
 
 ## 2. Decision Drivers
 
-- **DD1 — Idempotência.** Re-rodar o mesmo scaffold é um no-op.
-- **DD2 — Preservação do código do usuário.** Nunca sobrescrever bytes que o usuário escreveu.
-- **DD3 — Sem dep runtime pesada.** Nada de linkar `libclang`, `tree-sitter` dinâmico, ou exigir `cargo` na máquina do usuário só para `scaffold`.
-- **DD4 — Velocidade.** `scaffold instruction X` deve completar em < 100 ms num projeto de 50 arquivos. Cold-start já está em 3.18 ms (Phase 0 W2).
-- **DD5 — Predictability / debuggabilidade.** O usuário deve conseguir abrir o arquivo e ver, literalmente, qual região é da ferramenta e qual é dele. Um comentário `// === sunscreen:auto-generated:begin … ===` é autodocumentado.
-- **DD6 — Robustez frente a `rustfmt`.** Qualquer estratégia que use anchors textuais precisa sobreviver à formatação automática.
+- **DD1 — Idempotency.** Re-running the same scaffold is a no-op.
+- **DD2 — Preservation of user code.** Never overwrite bytes the user wrote.
+- **DD3 — No heavy runtime dependency.** No linking `libclang`, dynamic `tree-sitter`, or requiring `cargo` on the user's machine just for `scaffold`.
+- **DD4 — Speed.** `scaffold instruction X` must complete in < 100 ms on a 50-file project. Cold-start is already at 3.18 ms (Phase 0 W2).
+- **DD5 — Predictability / debuggability.** The user must be able to open the file and literally see which region belongs to the tool and which is theirs. A `// === sunscreen:auto-generated:begin … ===` comment is self-documenting.
+- **DD6 — Robustness against `rustfmt`.** Any strategy that uses textual anchors must survive automatic formatting.
 
 ---
 
 ## 3. Considered Options
 
-| # | Opção | Resumo |
+| # | Option | Summary |
 |---|---|---|
-| (a) | **Starter-only** | `sunscreen chain new` cria projeto e acabou; toda mutação posterior é manual |
-| (b) | **Marker-based editing** *(escolhido)* | Regiões delimitadas por comentários estruturados; sunscreen só edita dentro delas |
-| (c) | **AST via `tree-sitter-rust` linkado** | Parse CST do arquivo, query AST, emite modificações em código Rust |
-| (d) | **`ast-grep` CLI como subprocess** | Mesmo poder de (c), mas via binário externo, regras YAML |
+| (a) | **Starter-only** | `sunscreen chain new` creates the project and that's it; all subsequent mutation is manual |
+| (b) | **Marker-based editing** *(chosen)* | Regions delimited by structured comments; sunscreen only edits inside them |
+| (c) | **AST via linked `tree-sitter-rust`** | Parse the file's CST, query the AST, emit modifications in Rust code |
+| (d) | **`ast-grep` CLI as subprocess** | Same power as (c), but via an external binary with YAML rules |
 
-### 3.1 Opção (a) — Starter-only
+### 3.1 Option (a) — Starter-only
 
-**Prós:** trivial de implementar; zero risco de corromper código do usuário.
-**Contras:** elimina o diferencial competitivo. O valor de Ignite/Cosmos vem do scaffolding incremental — `sunscreen scaffold instruction` deve funcionar no dia 30 do projeto, não só no dia 1.
+**Pros:** trivial to implement; zero risk of corrupting user code.
+**Cons:** eliminates the competitive differentiator. The value of Ignite/Cosmos comes from incremental scaffolding — `sunscreen scaffold instruction` must work on day 30 of the project, not just day 1.
 
-**Rejeitado.** Reduz o produto a um `cargo generate` com tema Anchor.
+**Rejected.** Reduces the product to a `cargo generate` with an Anchor theme.
 
-### 3.2 Opção (b) — Marker-based editing
+### 3.2 Option (b) — Marker-based editing
 
-**Prós:**
-- Implementação simples: scan de linhas para achar `begin`/`end`, substituir miolo, escrever.
-- Sem dependência de toolchain Rust em runtime.
-- Auto-documentado: o usuário **vê** o que é gerenciado.
-- Determinístico, rápido, fácil de testar (golden tests).
-- Sobrevive a `rustfmt` (line comments fora de expressões — ADR-0001 § 9.5.1).
-- Compõe naturalmente com `user-region` para preservar handlers.
+**Pros:**
+- Simple implementation: scan lines to find `begin`/`end`, replace the body, write.
+- No runtime dependency on the Rust toolchain.
+- Self-documenting: the user **sees** what is managed.
+- Deterministic, fast, easy to test (golden tests).
+- Survives `rustfmt` (line comments outside expressions — ADR-0001 § 9.5.1).
+- Composes naturally with `user-region` to preserve handlers.
 
-**Contras:**
-- Só funciona em arquivos que `sunscreen` gera. Mutação de código user-authored fica fora do alcance.
-- Renomes/movimentações de arquivos pelo usuário podem "perder" markers.
-- Regex não pode ser usado — match deve ser exact-string por linha.
+**Cons:**
+- Only works in files that `sunscreen` generates. Mutation of user-authored code is out of reach.
+- User renames/moves of files can "lose" markers.
+- Regex cannot be used — match must be exact-string per line.
 
-**Mitigação:** o conjunto de arquivos que `sunscreen` realmente precisa editar é pequeno e canônico (`mod.rs` dos sub-módulos, `lib.rs` dispatch, `errors.rs`, `events.rs`). Tudo o resto é arquivo-por-instrução, criado uma vez e protegido por `user-region` no handler.
+**Mitigation:** the set of files `sunscreen` actually needs to edit is small and canonical (sub-module `mod.rs`, `lib.rs` dispatch, `errors.rs`, `events.rs`). Everything else is one-file-per-instruction, created once and protected by `user-region` in the handler.
 
-### 3.3 Opção (c) — `tree-sitter-rust` linkado
+### 3.3 Option (c) — Linked `tree-sitter-rust`
 
-**Prós:** estruturalmente "correto"; entende sintaxe Rust de verdade; não depende de comentários sobreviverem.
-**Contras:**
-- Binding nativo (`tree-sitter` C lib) adiciona complicação de build cross-platform.
-- Parse + query + emit é ≥10× mais lento que line-scan para uma operação trivial (adicionar `pub mod X;`).
-- Não resolve o problema de **escolher onde** inserir — ainda precisamos de uma convenção (a string `// instructions go here` ou um comentário marker equivalente). Acabamos reinventando markers só que sem o benefício de auto-documentação.
-- Difícil de testar — golden tests viram comparações de CST, não de texto.
+**Pros:** structurally "correct"; understands real Rust syntax; does not depend on comments surviving.
+**Cons:**
+- Native binding (`tree-sitter` C lib) adds cross-platform build complications.
+- Parse + query + emit is ≥10× slower than line-scan for a trivial operation (adding `pub mod X;`).
+- Does not solve the problem of **choosing where** to insert — we still need a convention (the string `// instructions go here` or an equivalent marker comment). We end up reinventing markers, only without the self-documentation benefit.
+- Hard to test — golden tests become CST comparisons, not text comparisons.
 
-**Rejeitado como primário.** AST é overkill para 95% das operações que `sunscreen` precisa fazer.
+**Rejected as primary.** AST is overkill for 95% of the operations `sunscreen` needs to perform.
 
-### 3.4 Opção (d) — `ast-grep` CLI como subprocess
+### 3.4 Option (d) — `ast-grep` CLI as subprocess
 
-**Prós:** tree-sitter por baixo, mas distribuído como binário standalone; regras em YAML; cobre os 5% de casos onde precisamos referenciar identificadores user-authored.
-**Contras:** dependência externa que precisa estar instalada (mitigado: pode ser baixado pelo `sunscreen doctor`); regras YAML são uma DSL a mais para o contribuidor aprender.
+**Pros:** tree-sitter under the hood, but distributed as a standalone binary; rules in YAML; covers the 5% of cases where we need to reference user-authored identifiers.
+**Cons:** external dependency that must be installed (mitigated: can be downloaded by `sunscreen doctor`); YAML rules are one more DSL for the contributor to learn.
 
-**Aceito como escape hatch.** Não primário, mas disponível quando necessário.
+**Accepted as an escape hatch.** Not primary, but available when needed.
 
 ---
 
 ## 4. Decision
 
-`sunscreen` adota:
+`sunscreen` adopts:
 
-1. **Marker-based editing como estratégia primária** para toda mutação de arquivos Rust gerados pelo próprio `sunscreen`. Formato canônico em `docs/reference/markers.md`.
-2. **`ast-grep` como subprocess de escape hatch** para o caso raro de inserção em território user-authored (ex.: adicionar `#[event]` que referencia uma struct em módulo nomeado pelo usuário).
-3. **Pipeline em três fases** para toda operação de scaffold (alinhado com ADR-0001 § 8.x):
-   - **Plan** — computa `FileSetPlan` em memória (creates, updates, marker-region edits) sem tocar disco.
-   - **Validate** — dry-run: schema-check, lint de markers, paths dentro do workspace, conflitos.
-   - **Commit** — escrita atômica por arquivo (`<path>.sunscreen-tmp.<pid>` + rename); undo log para rollback.
-4. **Hooks pós-commit** opcionais: `cargo fmt --files-with-diff <changed>`, `cargo check` (gated por flag).
-5. **Markers versionados** (`version=<n>`); bumps acionam migrators automáticos.
+1. **Marker-based editing as the primary strategy** for any mutation of Rust files generated by `sunscreen` itself. Canonical format in `docs/reference/markers.md`.
+2. **`ast-grep` as an escape-hatch subprocess** for the rare case of insertion into user-authored territory (e.g., adding `#[event]` that references a struct in a user-named module).
+3. **Three-phase pipeline** for every scaffold operation (aligned with ADR-0001 § 8.x):
+   - **Plan** — computes a `FileSetPlan` in memory (creates, updates, marker-region edits) without touching disk.
+   - **Validate** — dry-run: schema-check, marker lint, paths within the workspace, conflicts.
+   - **Commit** — atomic per-file write (`<path>.sunscreen-tmp.<pid>` + rename); undo log for rollback.
+4. Optional **post-commit hooks**: `cargo fmt --files-with-diff <changed>`, `cargo check` (gated by flag).
+5. **Versioned markers** (`version=<n>`); bumps trigger automatic migrators.
 
-Esta decisão é consistente com Sub-ADR-001 (ADR-0001 § 7.1).
+This decision is consistent with Sub-ADR-001 (ADR-0001 § 7.1).
 
 ---
 
 ## 5. Consequences
 
-### 5.1 Positivas
+### 5.1 Positive
 
-- Implementação simples e auditável.
-- Zero dependência de toolchain Rust em runtime para o caminho primário.
-- Determinístico e rápido (line-scan O(n)).
-- Auto-documentado: o usuário lê o arquivo e vê literalmente o contrato.
-- Testes ficam triviais (golden + snapshot via `insta`).
-- Suporta naturalmente o conceito de `user-region` que viabiliza preservação de handlers.
+- Simple and auditable implementation.
+- Zero runtime dependency on the Rust toolchain for the primary path.
+- Deterministic and fast (O(n) line-scan).
+- Self-documenting: the user reads the file and literally sees the contract.
+- Tests become trivial (golden + snapshot via `insta`).
+- Naturally supports the `user-region` concept that enables handler preservation.
 
-### 5.2 Negativas
+### 5.2 Negative
 
-- Mutação de código user-authored é fora do escopo (exceto via `ast-grep`).
-- Markers visualmente "poluem" os arquivos. Mitigação: convenção visual `=== … ===` torna-os legíveis e segregáveis a olho nu.
-- Usuário pode acidentalmente apagar um marker. Mitigação: `sunscreen chain doctor --fix-markers` (R2).
-- Rename/move de arquivos pelo usuário pode descolar markers da expectativa do scaffolder. Ver § 7 Open Questions.
+- Mutation of user-authored code is out of scope (except via `ast-grep`).
+- Markers visually "pollute" the files. Mitigation: the visual convention `=== … ===` makes them readable and visually segregable.
+- The user may accidentally delete a marker. Mitigation: `sunscreen chain doctor --fix-markers` (R2).
+- User rename/move of files can decouple markers from the scaffolder's expectation. See § 7 Open Questions.
 
-### 5.3 Mitigações
+### 5.3 Mitigations
 
-- Validação de markers roda em **toda** invocação de `sunscreen scaffold` antes de qualquer escrita.
-- CI tem golden test específico de "markers sobrevivem a `rustfmt --edition=2024`" (ADR-0001 § 9.5.1).
-- Migrators garantem que bumps de `version=` não quebram workspaces existentes.
+- Marker validation runs on **every** invocation of `sunscreen scaffold` before any write.
+- CI has a specific golden test for "markers survive `rustfmt --edition=2024`" (ADR-0001 § 9.5.1).
+- Migrators ensure that `version=` bumps do not break existing workspaces.
 
 ---
 
 ## 6. Implementation Plan (Phase 2)
 
-Ordem de implementação dos scaffolders durante Phase 2:
+Order of scaffolder implementation during Phase 2:
 
-| Round | Scaffolder | Segments tocados | Notas |
+| Round | Scaffolder | Segments touched | Notes |
 |---|---|---|---|
-| **R1** | `instruction` | `instructions` (mod.rs), `dispatch` (lib.rs), `file` + `handler` (instruction.rs) | bootstrap do mecanismo; cobre todos os tipos de marker |
-| **R2** | `account` | `accounts` (state/mod.rs), `state` (state/<acc>.rs) | adiciona `chain doctor --fix-markers` |
-| **R3** | `event` | `events` (events.rs) | primeiro uso potencial de `ast-grep` fallback |
-| **R4** | `error` | `errors` (errors.rs) | variantes do `#[error_code]` enum |
-| **R5** | `program` | sub-workspace inteiro | compõe R1–R4 sobre um programa novo dentro de workspace existente |
+| **R1** | `instruction` | `instructions` (mod.rs), `dispatch` (lib.rs), `file` + `handler` (instruction.rs) | bootstraps the mechanism; covers all marker types |
+| **R2** | `account` | `accounts` (state/mod.rs), `state` (state/<acc>.rs) | adds `chain doctor --fix-markers` |
+| **R3** | `event` | `events` (events.rs) | first potential use of the `ast-grep` fallback |
+| **R4** | `error` | `errors` (errors.rs) | `#[error_code]` enum variants |
+| **R5** | `program` | entire sub-workspace | composes R1–R4 over a new program inside an existing workspace |
 
-Cada round entrega: scaffolder + golden tests + entrada na tabela de `docs/reference/markers.md` se introduzir novo segment.
+Each round delivers: scaffolder + golden tests + entry in the `docs/reference/markers.md` table if it introduces a new segment.
 
-### 6.1 Componentes esperados
+### 6.1 Expected components
 
 ```text
 src/
 ├── rustpatch/
 │   ├── marker.rs       # scan / validate / apply
-│   ├── segment.rs      # registry de segments + versões
-│   ├── migrate/        # migradores version=N -> version=N+1
+│   ├── segment.rs      # registry of segments + versions
+│   ├── migrate/        # migrators version=N -> version=N+1
 │   ├── astgrep.rs      # subprocess wrapper (escape hatch)
-│   └── fmt.rs          # invocação de rustfmt
+│   └── fmt.rs          # rustfmt invocation
 ├── scaffold/
 │   ├── plan.rs         # FileSetPlan
 │   ├── instruction.rs  # R1
@@ -192,22 +192,22 @@ src/
 
 ## 7. Open Questions
 
-1. **Renames/movimentações pelo usuário.** Se o usuário move `instructions/deposit.rs` → `instructions/transfers/deposit.rs`, o scaffolder perde a referência. Opções:
-   - (i) Detectar via `git mv` no histórico (frágil — usuário pode não usar git).
-   - (ii) Manter um índice `_workspace/.sunscreen/manifest.json` com paths conhecidos e segments resolvidos.
-   - (iii) Re-scan completo do `src/` procurando por todos os markers a cada invocação (O(n) — provável escolha).
-   - **Tentativa atual:** (iii) + warning se um segment esperado some.
-2. **Drift entre IDL e código.** Usuário pode editar o struct `Deposit<'info>` manualmente, divergindo do que `sunscreen` geraria. Como detectar?
-   - Opção: re-rodar `scaffold instruction <name>` sempre regenera o segment `file` (que é `auto-generated`) — então a divergência é a *intenção* do usuário ao **não** rodar o comando. `chain doctor` pode comparar IDL gerado por Anchor vs. IDL inferido dos args originais persistidos em `.sunscreen/manifest.json` e avisar.
-3. **Múltiplos programs no workspace.** R5 precisa decidir se markers carregam um qualifier de programa ou se o path do arquivo basta como contexto. Tendência: path basta; markers permanecem locais ao arquivo.
-4. **Suporte a edition futura do Rust.** Se Rust 2027 mudar comportamento de line comments dentro de `mod`, golden test em CI quebra primeiro — política reativa, não preventiva.
+1. **User renames/moves.** If the user moves `instructions/deposit.rs` → `instructions/transfers/deposit.rs`, the scaffolder loses the reference. Options:
+   - (i) Detect via `git mv` in history (fragile — user may not use git).
+   - (ii) Maintain a `_workspace/.sunscreen/manifest.json` index with known paths and resolved segments.
+   - (iii) Full re-scan of `src/` looking for all markers on every invocation (O(n) — likely choice).
+   - **Current attempt:** (iii) + warning if an expected segment disappears.
+2. **Drift between IDL and code.** The user may edit the `Deposit<'info>` struct manually, diverging from what `sunscreen` would generate. How to detect?
+   - Option: re-running `scaffold instruction <name>` always regenerates the `file` segment (which is `auto-generated`) — so divergence is the user's *intent* by **not** running the command. `chain doctor` can compare the IDL produced by Anchor against the IDL inferred from the original args persisted in `.sunscreen/manifest.json` and warn.
+3. **Multiple programs in the workspace.** R5 needs to decide whether markers carry a program qualifier or whether the file path is enough as context. Inclination: the path is enough; markers stay local to the file.
+4. **Support for future Rust editions.** If Rust 2027 changes the behavior of line comments inside `mod`, the CI golden test will break first — reactive policy, not preventive.
 
 ---
 
 ## 8. Acceptance Criteria
 
-- [ ] `docs/reference/markers.md` é a fonte de verdade do formato e está linkada do mdBook (ADR-0003).
-- [ ] Scaffolders R1–R5 implementados com golden tests.
-- [ ] Golden test específico "markers sobrevivem a `rustfmt --edition=2024`" passa em CI.
-- [ ] Re-rodar qualquer scaffold com mesmos args produz diff vazio.
-- [ ] `sunscreen chain doctor --fix-markers` recupera de marker corrompido em pelo menos os cenários listados em `docs/reference/markers.md` § 6.
+- [ ] `docs/reference/markers.md` is the source of truth for the format and is linked from mdBook (ADR-0003).
+- [ ] Scaffolders R1–R5 implemented with golden tests.
+- [ ] Specific golden test "markers survive `rustfmt --edition=2024`" passes in CI.
+- [ ] Re-running any scaffold with the same args produces an empty diff.
+- [ ] `sunscreen chain doctor --fix-markers` recovers from a corrupted marker in at least the scenarios listed in `docs/reference/markers.md` § 6.

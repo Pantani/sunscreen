@@ -8,7 +8,7 @@
 | **Tags** | onboarding, ux, beginner, wizard, dx |
 | **Supersedes** | — |
 | **Superseded by** | — |
-| **Related** | ADR-0001 § 1.4 e § 10.7 (sunscreen CLI), ADR-0002 (CLI Design Conventions), ADR-0004 (Incremental Scaffolding), `IMPLEMENTATION-KICKOFF.md` |
+| **Related** | ADR-0001 § 1.4 and § 10.7 (sunscreen CLI), ADR-0002 (CLI Design Conventions), ADR-0004 (Incremental Scaffolding), `IMPLEMENTATION-KICKOFF.md` |
 
 ---
 
@@ -16,13 +16,13 @@
 
 | Date | Author | Version | Summary |
 |------|--------|---------|---------|
-| 2026-06-01 | Pantani | 1.0.0 | Initial ADR — formaliza a Phase 5.5 (Onboarding Layer) |
+| 2026-06-01 | Pantani | 1.0.0 | Initial ADR — formalizes Phase 5.5 (Onboarding Layer) |
 
 ---
 
 ## TL;DR
 
-`sunscreen` adiciona uma **camada de onboarding dedicada** (Phase 5.5) composta por sete comandos de alto nível — `init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn` — e um contrato formal de **erros acionáveis** com campo `next_step`. Esta camada é uma fina envoltória interativa sobre o core já existente (`chain new`, scaffolders, doctor): `init` é um wizard `dialoguer` que termina chamando o mesmo loader/validator de `chain new`; `quickstart <recipe>` compõe `chain new` + scaffolders + frontend bootstrap em um único comando one-shot; `wallet` e `deploy` são wrappers amigáveis sobre `solana-keygen`/`solana airdrop`/`anchor deploy`; `examples` distribui projetos prontos via `rust-embed`; `learn` renderiza tutoriais markdown embarcados via `termimad`. Todos os comandos respeitam DD2 (não bloqueio do power user): TTY-detection desliga prompts e `--non-interactive` força equivalência flag-based. DoD: usuário sem conta Solana faz `sunscreen init` → `sunscreen quickstart nft` → vê NFT mintada em devnet em **< 10 min**.
+`sunscreen` adds a **dedicated onboarding layer** (Phase 5.5) composed of seven top-level commands — `init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn` — and a formal contract for **actionable errors** with a `next_step` field. This layer is a thin interactive wrapper over the already-existing core (`chain new`, scaffolders, doctor): `init` is a `dialoguer` wizard that ends by calling the same loader/validator as `chain new`; `quickstart <recipe>` composes `chain new` + scaffolders + frontend bootstrap into a single one-shot command; `wallet` and `deploy` are friendly wrappers over `solana-keygen`/`solana airdrop`/`anchor deploy`; `examples` ships ready-made projects via `rust-embed`; `learn` renders embedded markdown tutorials via `termimad`. All commands respect DD2 (power-user non-blocking): TTY detection disables prompts and `--non-interactive` forces flag-based equivalence. DoD: a user with no Solana account runs `sunscreen init` → `sunscreen quickstart nft` → sees an NFT minted on devnet in **< 10 min**.
 
 ---
 
@@ -30,185 +30,192 @@
 
 ### 1.1 Problem framing
 
-O plano original do ADR-0001 (Phases 0–8) assume um **dev Solana intermediário** — alguém que já entende `Pubkey`, sabe a diferença entre `Account` e `AccountInfo`, conhece o ciclo `anchor build → anchor deploy`, e está confortável editando `Anchor.toml`. As Phases 0–2 R3 (já entregues) refletem esse público: `chain new` exige flags explícitas (`--framework anchor --frontend next --clients ts,rs`), scaffolders esperam que o usuário saiba o que é uma "instruction", e `chain doctor` reporta toolchain status em jargão (`anchor-cli 0.30.x`, `solana-cli 2.0.x`).
+The original plan in ADR-0001 (Phases 0–8) assumes an **intermediate Solana dev** — someone who already understands `Pubkey`, knows the difference between `Account` and `AccountInfo`, knows the `anchor build → anchor deploy` cycle, and is comfortable editing `Anchor.toml`. Phases 0–2 R3 (already delivered) reflect that audience: `chain new` requires explicit flags (`--framework anchor --frontend next --clients ts,rs`), scaffolders expect the user to know what an "instruction" is, and `chain doctor` reports toolchain status in jargon (`anchor-cli 0.30.x`, `solana-cli 2.0.x`).
 
-A **visão de produto**, porém, é mais ambiciosa: `sunscreen` deve ser **a porta de entrada para devs que não sabem Rust nem Solana profundamente** — um desenvolvedor TypeScript com curiosidade sobre NFTs, um estudante que ouviu falar de SPL tokens, um indie que quer prototipar um DAO em uma tarde. Esse público:
+The **product vision**, however, is more ambitious: `sunscreen` should be **the entry point for devs who don't know Rust or Solana deeply** — a TypeScript developer curious about NFTs, a student who has heard of SPL tokens, an indie who wants to prototype a DAO in an afternoon. This audience:
 
-- Não sabe que precisa de uma keypair antes de fazer `airdrop`.
-- Não sabe a diferença entre `localnet`, `devnet`, `testnet`, `mainnet`.
-- Não sabe o que é um PDA, e portanto não sabe *por que* `scaffold account` pergunta sobre seeds.
-- Vai abandonar o CLI nos primeiros 5 minutos se a primeira tela for `error: missing required argument '--framework <FRAMEWORK>'`.
+- Doesn't know they need a keypair before doing an `airdrop`.
+- Doesn't know the difference between `localnet`, `devnet`, `testnet`, `mainnet`.
+- Doesn't know what a PDA is, and therefore doesn't know *why* `scaffold account` asks about seeds.
+- Will abandon the CLI in the first 5 minutes if the first screen is `error: missing required argument '--framework <FRAMEWORK>'`.
 
-Este ADR formaliza uma **camada de superfície** que não existe no ADR-0001 e que será priorizada entre Phase 5 (recipes) e v1.0 (release).
+This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that will be prioritized between Phase 5 (recipes) and v1.0 (release).
 
-### 1.2 Restrições
+### 1.2 Constraints
 
-- **Não quebrar o expert.** Toda a surface de Phase 0–5 deve continuar funcionando byte-a-byte. Onboarding é *aditivo*.
-- **Offline-first.** Examples e tutoriais embarcados (sem `git clone` mandatório no primeiro uso).
-- **Sem path paralelo.** O wizard `init` **não** pode duplicar o loader/validator de `chain new`; precisa terminar invocando o mesmo código.
-- **TTY-aware.** Detectar `isatty(stdin)` e degradar para flag-based quando rodando em pipe/CI.
-- **Custo zero por default.** Nenhum comando deve gastar SOL sem confirmação explícita (mainnet em especial).
-- **i18n preparado mas en-US first.** Strings centralizadas em `src/strings/en_US.rs`; PT-BR fica como skill futura.
+- **Don't break the expert.** The entire Phase 0–5 surface must continue to work byte-for-byte. Onboarding is *additive*.
+- **Offline-first.** Embedded examples and tutorials (no mandatory `git clone` on first use).
+- **No parallel path.** The `init` wizard **cannot** duplicate the loader/validator of `chain new`; it must end by invoking the same code.
+- **TTY-aware.** Detect `isatty(stdin)` and degrade to flag-based when running under a pipe/CI.
+- **Zero cost by default.** No command should spend SOL without explicit confirmation (mainnet especially).
+- **i18n-ready but en-US first.** Strings centralized in `src/strings/en_US.rs`; PT-BR remains a future skill.
 
 ---
 
 ## 2. Decision Drivers
 
-- **DD1 — Curva de aprendizado.** Tempo "hello world → NFT deployed em devnet" < 10 min para iniciante absoluto sem conta prévia.
-- **DD2 — Não-bloqueio do power user.** Todo wizard tem equivalente flag-based; `--non-interactive` ou TTY-detection desliga prompts; nenhum comando novo aparece em `chain new` ou nos scaffolders existentes.
-- **DD3 — Sem network mandatório.** Examples e `learn` embarcados via `rust-embed`; cluster ops (`wallet airdrop`, `deploy devnet`) são opt-in.
-- **DD4 — Reuso da infraestrutura existente.** Wizard chama o mesmo `ChainNewArgs::from_resolved(...)` que `chain new` usa; `quickstart` compõe scaffolders pelo seu Rust API, não por shellout.
-- **DD5 — i18n preparado, en-US first.** Strings em módulo dedicado; nenhum literal no fluxo de controle.
-- **DD6 — Erros acionáveis.** Toda variante de `SunscreenError` carrega `next_step: Option<String>`; cobertura 100% verificada em CI.
-- **DD7 — Discoverability.** Comandos top-level (não flags), nomes orientados a tarefa do usuário (`wallet new`, não `keypair generate`).
+- **DD1 — Learning curve.** Time to "hello world → NFT deployed on devnet" < 10 min for an absolute beginner with no prior account.
+- **DD2 — Power-user non-blocking.** Every wizard has a flag-based equivalent; `--non-interactive` or TTY detection disables prompts; no new command appears in `chain new` or the existing scaffolders.
+- **DD3 — No mandatory network.** Examples and `learn` embedded via `rust-embed`; cluster ops (`wallet airdrop`, `deploy devnet`) are opt-in.
+- **DD4 — Reuse of existing infrastructure.** The wizard calls the same `ChainNewArgs::from_resolved(...)` that `chain new` uses; `quickstart` composes scaffolders via their Rust API, not via shellout.
+- **DD5 — i18n-ready, en-US first.** Strings in a dedicated module; no literals in the control flow.
+- **DD6 — Actionable errors.** Every variant of `SunscreenError` carries `next_step: Option<String>`; 100% coverage verified in CI.
+- **DD7 — Discoverability.** Top-level commands (not flags), names oriented to the user's task (`wallet new`, not `keypair generate`).
 
 ---
 
 ## 3. Considered Options
 
-| # | Opção | Resumo |
+| # | Option | Summary |
 |---|---|---|
-| (A) | **Layer separado** *(escolhido)* | Novos comandos top-level (`init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn`) + delegação ao core |
-| (B) | Flags `--interactive` em comandos existentes | `chain new --interactive`, `scaffold instruction --interactive` |
-| (C) | Sub-CLI separado | Distribuir `sunscreen-easy` como binário paralelo |
-| (D) | Plugin externo opcional | Onboarding via `sunscreen plugin install onboarding` |
+| (A) | **Separate layer** *(chosen)* | New top-level commands (`init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn`) + delegation to the core |
+| (B) | `--interactive` flags on existing commands | `chain new --interactive`, `scaffold instruction --interactive` |
+| (C) | Separate sub-CLI | Ship `sunscreen-easy` as a parallel binary |
+| (D) | Optional external plugin | Onboarding via `sunscreen plugin install onboarding` |
 
-### 3.1 Opção (A) — Layer separado
+### 3.1 Option (A) — Separate layer
 
-**Prós:**
-- Mantém ADR-0001 intacto: nenhuma flag nova em `chain new` ou scaffolders.
-- Surface explícita e descobrível: `sunscreen --help` lista os comandos amigáveis ao lado dos expert.
-- Fácil de evoluir: cada comando é uma `clap` subcommand com seu próprio módulo.
-- Composição limpa: `quickstart nft` é literalmente `chain_new(...) + scaffold_instruction(...) + scaffold_account(...)` em sequência.
+**Pros:**
+- Keeps ADR-0001 intact: no new flag on `chain new` or scaffolders.
+- Explicit and discoverable surface: `sunscreen --help` lists the friendly commands alongside the expert ones.
+- Easy to evolve: each command is a `clap` subcommand with its own module.
+- Clean composition: `quickstart nft` is literally `chain_new(...) + scaffold_instruction(...) + scaffold_account(...)` in sequence.
 
-**Contras:**
-- Aumenta o número de comandos top-level (de ~8 para ~14). Mitigação: grupo `Beginner` na `--help` (cf. ADR-0002 § 3.2).
-- Risco de divergência entre o que o wizard pergunta e o que `chain new` aceita. Mitigação: validador único compartilhado.
+**Cons:**
+- Increases the number of top-level commands (from ~8 to ~14). Mitigation: `Beginner` group in `--help` (cf. ADR-0002 § 3.2).
+- Risk of divergence between what the wizard asks and what `chain new` accepts. Mitigation: single shared validator.
 
-### 3.2 Opção (B) — `--interactive` em comandos existentes
+### 3.2 Option (B) — `--interactive` on existing commands
 
-**Prós:** zero comandos novos; descoberta via `--help` do comando existente.
+**Pros:** zero new commands; discovery via `--help` of the existing command.
 
-**Contras:**
-- Polui surface: `chain new --interactive --framework anchor` é semanticamente confuso (por que pedir framework se é interativo?).
-- Não cobre os casos novos (`wallet`, `deploy`, `learn`, `examples`) que não têm equivalente atual.
-- Dificulta o "happy path" do iniciante: ele precisa adivinhar que `chain new` é o ponto de entrada.
+**Cons:**
+- Pollutes the surface: `chain new --interactive --framework anchor` is semantically confusing (why ask for a framework if it's interactive?).
+- Does not cover the new cases (`wallet`, `deploy`, `learn`, `examples`) that have no current equivalent.
+- Makes the beginner's "happy path" harder: they have to guess that `chain new` is the entry point.
 
-**Rejeitado.**
+**Rejected.**
 
-### 3.3 Opção (C) — Sub-CLI separado (`sunscreen-easy`)
+### 3.3 Option (C) — Separate sub-CLI (`sunscreen-easy`)
 
-**Prós:** isola completamente UX iniciante da expert.
+**Pros:** completely isolates the beginner UX from the expert one.
 
-**Contras:** fragmenta a marca; duplica config loading; usuário precisa aprender *quando* trocar de binário; instalação dobra.
+**Cons:** fragments the brand; duplicates config loading; the user has to learn *when* to switch binaries; install doubles.
 
-**Rejeitado.**
+**Rejected.**
 
-### 3.4 Opção (D) — Plugin externo opcional
+### 3.4 Option (D) — Optional external plugin
 
-**Prós:** mantém core enxuto; permite iteração rápida sem release do core.
+**Pros:** keeps the core lean; allows fast iteration without a core release.
 
-**Contras:** onboarding precisa ser **default**, não opt-in — quem mais precisa do plugin é justamente quem não vai descobrir que precisa instalá-lo.
+**Cons:** onboarding has to be **default**, not opt-in — the person who most needs the plugin is precisely the one who won't discover they need to install it.
 
-**Rejeitado.**
+**Rejected.**
 
 ---
 
 ## 4. Decision
 
-`sunscreen` adota a **Opção (A) — Layer separado** com sete novos comandos top-level e um contrato formal de erros acionáveis.
+`sunscreen` adopts **Option (A) — Separate layer** with seven new top-level commands and a formal contract for actionable errors.
 
-### 4.1 Comandos novos
+### 4.1 New commands
 
 | Signature | Flags | Output | Exit codes |
 |-----------|-------|--------|-----------|
-| `sunscreen init [name]` | `--non-interactive`, `--from-preset <name>`, `--json` | Cria workspace; emite resumo das escolhas + próximo passo | 0 ok; 4 user_input (prompt abortado); 5 conflict (path existe) |
-| `sunscreen examples list` | `--json`, `--tag <tag>` | Tabela: nome, descrição curta, tags, tempo estimado | 0 ok |
-| `sunscreen examples describe <name>` | `--json` | README do exemplo renderizado via `termimad` | 0 ok; 6 not_found |
-| `sunscreen examples use <name> [path]` | `--non-interactive`, `--json` | Copia exemplo embarcado para `path` (default: `./<name>`) | 0 ok; 5 conflict; 6 not_found |
-| `sunscreen quickstart <recipe>` | `--name <n>`, `--cluster <localnet\|devnet>`, `--non-interactive`, `--json` | Compõe `chain new` + scaffolds + bootstrap frontend; abre `localhost:3000` se TTY | 0 ok; 4 user_input; 5 conflict; 7 toolchain |
-| `sunscreen wallet new [name]` | `--out <path>`, `--no-bip39-passphrase`, `--json` | Cria keypair; reporta pubkey + path | 0 ok; 5 conflict |
-| `sunscreen wallet list` | `--json` | Lista keypairs conhecidas + qual é default | 0 ok |
-| `sunscreen wallet airdrop [amount]` | `--cluster <c>`, `--to <pubkey>`, `--json` | Solicita airdrop; reporta saldo final | 0 ok; 8 network; 9 rate_limited |
-| `sunscreen wallet balance` | `--cluster <c>`, `--json` | Saldo da default keypair | 0 ok; 8 network |
-| `sunscreen wallet set-default <name>` | `--json` | Atualiza `sunscreen.yml` | 0 ok; 6 not_found |
-| `sunscreen deploy <target>` | `--program <name>`, `--verify`, `--yes-i-understand-cost` (mainnet), `--json` | Wrappa `anchor deploy`; mostra custo estimado antes (mainnet) | 0 ok; 4 user_input; 7 toolchain; 8 network |
-| `sunscreen learn` | — | Lista tópicos disponíveis | 0 ok |
-| `sunscreen learn <topic>` | `--json` (emite frontmatter) | Renderiza tutorial markdown via `termimad` | 0 ok; 6 not_found |
+| `sunscreen init [name]` | `--non-interactive`, `--from-preset <name>`, `--json` | Creates workspace; emits a summary of choices + next step | 0 ok; 4 user_input (prompt aborted); 7 path_conflict (path exists) |
+| `sunscreen examples list` | `--json`, `--tag <tag>` | Table: name, short description, tags, estimated time | 0 ok |
+| `sunscreen examples describe <name>` | `--json` | Example README rendered via `termimad` | 0 ok; 4 user_input (unknown name) |
+| `sunscreen examples use <name> [path]` | `--non-interactive`, `--json` | Copies embedded example to `path` (default: `./<name>`) | 0 ok; 4 user_input (unknown name); 7 path_conflict |
+| `sunscreen quickstart <recipe>` | `--name <n>`, `--cluster <localnet\|devnet>`, `--non-interactive`, `--json` | Composes `chain new` + scaffolds + frontend bootstrap; opens `localhost:3000` if TTY | 0 ok; 2 toolchain; 4 user_input; 7 path_conflict |
+| `sunscreen wallet new [name]` | `--out <path>`, `--no-bip39-passphrase`, `--json` | Creates keypair; reports pubkey + path | 0 ok; 7 path_conflict |
+| `sunscreen wallet list` | `--json` | Lists known keypairs + which is default | 0 ok |
+| `sunscreen wallet airdrop [amount]` | `--cluster <c>`, `--to <pubkey>`, `--json` | Requests airdrop; reports final balance | 0 ok; 8 network (includes rate-limited responses) |
+| `sunscreen wallet balance` | `--cluster <c>`, `--json` | Balance of the default keypair | 0 ok; 8 network |
+| `sunscreen wallet set-default <name>` | `--json` | Updates `sunscreen.yml` | 0 ok; 4 user_input (unknown name) |
+| `sunscreen deploy <target>` | `--program <name>`, `--verify`, `--yes-i-understand-cost` (mainnet), `--json` | Wraps `anchor deploy`; shows estimated cost beforehand (mainnet) | 0 ok; 2 toolchain; 4 user_input; 8 network |
+| `sunscreen learn` | — | Lists available topics | 0 ok |
+| `sunscreen learn <topic>` | `--json` (emits frontmatter) | Renders the markdown tutorial via `termimad` | 0 ok; 4 user_input (unknown topic) |
 
-`<recipe>` ∈ `{token, nft, dao, blog}` (extensível em ADR futuro).
+`<recipe>` ∈ `{token, nft, dao, blog}` (extensible in a future ADR).
 `<target>` ∈ `{localnet, devnet, mainnet}`.
 `<topic>` MVP ∈ `{pda, cpi, token-2022, accounts-model, anchor-vs-native}`.
 
-### 4.2 Contrato de erros acionáveis
+> **Exit code compatibility.** This table strictly aligns with the canonical mapping in ADR-0002 § 4.3 and `src/error.rs::SunscreenError::exit_code` (which already assigns `1`=Other, `2`=ToolchainMissing, `3`=ConfigInvalid, `4`=UserInput, `5`=WorkspaceMissing, `6`=InstructionDrift). Onboarding does **not** repurpose any existing code. It extends the mapping with two new variants:
+>
+> - `7` — `PathConflict` (target directory or file already exists; raised by `init`, `examples use`, `wallet new`, `quickstart`).
+> - `8` — `Network` (RPC, faucet, or airdrop failure — including rate-limited responses; raised by `wallet airdrop`, `wallet balance`, `deploy`).
+>
+> Phase 5.5 implementation MUST add `SunscreenError::PathConflict` and `SunscreenError::Network` variants, extend `exit_code()` to return `7` and `8`, and ship an amendment to ADR-0002 § 4.3 promoting these codes from "reserved" to "assigned". The existing reservation note in ADR-0002 (which loosely flagged `5`/`6` as reserved for network/conflict) is superseded by `src/error.rs` — `5` and `6` are already in use and MUST NOT be reused here.
+
+### 4.2 Actionable error contract
 
 ```rust
 pub struct SunscreenError {
     pub kind: ErrorKind,
     pub message: String,
-    pub next_step: Option<String>, // <-- contrato novo: 100% das variantes
+    pub next_step: Option<String>, // <-- new contract: 100% of variants
     pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 ```
 
-- CI test (`tests/errors_contract.rs`) usa `strum::IntoEnumIterator` para garantir que cada `ErrorKind` tem ao menos um construtor com `next_step.is_some()`.
-- `--json` serializa `next_step` como campo top-level (cf. ADR-0002 § 5).
-- Renderização TTY: linha extra `→ try: <next_step>` em ciano.
+- CI test (`tests/errors_contract.rs`) uses `strum::IntoEnumIterator` to ensure each `ErrorKind` has at least one constructor with `next_step.is_some()`.
+- `--json` serializes `next_step` as a top-level field (cf. ADR-0002 § 5).
+- TTY rendering: extra line `→ try: <next_step>` in cyan.
 
-### 4.3 Distribuição de assets
+### 4.3 Asset distribution
 
-- **Examples**: embarcados via `rust-embed` em `assets/examples/<name>/**`. Tamanho-alvo do binário: < 15 MB total. Examples grandes (>2 MB) marcados com `remote=true` no manifest; `examples use <name>` baixa via `gix` (puro Rust, sem dep de `git` CLI).
-- **Learn**: 100% embarcado em `assets/learn/<topic>.md`. Frontmatter YAML com `title`, `est_minutes`, `prereqs`.
-- **Recipes** (`quickstart`): definidas em código (`src/onboarding/recipes/<name>.rs`) — não são templates, são *programas* que orquestram chamadas do core.
+- **Examples**: embedded via `rust-embed` in `assets/examples/<name>/**`. Target binary size: < 15 MB total. Large examples (>2 MB) marked with `remote=true` in the manifest; `examples use <name>` downloads via `gix` (pure Rust, no `git` CLI dependency).
+- **Learn**: 100% embedded in `assets/learn/<topic>.md`. YAML frontmatter with `title`, `est_minutes`, `prereqs`.
+- **Recipes** (`quickstart`): defined in code (`src/onboarding/recipes/<name>.rs`) — they are not templates, they are *programs* that orchestrate core calls.
 
 ### 4.4 TTY detection & --non-interactive
 
-- Helper único `src/onboarding/tty.rs::is_interactive() -> bool` consulta `IsTerminal::is_terminal(&io::stdin())` E ausência de `--non-interactive` E ausência de `SUNSCREEN_NON_INTERACTIVE=1`.
-- Wizard prompts substituídos por erro `ErrorKind::UserInput` com `next_step` listando a flag equivalente quando `is_interactive() == false`.
+- Single helper `src/onboarding/tty.rs::is_interactive() -> bool` checks `IsTerminal::is_terminal(&io::stdin())` AND absence of `--non-interactive` AND absence of `SUNSCREEN_NON_INTERACTIVE=1`.
+- Wizard prompts replaced by an `ErrorKind::UserInput` error with `next_step` listing the equivalent flag when `is_interactive() == false`.
 
 ---
 
 ## 5. Consequences
 
-### 5.1 Positivas
+### 5.1 Positive
 
-- Democratiza o CLI: iniciante chega ao primeiro NFT mintado em < 10 min.
-- Aumenta adoção e reduz fricção em demos/workshops.
-- Reduz carga de suporte: erros com `next_step` evitam metade das issues abertas hoje em CLIs similares.
-- Reaproveita 100% do core existente — wizard é fina camada.
-- `learn` cria pulmão de documentação procurável dentro do binário.
+- Democratizes the CLI: a beginner reaches their first minted NFT in < 10 min.
+- Boosts adoption and reduces friction in demos/workshops.
+- Reduces support load: errors with `next_step` avoid half the issues opened today against similar CLIs.
+- Reuses 100% of the existing core — the wizard is a thin layer.
+- `learn` creates a searchable documentation reservoir inside the binary.
 
-### 5.2 Negativas
+### 5.2 Negative
 
-- **+2 sprints** de trabalho (Bloco E do roadmap; ver § 6).
-- **+5–8 MB no binário** por embed de examples + learn. Mitigação: `--features minimal` para builds em CI/produção sem onboarding.
-- Aumenta superfície de testes: cada wizard precisa de teste interativo (via `expectrl` ou similar) + teste `--non-interactive`.
-- Risco de divergência entre wizard e flags. Mitigação: validador único; teste property-based que aleatoriza inputs do wizard e compara com `chain new` equivalente.
-- Mais comandos top-level na `--help`. Mitigação: agrupar via `clap` `help_heading`.
+- **+2 sprints** of work (Block E of the roadmap; see § 6).
+- **+5–8 MB on the binary** for the examples + learn embed. Mitigation: `--features minimal` for CI/production builds without onboarding.
+- Increases test surface: each wizard needs an interactive test (via `expectrl` or similar) + a `--non-interactive` test.
+- Risk of divergence between wizard and flags. Mitigation: single validator; property-based test that randomizes wizard inputs and compares with the equivalent `chain new`.
+- More top-level commands in `--help`. Mitigation: group via `clap` `help_heading`.
 
-### 5.3 Neutrais
+### 5.3 Neutral
 
-- Requer 3 novas deps: `dialoguer ^0.11`, `termimad ^0.31`, `indicatif ^0.17` — todas já planejadas para a TUI da Phase 6.
-- Strings centralizadas em `src/strings/` viabilizam i18n futura sem refactor adicional.
+- Requires 3 new deps: `dialoguer ^0.11`, `termimad ^0.31`, `indicatif ^0.17` — all already planned for the Phase 6 TUI.
+- Strings centralized in `src/strings/` enable future i18n with no additional refactor.
 
-### 5.4 Mitigações de risco
+### 5.4 Risk mitigations
 
-- Golden tests gravam transcripts completos de cada wizard (via `insta` + `expectrl`).
-- Property test: para cada combinação possível de respostas do `init`, verificar que o workspace resultante é byte-idêntico ao gerado por `chain new` com flags equivalentes.
-- `quickstart` tem teste E2E em `localnet` no CI (Surfpool inicia em background; teardown em `Drop`).
+- Golden tests record complete transcripts of each wizard (via `insta` + `expectrl`).
+- Property test: for every possible combination of `init` answers, verify that the resulting workspace is byte-identical to the one produced by `chain new` with equivalent flags.
+- `quickstart` has an E2E test on `localnet` in CI (Surfpool starts in the background; teardown via `Drop`).
 
 ---
 
 ## 6. Implementation Plan (Phase 5.5)
 
-Inserida entre Phase 5 (recipes) e Phase 8 (release). 2 sprints (~4 semanas).
+Inserted between Phase 5 (recipes) and Phase 8 (release). 2 sprints (~4 weeks).
 
-| Sprint | Entrega | Tests |
+| Sprint | Deliverable | Tests |
 |---|---|---|
-| **S1** | `init` (wizard + validator share), `wallet *`, contrato `next_step` em 100% das variantes | unit + golden de transcripts |
-| **S2** | `examples` (list/describe/use), `quickstart {token, nft, dao, blog}`, `deploy`, `learn` (5 tópicos MVP) | E2E em localnet; teste de embed integrity |
+| **S1** | `init` (wizard + validator share), `wallet *`, `next_step` contract in 100% of variants | unit + golden transcripts |
+| **S2** | `examples` (list/describe/use), `quickstart {token, nft, dao, blog}`, `deploy`, `learn` (5 MVP topics) | E2E on localnet; embed integrity test |
 
-### 6.1 Componentes esperados
+### 6.1 Expected components
 
 ```text
 src/
@@ -217,16 +224,16 @@ src/
 │   ├── tty.rs              # is_interactive()
 │   ├── wizard.rs           # init flow
 │   ├── recipes/
-│   │   ├── token.rs        # SPL fungível
+│   │   ├── token.rs        # SPL fungible
 │   │   ├── nft.rs          # Metaplex Token Metadata + Master Edition
 │   │   ├── dao.rs          # voting program
-│   │   └── blog.rs         # CRUD com PDAs
+│   │   └── blog.rs         # CRUD with PDAs
 │   ├── wallet.rs           # solana-keygen wrapper
 │   ├── deploy.rs           # anchor deploy wrapper + cost preview
 │   ├── examples.rs         # rust-embed gallery
 │   └── learn.rs            # termimad renderer
 ├── strings/
-│   └── en_US.rs            # toda string user-facing
+│   └── en_US.rs            # every user-facing string
 └── error.rs                # next_step field
 assets/
 ├── examples/
@@ -295,7 +302,7 @@ $ sunscreen quickstart nft --name pixel-cats
 → next: open http://localhost:3000/mint in your browser
 ```
 
-### 7.3 Erro acionável com `next_step`
+### 7.3 Actionable error with `next_step`
 
 ```text
 $ sunscreen deploy devnet
@@ -320,38 +327,38 @@ JSON equivalent:
 ## 8. Open Questions
 
 1. **Examples gallery: embed vs git clone on-demand?**
-   - Tendência: **embed por default** (offline-first, DD3); flag `remote=true` no manifest para examples grandes (> 2 MB) que são baixados via `gix`.
-2. **Wizard em PT-BR no MVP ou só en-US?**
-   - Tendência: **en-US first** (Solana é global); strings centralizadas em `src/strings/en_US.rs` para viabilizar PT-BR via skill futura sem refactor.
-3. **`sunscreen deploy mainnet` exige `--yes-i-understand-cost` ou só confirmação interativa?**
-   - Tendência: **ambos** — confirmação interativa quando TTY, flag obrigatória quando `--non-interactive` (cobre CI accidents).
-4. **`sunscreen learn` content gerenciado in-repo ou repo separado versionado?**
-   - Tendência: **in-repo** no MVP (5 tópicos); migrar para `sunscreen-learn` repo + `learn update` quando passar de ~20 tópicos.
-5. **`quickstart` deve abrir o browser automaticamente?**
-   - Tendência: sim quando TTY (via `open` crate); silenciar quando `--non-interactive`.
+   - Inclination: **embed by default** (offline-first, DD3); `remote=true` flag in the manifest for large examples (> 2 MB) that are downloaded via `gix`.
+2. **Wizard in PT-BR for MVP or en-US only?**
+   - Inclination: **en-US first** (Solana is global); strings centralized in `src/strings/en_US.rs` to enable PT-BR via a future skill with no refactor.
+3. **Does `sunscreen deploy mainnet` require `--yes-i-understand-cost` or just interactive confirmation?**
+   - Inclination: **both** — interactive confirmation when TTY, mandatory flag when `--non-interactive` (covers CI accidents).
+4. **`sunscreen learn` content managed in-repo or in a separate versioned repo?**
+   - Inclination: **in-repo** for MVP (5 topics); migrate to a `sunscreen-learn` repo + `learn update` once it exceeds ~20 topics.
+5. **Should `quickstart` open the browser automatically?**
+   - Inclination: yes when TTY (via the `open` crate); silent when `--non-interactive`.
 6. **Wallet storage location.**
-   - Reusar `~/.config/solana/id.json` (compat com `solana-cli`) ou usar `~/.config/sunscreen/wallets/`? Tendência: reusar o path canônico do Solana para interop.
+   - Reuse `~/.config/solana/id.json` (compat with `solana-cli`) or use `~/.config/sunscreen/wallets/`? Inclination: reuse the canonical Solana path for interop.
 
 ---
 
 ## 9. Acceptance Criteria
 
-- [ ] Sete novos comandos implementados conforme tabela § 4.1 com `--json` e `--non-interactive` onde aplicável.
-- [ ] Contrato `next_step` cobre 100% das variantes de `ErrorKind` (verificado por test em CI).
-- [ ] Wizard `init` produz workspace **byte-idêntico** ao `chain new` com flags equivalentes (property test).
-- [ ] Cinco recipes de `quickstart` (`token`, `nft`, `dao`, `blog`, + um genérico) executam em localnet no CI.
-- [ ] `sunscreen examples list` retorna ≥ 5 entries embarcadas; `examples use <name>` cria projeto utilizável.
-- [ ] `sunscreen learn` renderiza ≥ 5 tópicos MVP sem warnings de `termimad`.
-- [ ] DoD humano: usuário sem conta Solana faz `sunscreen init` → `sunscreen quickstart nft` → vê NFT mintada em devnet em **< 10 min** (medido em workshop interno).
-- [ ] Tamanho do binário com onboarding: < 25 MB (release, stripped); sem onboarding (`--no-default-features`): < 12 MB.
+- [ ] Seven new commands implemented per the table in § 4.1 with `--json` and `--non-interactive` where applicable.
+- [ ] `next_step` contract covers 100% of `ErrorKind` variants (verified by a CI test).
+- [ ] `init` wizard produces a workspace **byte-identical** to `chain new` with equivalent flags (property test).
+- [ ] Five `quickstart` recipes (`token`, `nft`, `dao`, `blog`, + a generic one) execute on localnet in CI.
+- [ ] `sunscreen examples list` returns ≥ 5 embedded entries; `examples use <name>` creates a usable project.
+- [ ] `sunscreen learn` renders ≥ 5 MVP topics with no `termimad` warnings.
+- [ ] Human DoD: a user with no Solana account runs `sunscreen init` → `sunscreen quickstart nft` → sees an NFT minted on devnet in **< 10 min** (measured in an internal workshop).
+- [ ] Binary size with onboarding: < 25 MB (release, stripped); without onboarding (`--no-default-features`): < 12 MB.
 
 ---
 
 ## 10. References
 
-- ADR-0001 § 1.4 (Personas alvo) e § 10.7 (Recipes & onboarding gaps)
+- ADR-0001 § 1.4 (Target personas) and § 10.7 (Recipes & onboarding gaps)
 - ADR-0002 (CLI Design Conventions — `--json`, exit codes, help grouping)
-- ADR-0004 (Incremental Scaffolding — reuso do core pelos recipes)
-- `IMPLEMENTATION-KICKOFF.md` (roadmap; Phase 5.5 a ser inserida)
-- Ignite CLI `scaffold chain` wizard (referência de UX)
+- ADR-0004 (Incremental Scaffolding — core reuse by the recipes)
+- `IMPLEMENTATION-KICKOFF.md` (roadmap; Phase 5.5 to be inserted)
+- Ignite CLI `scaffold chain` wizard (UX reference)
 - `dialoguer` 0.11, `termimad` 0.31, `indicatif` 0.17, `rust-embed` 8.x, `gix` 0.66

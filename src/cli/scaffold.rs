@@ -625,6 +625,8 @@ fn ensure_lib_mod_decl(
     if existing.lines().any(|l| l.trim() == needle) {
         return Ok(None);
     }
+    let nl = detect_line_ending(&existing);
+    let trailing_nl = existing.ends_with('\n');
     let lines: Vec<&str> = existing.lines().collect();
     // Anchor: line after `pub mod instructions;` (canonical chain-new layout).
     let anchor = lines
@@ -640,17 +642,27 @@ fn ensure_lib_mod_decl(
         })
         .unwrap_or(lines.len());
     let mut out = String::new();
+    let total = lines.len();
     for (i, l) in lines.iter().enumerate() {
         if i == anchor {
             out.push_str(&needle);
-            out.push('\n');
+            out.push_str(nl);
         }
         out.push_str(l);
-        out.push('\n');
+        // Preserve the original trailing-newline behaviour: emit a newline
+        // after every line except possibly the last.
+        if i + 1 < total || trailing_nl {
+            out.push_str(nl);
+        }
     }
-    if anchor >= lines.len() {
+    if anchor >= total {
+        if !out.ends_with('\n') {
+            out.push_str(nl);
+        }
         out.push_str(&needle);
-        out.push('\n');
+        if trailing_nl {
+            out.push_str(nl);
+        }
     }
     Ok(Some(out))
 }

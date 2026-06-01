@@ -39,8 +39,9 @@ pub enum ScaffoldCmd {
 /// Flags for `sunscreen scaffold program`.
 #[derive(Debug, Args)]
 pub struct ProgramArgs {
-    /// Program name. Stored kebab-case in `sunscreen.yml` and `Anchor.toml`,
-    /// but the on-disk crate directory uses snake_case (`programs/<snake>/`).
+    /// Program name. Stored kebab-case in `sunscreen.yml`, but snake_case
+    /// in `Anchor.toml` (`<snake> = "<pubkey>"`) and on disk
+    /// (`programs/<snake>/`) to match Rust crate / module conventions.
     pub name: String,
     /// Optional Anchor program ID (base58 pubkey). Defaults to the canonical
     /// dummy ID — replace later via `solana-keygen new -o target/deploy/...`

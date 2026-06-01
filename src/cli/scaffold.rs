@@ -1804,22 +1804,35 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
     let anchor_toml_rel = "Anchor.toml".to_string();
     let sunscreen_yml_rel = "sunscreen.yml".to_string();
 
+    // Only treat manifests as "patched" when their content actually changes
+    // — idempotent re-runs (and `--dry-run` plans) shouldn't claim edits.
     let anchor_new = if anchor_toml_abs.exists() {
-        Some(patch_anchor_toml(
-            &anchor_toml_abs,
-            &program_snake,
-            program_id,
-        )?)
+        let patched = patch_anchor_toml(&anchor_toml_abs, &program_snake, program_id)?;
+        let current = std::fs::read_to_string(&anchor_toml_abs).unwrap_or_default();
+        if patched == current {
+            None
+        } else {
+            Some(patched)
+        }
     } else {
         None
     };
-    let sunscreen_new = patch_sunscreen_yml(&sunscreen_yml_abs, &program_kebab, &program_snake)?;
+    let sunscreen_patched =
+        patch_sunscreen_yml(&sunscreen_yml_abs, &program_kebab, &program_snake)?;
+    let sunscreen_current = std::fs::read_to_string(&sunscreen_yml_abs).unwrap_or_default();
+    let sunscreen_new = if sunscreen_patched == sunscreen_current {
+        None
+    } else {
+        Some(sunscreen_patched)
+    };
 
     let mut all_files = planned.clone();
     if anchor_new.is_some() {
         all_files.push(anchor_toml_rel.clone());
     }
-    all_files.push(sunscreen_yml_rel.clone());
+    if sunscreen_new.is_some() {
+        all_files.push(sunscreen_yml_rel.clone());
+    }
 
     if args.dry_run {
         if json {
@@ -1857,8 +1870,10 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
         tx.stage_replace(&anchor_toml_abs, new_toml.as_bytes())
             .map_err(map_tx_err)?;
     }
-    tx.stage_replace(&sunscreen_yml_abs, sunscreen_new.as_bytes())
-        .map_err(map_tx_err)?;
+    if let Some(ref new_yml) = sunscreen_new {
+        tx.stage_replace(&sunscreen_yml_abs, new_yml.as_bytes())
+            .map_err(map_tx_err)?;
+    }
     let written = tx.commit().map_err(map_tx_err)?;
 
     if json {
@@ -1869,10 +1884,10 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
             "files": all_files,
             "written": written.len()
                 + usize::from(anchor_new.is_some())
-                + 1, // sunscreen.yml
+                + usize::from(sunscreen_new.is_some()),
             "program_id": program_id,
             "anchor_toml_patched": anchor_new.is_some(),
-            "sunscreen_yml_patched": true,
+            "sunscreen_yml_patched": sunscreen_new.is_some(),
         });
         println!("{payload}");
     } else {

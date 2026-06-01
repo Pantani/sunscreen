@@ -18,10 +18,12 @@
 //! once for the whole suite. Subsequent `cargo check` runs (~0.4s each
 //! in our measurements) read directly out of that cache.
 //!
-//! A `OnceLock<Mutex<()>>` gate ensures the FIRST test that runs warms
+//! A `OnceLock<Mutex<bool>>` gate ensures the FIRST test that runs warms
 //! the shared cache before any sibling test starts hitting `cargo`
-//! concurrently. After warm-up, cargo's own per-crate fingerprint locks
-//! make concurrent invocations safe.
+//! concurrently — the `bool` records whether warm-up has completed, so
+//! subsequent callers can drop the lock immediately and run in parallel.
+//! After warm-up, cargo's own per-crate fingerprint locks make concurrent
+//! invocations safe.
 //!
 //! ## Offline / network requirements — opt-in
 //!

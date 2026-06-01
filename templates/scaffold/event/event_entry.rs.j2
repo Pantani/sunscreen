@@ -1,0 +1,6 @@
+#[event]
+pub struct {{ event_name | pascal_case }} {
+{%- for f in fields %}
+    pub {{ f.name | snake_case }}: {{ f.ty }},
+{%- endfor %}
+}

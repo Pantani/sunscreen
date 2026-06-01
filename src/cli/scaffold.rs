@@ -1,19 +1,23 @@
 //! `sunscreen scaffold` subcommand group.
 //!
-//! Phase 2 R1 ships `instruction`. The remaining nouns (`account`, `event`,
-//! `error`, `program`) are stubs reserved for R2+.
+//! Phase 2 R1 shipped `instruction`. R3 adds `account`, `event`, and `error`
+//! using the same architecture (Args struct → `run_*` → Transaction commit).
+//! `program` remains reserved for R4.
 
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
-use heck::ToSnakeCase;
+use heck::{ToPascalCase, ToSnakeCase};
 
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
 use crate::rustpatch::{apply, scan, MarkerKind, Patch, RustpatchError};
 use crate::templates::{
-    render_dispatch_segment, render_instruction, render_instructions_mod_segment, AccountKind,
-    AccountSpec, ArgSpec, InstructionCtx, InstructionDispatch,
+    render_account_file, render_account_mod_segment, render_dispatch_segment, render_error_variant,
+    render_event_entry, render_instruction, render_instructions_mod_segment, AccountCtx,
+    AccountKind, AccountSpec, ArgSpec, ErrorVariant, EventCtx, InstructionCtx, InstructionDispatch,
+    ERROR_VARIANTS_SEGMENT_BEGIN, ERROR_VARIANTS_SEGMENT_END, EVENTS_FILE_HEADER,
+    EVENTS_SEGMENT_BEGIN, EVENTS_SEGMENT_END,
 };
 use crate::workspace::{self, ProgramView, WorkspaceError};
 
@@ -22,14 +26,63 @@ use crate::workspace::{self, ProgramView, WorkspaceError};
 pub enum ScaffoldCmd {
     /// Generate a new Anchor instruction handler.
     Instruction(InstructionArgs),
-    /// Reserved (Phase 2 R2+).
-    Account,
-    /// Reserved (Phase 2 R2+).
-    Event,
-    /// Reserved (Phase 2 R2+).
-    Error,
-    /// Reserved (Phase 2 R2+).
+    /// Generate a new `#[account]` state struct.
+    Account(AccountArgs),
+    /// Add a new `#[event]` struct to the program's `events.rs`.
+    Event(EventArgs),
+    /// Add a new variant to the program's `#[error_code]` enum.
+    Error(ErrorArgs),
+    /// Reserved (Phase 2 R4+).
     Program,
+}
+
+/// Flags for `sunscreen scaffold account`.
+#[derive(Debug, Args)]
+pub struct AccountArgs {
+    /// Account struct name (PascalCased in source; folded to snake_case for
+    /// the file/module name).
+    pub name: String,
+    /// Parent program (must exist in `sunscreen.yml`).
+    #[arg(long, value_name = "NAME")]
+    pub program: String,
+    /// Comma-separated struct fields, e.g. `"owner:Pubkey,total:u64"`.
+    #[arg(long, value_name = "LIST", default_value = "")]
+    pub fields: String,
+    /// Print the planned changes without touching disk.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+}
+
+/// Flags for `sunscreen scaffold event`.
+#[derive(Debug, Args)]
+pub struct EventArgs {
+    /// Event struct name.
+    pub name: String,
+    /// Parent program (must exist in `sunscreen.yml`).
+    #[arg(long, value_name = "NAME")]
+    pub program: String,
+    /// Comma-separated struct fields, e.g. `"amount:u64,user:Pubkey"`.
+    #[arg(long, value_name = "LIST", default_value = "")]
+    pub fields: String,
+    /// Print the planned changes without touching disk.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+}
+
+/// Flags for `sunscreen scaffold error`.
+#[derive(Debug, Args)]
+pub struct ErrorArgs {
+    /// Error variant name.
+    pub name: String,
+    /// Parent program (must exist in `sunscreen.yml`).
+    #[arg(long, value_name = "NAME")]
+    pub program: String,
+    /// Human-readable message bound to `#[msg("…")]`.
+    #[arg(long, value_name = "STRING", default_value = "")]
+    pub msg: String,
+    /// Print the planned changes without touching disk.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 /// Flags for `sunscreen scaffold instruction`.
@@ -62,8 +115,11 @@ pub struct InstructionArgs {
 pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
     match cmd {
         ScaffoldCmd::Instruction(args) => run_instruction(args, json),
-        ScaffoldCmd::Account | ScaffoldCmd::Event | ScaffoldCmd::Error | ScaffoldCmd::Program => {
-            eprintln!("scaffold: noun reserved for Phase 2 R2+");
+        ScaffoldCmd::Account(args) => run_account(args, json),
+        ScaffoldCmd::Event(args) => run_event(args, json),
+        ScaffoldCmd::Error(args) => run_error(args, json),
+        ScaffoldCmd::Program => {
+            eprintln!("scaffold: noun reserved for Phase 2 R4+");
             Ok(0)
         }
     }
@@ -474,7 +530,7 @@ fn parse_accounts(raw: &str) -> Result<Vec<AccountSpec>, SunscreenError> {
 // mod.rs / lib.rs editing
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModAction {
     Create,
     Replace,
@@ -529,6 +585,60 @@ fn build_mod_rs(
 #[derive(Debug, Clone, Copy)]
 struct LibPatchStatus {
     patched: bool,
+}
+
+/// Ensure `pub mod <name>;` appears at the top level of `lib.rs`. Returns
+/// `Some(new_contents)` when the file changed, `None` when the declaration
+/// already exists (or `lib.rs` is missing — caller's responsibility).
+///
+/// Insertion site: immediately after the existing `pub mod instructions;`
+/// line (the canonical anchor produced by `chain new`). If that line is
+/// absent, insert before the first non-comment, non-`use`, non-blank line.
+/// This is a marker-free heuristic: top-level `pub mod` declarations are
+/// stable, idempotent text and don't require auto-generated marker blocks.
+fn ensure_lib_mod_decl(
+    lib_rs: &std::path::Path,
+    mod_name: &str,
+) -> Result<Option<String>, SunscreenError> {
+    if !lib_rs.exists() {
+        return Ok(None);
+    }
+    let existing = std::fs::read_to_string(lib_rs)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", lib_rs.display())))?;
+    let needle = format!("pub mod {mod_name};");
+    // Match exact line (ignoring leading whitespace) to avoid false positives
+    // like `pub mod events_foo;`.
+    if existing.lines().any(|l| l.trim() == needle) {
+        return Ok(None);
+    }
+    let lines: Vec<&str> = existing.lines().collect();
+    // Anchor: line after `pub mod instructions;` (canonical chain-new layout).
+    let anchor = lines
+        .iter()
+        .position(|l| l.trim() == "pub mod instructions;")
+        .map(|i| i + 1)
+        // Fallback: first line that isn't `use ...`, comment, or blank.
+        .or_else(|| {
+            lines.iter().position(|l| {
+                let t = l.trim();
+                !t.is_empty() && !t.starts_with("//") && !t.starts_with("use ")
+            })
+        })
+        .unwrap_or(lines.len());
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == anchor {
+            out.push_str(&needle);
+            out.push('\n');
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    if anchor >= lines.len() {
+        out.push_str(&needle);
+        out.push('\n');
+    }
+    Ok(Some(out))
 }
 
 fn try_patch_lib_rs(
@@ -741,6 +851,866 @@ fn map_tx_err(e: TxError) -> SunscreenError {
 
 fn map_patch_err(e: RustpatchError) -> SunscreenError {
     SunscreenError::Other(anyhow::anyhow!("rustpatch: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Field parsing (shared by account / event)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct ParsedField {
+    name: String,
+    ty: String,
+}
+
+fn parse_fields(raw: &str) -> Result<Vec<ParsedField>, SunscreenError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in raw.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let (name, ty) = entry.split_once(':').ok_or_else(|| {
+            SunscreenError::UserInput(format!(
+                "invalid --fields entry `{entry}` (expected `name:type`)"
+            ))
+        })?;
+        let name = name.trim();
+        let ty = ty.trim();
+        validate_ident(name, "field name")?;
+        if ty.is_empty() {
+            return Err(SunscreenError::UserInput(format!(
+                "field `{name}` has empty type"
+            )));
+        }
+        out.push(ParsedField {
+            name: name.to_string(),
+            ty: ty.to_string(),
+        });
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// scaffold account
+// ---------------------------------------------------------------------------
+
+fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
+    validate_ident(&args.name, "account name")?;
+    let fields = parse_fields(&args.fields)?;
+    let account_snake = args.name.to_snake_case();
+    let program_snake = args.program.to_snake_case();
+
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+
+    let state_dir = program.src_dir.join("state");
+    let account_abs = state_dir.join(format!("{account_snake}.rs"));
+    let mod_abs = state_dir.join("mod.rs");
+    let account_rel = relative_to(&ws.root, &account_abs);
+    let mod_rel = relative_to(&ws.root, &mod_abs);
+
+    // Render the account file body.
+    let ctx = AccountCtx {
+        program_name: program_snake.clone(),
+        account_name: account_snake.clone(),
+        fields: fields
+            .iter()
+            .map(|f| crate::templates::account::FieldSpec {
+                name: f.name.clone(),
+                ty: f.ty.clone(),
+            })
+            .collect(),
+    };
+    let account_body = render_account_file(&ctx)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render account: {e}")))?;
+
+    // Determine FileStatus for the per-account file. The per-account file is
+    // either created fresh, or — when it already exists — either identical
+    // (Unchanged) or different (in which case we error out below). There is
+    // no in-place rewrite path; a future `--force` flag may add one.
+    let account_status: FileStatus = if account_abs.exists() {
+        let existing = std::fs::read_to_string(&account_abs).map_err(|e| {
+            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", account_abs.display()))
+        })?;
+        let rendered_body = extract_segment_body(&account_body, "file").ok_or_else(|| {
+            SunscreenError::Other(anyhow::anyhow!(
+                "rendered account missing `segment=file` markers"
+            ))
+        })?;
+        match extract_segment_body(&existing, "file") {
+            None => {
+                if existing == account_body {
+                    FileStatus::Unchanged
+                } else {
+                    return Err(SunscreenError::InstructionDrift {
+                        path: account_rel.to_string_lossy().into_owned(),
+                        hint: "account file has no auto-generated markers; \
+                               restore from VCS or delete to regenerate"
+                            .to_string(),
+                    });
+                }
+            }
+            Some(existing_body) if existing_body == rendered_body => FileStatus::Unchanged,
+            Some(_) => {
+                return Err(SunscreenError::UserInput(format!(
+                    "account `{}` already exists at {} with different fields; \
+                     edit the file manually or remove it to regenerate \
+                     (a `--force` flag may be added in a future release)",
+                    args.name,
+                    account_rel.display(),
+                )));
+            }
+        }
+    } else {
+        FileStatus::Created
+    };
+
+    // Compute new state/mod.rs body merging existing accounts.
+    let mut all_accounts = list_existing_accounts(&state_dir);
+    if !all_accounts.contains(&account_snake) {
+        all_accounts.push(account_snake.clone());
+    }
+    let mod_segment_body = render_account_mod_segment(&all_accounts);
+    let (new_mod_contents, mod_action) = build_segment_host(
+        &mod_abs,
+        "accounts",
+        &mod_segment_body,
+        MOD_RS_HEADER,
+        "account",
+    )?;
+    let mod_status: FileStatus = match mod_action {
+        ModAction::Create => FileStatus::Created,
+        ModAction::Replace => {
+            let current = std::fs::read_to_string(&mod_abs).unwrap_or_default();
+            if current == new_mod_contents {
+                FileStatus::Unchanged
+            } else {
+                FileStatus::Updated
+            }
+        }
+    };
+
+    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    let plan_files: Vec<String> = vec![to_fwd(&account_rel), to_fwd(&mod_rel)];
+    let segments_patched: Vec<&str> = if mod_status == FileStatus::Unchanged {
+        Vec::new()
+    } else {
+        vec!["accounts"]
+    };
+
+    let unchanged = account_status == FileStatus::Unchanged && mod_status == FileStatus::Unchanged;
+
+    // First-time creation of state/mod.rs → ensure `pub mod state;` in lib.rs.
+    let lib_new = if mod_action == ModAction::Create {
+        ensure_lib_mod_decl(&program.lib_rs, "state")?
+    } else {
+        None
+    };
+    let lib_rel = relative_to(&ws.root, &program.lib_rs);
+    let mut plan_files = plan_files;
+    if lib_new.is_some() {
+        plan_files.push(to_fwd(&lib_rel));
+    }
+
+    if args.dry_run {
+        emit_noun_dry_run(json, "account", &args.name, &args.program, &plan_files);
+        return Ok(0);
+    }
+
+    let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
+    // Only `Created` and `Unchanged` are reachable here (see comment on
+    // `account_status` above). `Unchanged` is a no-op.
+    if account_status == FileStatus::Created {
+        tx.stage(&to_fwd(&account_rel), account_body.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    match (mod_action, mod_status) {
+        (_, FileStatus::Unchanged) => {}
+        (ModAction::Create, _) => {
+            tx.stage(&to_fwd(&mod_rel), new_mod_contents.as_bytes())
+                .map_err(map_tx_err)?;
+        }
+        (ModAction::Replace, _) => {
+            tx.stage_replace(&mod_abs, new_mod_contents.as_bytes())
+                .map_err(map_tx_err)?;
+        }
+    }
+    if let Some(ref contents) = lib_new {
+        tx.stage_replace(&program.lib_rs, contents.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    let _written = tx.commit().map_err(map_tx_err)?;
+
+    emit_noun_result(
+        json,
+        "account",
+        &args.name,
+        &args.program,
+        &plan_files,
+        &segments_patched,
+        unchanged,
+        &[
+            ("account_file", account_status.as_str()),
+            ("mod_file", mod_status.as_str()),
+            (
+                "lib_rs",
+                if lib_new.is_some() {
+                    "patched"
+                } else {
+                    "unchanged"
+                },
+            ),
+        ],
+    );
+    Ok(0)
+}
+
+const MOD_RS_HEADER: &str = "//! Auto-generated by sunscreen. Edit user regions only.\n\n";
+
+fn list_existing_accounts(state_dir: &std::path::Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(state_dir) else {
+        return out;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if stem == "mod" {
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        out.push(stem.to_string());
+    }
+    out.sort();
+    out
+}
+
+/// Build (or update) a host file that owns a single auto-generated segment.
+///
+/// Used for `state/mod.rs` (`accounts` segment). If the file does not exist,
+/// emit a fresh skeleton with the markers + body. If the file exists but lacks
+/// the segment, splice the marker block at the end. Otherwise apply via
+/// `rustpatch`.
+fn build_segment_host(
+    path: &std::path::Path,
+    segment: &str,
+    segment_body: &str,
+    header: &str,
+    generator: &str,
+) -> Result<(String, ModAction), SunscreenError> {
+    if !path.exists() {
+        let mut out = String::new();
+        out.push_str(header);
+        out.push_str(&format!(
+            "// === sunscreen:auto-generated:begin segment={segment} version=1 generator={generator} ===\n"
+        ));
+        out.push_str(segment_body);
+        out.push_str(&format!(
+            "// === sunscreen:auto-generated:end segment={segment} ===\n"
+        ));
+        return Ok((out, ModAction::Create));
+    }
+    let existing = std::fs::read_to_string(path)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let markers = scan(&existing).map_err(map_patch_err)?;
+    let has_segment = markers
+        .iter()
+        .any(|m| m.kind == MarkerKind::AutoGenerated && m.segment == segment);
+    if !has_segment {
+        let mut out = existing.clone();
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&format!(
+            "\n// === sunscreen:auto-generated:begin segment={segment} version=1 generator={generator} ===\n"
+        ));
+        out.push_str(segment_body);
+        out.push_str(&format!(
+            "// === sunscreen:auto-generated:end segment={segment} ===\n"
+        ));
+        return Ok((out, ModAction::Replace));
+    }
+    let body_lines: Vec<String> = segment_body
+        .strip_suffix('\n')
+        .unwrap_or(segment_body)
+        .split('\n')
+        .map(str::to_string)
+        .collect();
+    let patches = vec![Patch {
+        segment: segment.to_string(),
+        lines: body_lines,
+    }];
+    let patched = apply(&existing, &patches).map_err(map_patch_err)?;
+    Ok((patched, ModAction::Replace))
+}
+
+// ---------------------------------------------------------------------------
+// scaffold event
+// ---------------------------------------------------------------------------
+
+fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
+    validate_ident(&args.name, "event name")?;
+    let fields = parse_fields(&args.fields)?;
+    let event_pascal = args.name.to_pascal_case();
+    let program_snake = args.program.to_snake_case();
+
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+
+    let events_abs = program.src_dir.join("events.rs");
+    let events_rel = relative_to(&ws.root, &events_abs);
+
+    let new_ctx = EventCtx {
+        program_name: program_snake.clone(),
+        event_name: args.name.clone(),
+        fields: fields
+            .iter()
+            .map(|f| crate::templates::event::FieldSpec {
+                name: f.name.clone(),
+                ty: f.ty.clone(),
+            })
+            .collect(),
+    };
+
+    // Merge with existing entries.
+    let mut existing_events: Vec<(String, String)> = Vec::new(); // (pascal_name, raw_entry)
+    if events_abs.exists() {
+        let existing = std::fs::read_to_string(&events_abs).map_err(|e| {
+            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", events_abs.display()))
+        })?;
+        if let Some(body) = extract_segment_body(&existing, "events") {
+            existing_events = parse_event_entries(&body);
+        }
+    }
+
+    // Decide what to render.
+    let new_entry = render_event_entry(&new_ctx)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render event: {e}")))?;
+
+    // Idempotency: if event name exists, compare raw text — if identical, no-op;
+    // if different fields, error.
+    let mut merged: Vec<String> = Vec::new();
+    let mut already_present = false;
+    for (name, raw) in &existing_events {
+        if name == &event_pascal {
+            already_present = true;
+            let normalized_new = normalize_entry(&new_entry);
+            let normalized_old = normalize_entry(raw);
+            if normalized_new != normalized_old {
+                return Err(SunscreenError::UserInput(format!(
+                    "event `{event_pascal}` already exists with different fields"
+                )));
+            }
+            merged.push(raw.clone());
+        } else {
+            merged.push(raw.clone());
+        }
+    }
+    if !already_present {
+        merged.push(new_entry.clone());
+    }
+
+    // Build segment body: concat entries separated by blank line for readability.
+    let mut segment_body = String::new();
+    for (i, entry) in merged.iter().enumerate() {
+        if i > 0 {
+            segment_body.push('\n');
+        }
+        segment_body.push_str(entry);
+        if !entry.ends_with('\n') {
+            segment_body.push('\n');
+        }
+    }
+
+    let (new_contents, action) = build_events_host(&events_abs, &segment_body)?;
+    let file_status: FileStatus = if !events_abs.exists() {
+        FileStatus::Created
+    } else {
+        let current = std::fs::read_to_string(&events_abs).unwrap_or_default();
+        if current == new_contents {
+            FileStatus::Unchanged
+        } else {
+            FileStatus::Updated
+        }
+    };
+
+    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    let plan_files = vec![to_fwd(&events_rel)];
+    let segments_patched: Vec<&str> = if file_status == FileStatus::Unchanged {
+        Vec::new()
+    } else {
+        vec!["events"]
+    };
+    let unchanged = file_status == FileStatus::Unchanged;
+
+    // If we are creating events.rs for the first time, ensure `pub mod events;`
+    // exists in lib.rs so downstream `use crate::events::*` (e.g. from
+    // `scaffold instruction --emit X`) resolves without manual edits.
+    let lib_new = if action == ModAction::Create {
+        ensure_lib_mod_decl(&program.lib_rs, "events")?
+    } else {
+        None
+    };
+    let lib_rel = relative_to(&ws.root, &program.lib_rs);
+    let mut plan_files = plan_files;
+    if lib_new.is_some() {
+        plan_files.push(to_fwd(&lib_rel));
+    }
+
+    if args.dry_run {
+        emit_noun_dry_run(json, "event", &args.name, &args.program, &plan_files);
+        return Ok(0);
+    }
+
+    if file_status != FileStatus::Unchanged {
+        let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
+        match action {
+            ModAction::Create => {
+                tx.stage(&to_fwd(&events_rel), new_contents.as_bytes())
+                    .map_err(map_tx_err)?;
+            }
+            ModAction::Replace => {
+                tx.stage_replace(&events_abs, new_contents.as_bytes())
+                    .map_err(map_tx_err)?;
+            }
+        }
+        if let Some(ref contents) = lib_new {
+            tx.stage_replace(&program.lib_rs, contents.as_bytes())
+                .map_err(map_tx_err)?;
+        }
+        let _ = tx.commit().map_err(map_tx_err)?;
+    }
+
+    emit_noun_result(
+        json,
+        "event",
+        &args.name,
+        &args.program,
+        &plan_files,
+        &segments_patched,
+        unchanged,
+        &[
+            ("events_file", file_status.as_str()),
+            (
+                "lib_rs",
+                if lib_new.is_some() {
+                    "patched"
+                } else {
+                    "unchanged"
+                },
+            ),
+        ],
+    );
+    Ok(0)
+}
+
+/// Build (or rewrite) `events.rs` content with the given segment body. If the
+/// file doesn't exist, emit a canonical skeleton using template constants. If
+/// it does, splice via `rustpatch` (creating the segment block if missing).
+fn build_events_host(
+    path: &std::path::Path,
+    segment_body: &str,
+) -> Result<(String, ModAction), SunscreenError> {
+    if !path.exists() {
+        let out = format!(
+            "{header}{begin}\n{body}{end}\n",
+            header = EVENTS_FILE_HEADER,
+            begin = EVENTS_SEGMENT_BEGIN,
+            body = segment_body,
+            end = EVENTS_SEGMENT_END,
+        );
+        return Ok((out, ModAction::Create));
+    }
+    let existing = std::fs::read_to_string(path)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let markers = scan(&existing).map_err(map_patch_err)?;
+    let has_segment = markers
+        .iter()
+        .any(|m| m.kind == MarkerKind::AutoGenerated && m.segment == "events");
+    if !has_segment {
+        let mut out = existing.clone();
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push('\n');
+        out.push_str(EVENTS_SEGMENT_BEGIN);
+        out.push('\n');
+        out.push_str(segment_body);
+        out.push_str(EVENTS_SEGMENT_END);
+        out.push('\n');
+        return Ok((out, ModAction::Replace));
+    }
+    let body_lines: Vec<String> = segment_body
+        .strip_suffix('\n')
+        .unwrap_or(segment_body)
+        .split('\n')
+        .map(str::to_string)
+        .collect();
+    let patches = vec![Patch {
+        segment: "events".to_string(),
+        lines: body_lines,
+    }];
+    let patched = apply(&existing, &patches).map_err(map_patch_err)?;
+    Ok((patched, ModAction::Replace))
+}
+
+/// Parse `pub struct <Name> { ... }` blocks (each preceded by `#[event]`) from
+/// the body of the `events` segment. Returns `(PascalName, raw_block_with_newline)`
+/// pairs, in source order. Each raw block ends with the line containing `}` and
+/// a trailing newline.
+fn parse_event_entries(body: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = body.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        if line.trim_start().starts_with("#[event]") {
+            // Look for the next `pub struct <Name> {`.
+            let mut j = i;
+            let mut name: Option<String> = None;
+            while j < lines.len() {
+                let l = lines[j].trim_start();
+                if let Some(rest) = l.strip_prefix("pub struct ") {
+                    let end = rest
+                        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                        .unwrap_or(rest.len());
+                    name = Some(rest[..end].to_string());
+                    break;
+                }
+                j += 1;
+            }
+            // Find closing `}` at column 0 of the trimmed line (heuristic).
+            let mut k = j;
+            while k < lines.len() {
+                if lines[k].trim() == "}" {
+                    break;
+                }
+                k += 1;
+            }
+            if let Some(n) = name {
+                let mut raw = String::new();
+                for l in &lines[i..=k.min(lines.len().saturating_sub(1))] {
+                    raw.push_str(l);
+                    raw.push('\n');
+                }
+                out.push((n, raw));
+                i = k + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn normalize_entry(s: &str) -> String {
+    s.lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+// ---------------------------------------------------------------------------
+// scaffold error
+// ---------------------------------------------------------------------------
+
+fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
+    validate_ident(&args.name, "error variant name")?;
+    let variant_pascal = args.name.to_pascal_case();
+    let program_snake = args.program.to_snake_case();
+    let enum_name = format!("{}_error", program_snake).to_pascal_case();
+
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+
+    let errors_abs = program.src_dir.join("errors.rs");
+    let errors_rel = relative_to(&ws.root, &errors_abs);
+
+    let new_variant = ErrorVariant {
+        name: args.name.clone(),
+        message: if args.msg.is_empty() {
+            variant_pascal.clone()
+        } else {
+            args.msg.clone()
+        },
+    };
+
+    // Collect existing variants from segment body (if file exists).
+    let mut existing_variants: Vec<(String, String)> = Vec::new(); // (PascalName, raw block)
+    if errors_abs.exists() {
+        let existing = std::fs::read_to_string(&errors_abs).map_err(|e| {
+            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", errors_abs.display()))
+        })?;
+        if let Some(body) = extract_segment_body(&existing, "error_variants") {
+            existing_variants = parse_error_variants(&body);
+        }
+    }
+
+    let new_entry = render_error_variant(&new_variant)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render error variant: {e}")))?;
+
+    let mut merged: Vec<String> = Vec::new();
+    let mut already_present = false;
+    for (name, raw) in &existing_variants {
+        if name == &variant_pascal {
+            already_present = true;
+            if normalize_entry(raw) != normalize_entry(&new_entry) {
+                return Err(SunscreenError::UserInput(format!(
+                    "error variant `{variant_pascal}` already exists with a different message"
+                )));
+            }
+            merged.push(raw.clone());
+        } else {
+            merged.push(raw.clone());
+        }
+    }
+    if !already_present {
+        merged.push(new_entry.clone());
+    }
+
+    // Build segment body: each entry indented by 4 spaces (nested inside enum).
+    let mut segment_body = String::new();
+    for entry in &merged {
+        for line in entry.lines() {
+            segment_body.push_str("    ");
+            segment_body.push_str(line);
+            segment_body.push('\n');
+        }
+    }
+
+    let (new_contents, action) = build_errors_host(&errors_abs, &enum_name, &segment_body)?;
+    let file_status: FileStatus = if !errors_abs.exists() {
+        FileStatus::Created
+    } else {
+        let current = std::fs::read_to_string(&errors_abs).unwrap_or_default();
+        if current == new_contents {
+            FileStatus::Unchanged
+        } else {
+            FileStatus::Updated
+        }
+    };
+
+    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    let plan_files = vec![to_fwd(&errors_rel)];
+    let segments_patched: Vec<&str> = if file_status == FileStatus::Unchanged {
+        Vec::new()
+    } else {
+        vec!["error_variants"]
+    };
+    let unchanged = file_status == FileStatus::Unchanged;
+
+    // First-time creation of errors.rs → ensure `pub mod errors;` in lib.rs.
+    let lib_new = if action == ModAction::Create {
+        ensure_lib_mod_decl(&program.lib_rs, "errors")?
+    } else {
+        None
+    };
+    let lib_rel = relative_to(&ws.root, &program.lib_rs);
+    let mut plan_files = plan_files;
+    if lib_new.is_some() {
+        plan_files.push(to_fwd(&lib_rel));
+    }
+
+    if args.dry_run {
+        emit_noun_dry_run(json, "error", &args.name, &args.program, &plan_files);
+        return Ok(0);
+    }
+
+    if file_status != FileStatus::Unchanged {
+        let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
+        match action {
+            ModAction::Create => {
+                tx.stage(&to_fwd(&errors_rel), new_contents.as_bytes())
+                    .map_err(map_tx_err)?;
+            }
+            ModAction::Replace => {
+                tx.stage_replace(&errors_abs, new_contents.as_bytes())
+                    .map_err(map_tx_err)?;
+            }
+        }
+        if let Some(ref contents) = lib_new {
+            tx.stage_replace(&program.lib_rs, contents.as_bytes())
+                .map_err(map_tx_err)?;
+        }
+        let _ = tx.commit().map_err(map_tx_err)?;
+    }
+
+    emit_noun_result(
+        json,
+        "error",
+        &args.name,
+        &args.program,
+        &plan_files,
+        &segments_patched,
+        unchanged,
+        &[
+            ("errors_file", file_status.as_str()),
+            (
+                "lib_rs",
+                if lib_new.is_some() {
+                    "patched"
+                } else {
+                    "unchanged"
+                },
+            ),
+        ],
+    );
+    Ok(0)
+}
+
+fn build_errors_host(
+    path: &std::path::Path,
+    enum_name: &str,
+    segment_body: &str,
+) -> Result<(String, ModAction), SunscreenError> {
+    if !path.exists() {
+        let out = format!(
+            "use anchor_lang::prelude::*;\n\n#[error_code]\npub enum {enum_name} {{\n    {begin}\n{body}    {end}\n}}\n",
+            enum_name = enum_name,
+            begin = ERROR_VARIANTS_SEGMENT_BEGIN,
+            body = segment_body,
+            end = ERROR_VARIANTS_SEGMENT_END,
+        );
+        return Ok((out, ModAction::Create));
+    }
+    let existing = std::fs::read_to_string(path)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let markers = scan(&existing).map_err(map_patch_err)?;
+    let has_segment = markers
+        .iter()
+        .any(|m| m.kind == MarkerKind::AutoGenerated && m.segment == "error_variants");
+    if !has_segment {
+        return Err(SunscreenError::InstructionDrift {
+            path: path.display().to_string(),
+            hint: "errors.rs has no `error_variants` segment markers; \
+                   restore from VCS or delete to regenerate"
+                .to_string(),
+        });
+    }
+    let body_lines: Vec<String> = segment_body
+        .strip_suffix('\n')
+        .unwrap_or(segment_body)
+        .split('\n')
+        .map(str::to_string)
+        .collect();
+    let patches = vec![Patch {
+        segment: "error_variants".to_string(),
+        lines: body_lines,
+    }];
+    let patched = apply(&existing, &patches).map_err(map_patch_err)?;
+    Ok((patched, ModAction::Replace))
+}
+
+/// Parse `#[msg("…")]\n<Name>,` blocks from the body of the `error_variants`
+/// segment. Returns `(PascalName, raw_block)` pairs in source order.
+fn parse_error_variants(body: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = body.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim_start();
+        if line.starts_with("#[msg(") {
+            // Next non-empty line should be the variant name + `,`.
+            let mut j = i + 1;
+            while j < lines.len() && lines[j].trim().is_empty() {
+                j += 1;
+            }
+            if j < lines.len() {
+                let raw_name = lines[j].trim().trim_end_matches(',').trim();
+                if !raw_name.is_empty() {
+                    let name = raw_name.to_string();
+                    let mut raw = String::new();
+                    for l in &lines[i..=j] {
+                        let trimmed = l.trim_start();
+                        raw.push_str(trimmed);
+                        raw.push('\n');
+                    }
+                    out.push((name, raw));
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Output helpers shared by account / event / error
+// ---------------------------------------------------------------------------
+
+fn emit_noun_dry_run(json: bool, noun: &str, name: &str, program: &str, files: &[String]) {
+    if json {
+        let payload = serde_json::json!({
+            "ok": true,
+            "dry_run": true,
+            "noun": noun,
+            "name": name,
+            "program": program,
+            "files": files,
+        });
+        println!("{payload}");
+    } else {
+        println!("dry-run: would scaffold {noun} `{name}` in `{program}`");
+        for f in files {
+            println!("  {f}");
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_noun_result(
+    json: bool,
+    noun: &str,
+    name: &str,
+    program: &str,
+    files: &[String],
+    segments_patched: &[&str],
+    unchanged: bool,
+    file_statuses: &[(&str, &str)],
+) {
+    if json {
+        let mut payload = serde_json::json!({
+            "ok": true,
+            "noun": noun,
+            "name": name,
+            "program": program,
+            "files": files,
+            "segments_patched": segments_patched,
+            "unchanged": unchanged,
+        });
+        if let Some(obj) = payload.as_object_mut() {
+            for (k, v) in file_statuses {
+                obj.insert(
+                    (*k).to_string(),
+                    serde_json::Value::String((*v).to_string()),
+                );
+            }
+        }
+        println!("{payload}");
+    } else if unchanged {
+        println!("scaffold {noun} `{name}`: unchanged (idempotent no-op)");
+    } else {
+        println!(
+            "scaffolded {noun} `{name}` for program `{program}` ({} files)",
+            files.len()
+        );
+        for f in files {
+            println!("  {f}");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

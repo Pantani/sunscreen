@@ -158,7 +158,7 @@ The JSON serialization extends the canonical schema documented in ADR-0002 § 4.
 ```
 
 - New optional fields: `next_step` (string, suggested remediation command) and `exit_code` (integer, mirrors the process exit code for callers that capture stderr without inspecting `$?`).
-- CI test (`tests/errors_contract.rs`) iterates every `SunscreenError` variant via `strum::EnumIter` (or an equivalent `all_variants()` helper) and asserts that **every** variant returns `Some(next_step)` from at least one canonical constructor — i.e. 100% variant coverage, not "at least one variant has one". Variants with no meaningful remediation MAY return `Some("")` and the test SHALL allow that explicitly, with a code-comment justification per variant.
+- CI test (`tests/errors_contract.rs`) covers every `SunscreenError` variant and asserts that each one returns `Some(next_step)`. Because `SunscreenError` has data-carrying variants (`ConfigInvalid(String)`, `InstructionDrift { .. }`, etc.), `strum::EnumIter` cannot be derived directly; the test uses an explicit hand-maintained list of constructor calls (one representative call per variant) or a parallel fieldless `SunscreenErrorKind` discriminant enum that `does` derive `EnumIter`. A compile-time exhaustiveness check (`match self { SunscreenError::Foo(..) => .. }` with no `_` arm) prevents the list from drifting out of sync. Variants with no meaningful remediation MAY return `Some("")` and the test SHALL allow that explicitly, with a code-comment justification per variant.
 - TTY rendering: extra line `→ try: <next_step>` in cyan, emitted only when stderr is a TTY and the value is non-empty.
 
 ### 4.3 Asset distribution

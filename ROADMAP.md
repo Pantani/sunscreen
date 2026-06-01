@@ -222,7 +222,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 - [ ] `src/onboarding/{tty, wizard, wallet, deploy, examples, learn}.rs`
 - [ ] `src/onboarding/recipes/{token, nft, dao, blog}.rs`
 - [ ] `src/strings/en_US.rs` — every user-facing string centralised
-- [ ] `src/error.rs` extended with a mandatory `next_step` field
+- [ ] `src/error.rs` extended so every `SunscreenError` variant exposes a `next_step` — implementation choice (per-variant associated data or a `next_step()` method on the enum) is left to the PR; the external contract is what matters (see ADR-0005 §4.2)
 - [ ] `assets/examples/{token-faucet, nft-collection, escrow, voting-dao, blog-crud}/`
 - [ ] `assets/learn/{pda, cpi, token-2022, accounts-model, anchor-vs-native}.md`
 - [ ] TTY detection + `--non-interactive` (CI path)

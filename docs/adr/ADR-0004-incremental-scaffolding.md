@@ -144,7 +144,7 @@ This decision is consistent with Sub-ADR-001 (ADR-0001 § 7.1).
 
 - Mutation of user-authored code is out of scope (except via `ast-grep`).
 - Markers visually "pollute" the files. Mitigation: the visual convention `=== … ===` makes them readable and visually segregable.
-- The user may accidentally delete a marker. Mitigation: `sunscreen doctor --fix-markers` (R2).
+- The user may accidentally delete a marker. Mitigation: `sunscreen doctor --fix-markers` (R4).
 - User rename/move of files can decouple markers from the scaffolder's expectation. See § 7 Open Questions.
 
 ### 5.3 Mitigations

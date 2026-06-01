@@ -929,8 +929,10 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
     let account_body = render_account_file(&ctx)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render account: {e}")))?;
 
-    // Determine FileStatus for the per-account file.
-    let account_existing_patched: Option<String> = None;
+    // Determine FileStatus for the per-account file. The per-account file is
+    // either created fresh, or — when it already exists — either identical
+    // (Unchanged) or different (in which case we error out below). There is
+    // no in-place rewrite path; a future `--force` flag may add one.
     let account_status: FileStatus = if account_abs.exists() {
         let existing = std::fs::read_to_string(&account_abs).map_err(|e| {
             SunscreenError::Other(anyhow::anyhow!("read {}: {e}", account_abs.display()))
@@ -1021,18 +1023,11 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
     }
 
     let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-    match account_status {
-        FileStatus::Created => {
-            tx.stage(&to_fwd(&account_rel), account_body.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-        FileStatus::Updated => {
-            if let Some(patched) = &account_existing_patched {
-                tx.stage_replace(&account_abs, patched.as_bytes())
-                    .map_err(map_tx_err)?;
-            }
-        }
-        FileStatus::Unchanged | FileStatus::Skipped => {}
+    // Only `Created` and `Unchanged` are reachable here (see comment on
+    // `account_status` above). `Unchanged` is a no-op.
+    if account_status == FileStatus::Created {
+        tx.stage(&to_fwd(&account_rel), account_body.as_bytes())
+            .map_err(map_tx_err)?;
     }
     match (mod_action, mod_status) {
         (_, FileStatus::Unchanged) => {}
@@ -1054,7 +1049,7 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
     emit_noun_result(
         json,
         "account",
-        &account_snake,
+        &args.name,
         &args.program,
         &plan_files,
         &segments_patched,
@@ -1298,7 +1293,7 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
     emit_noun_result(
         json,
         "event",
-        &event_pascal,
+        &args.name,
         &args.program,
         &plan_files,
         &segments_patched,
@@ -1554,7 +1549,7 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
     emit_noun_result(
         json,
         "error",
-        &variant_pascal,
+        &args.name,
         &args.program,
         &plan_files,
         &segments_patched,

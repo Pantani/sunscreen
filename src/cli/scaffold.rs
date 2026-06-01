@@ -14,10 +14,10 @@ use crate::fsutil::{Transaction, TxError};
 use crate::rustpatch::{apply, scan, MarkerKind, Patch, RustpatchError};
 use crate::templates::{
     render_account_file, render_account_mod_segment, render_dispatch_segment, render_error_variant,
-    render_event_entry, render_instruction, render_instructions_mod_segment, AccountCtx,
-    AccountKind, AccountSpec, ArgSpec, ErrorVariant, EventCtx, InstructionCtx, InstructionDispatch,
-    ERROR_VARIANTS_SEGMENT_BEGIN, ERROR_VARIANTS_SEGMENT_END, EVENTS_FILE_HEADER,
-    EVENTS_SEGMENT_BEGIN, EVENTS_SEGMENT_END,
+    render_event_entry, render_instruction, render_instructions_mod_segment, render_program,
+    AccountCtx, AccountKind, AccountSpec, ArgSpec, ErrorVariant, EventCtx, InstructionCtx,
+    InstructionDispatch, ERROR_VARIANTS_SEGMENT_BEGIN, ERROR_VARIANTS_SEGMENT_END,
+    EVENTS_FILE_HEADER, EVENTS_SEGMENT_BEGIN, EVENTS_SEGMENT_END,
 };
 use crate::workspace::{self, ProgramView, WorkspaceError};
 
@@ -32,8 +32,23 @@ pub enum ScaffoldCmd {
     Event(EventArgs),
     /// Add a new variant to the program's `#[error_code]` enum.
     Error(ErrorArgs),
-    /// Reserved (Phase 2 R4+).
-    Program,
+    /// Add a new Anchor program crate to an existing multi-program workspace.
+    Program(ProgramArgs),
+}
+
+/// Flags for `sunscreen scaffold program`.
+#[derive(Debug, Args)]
+pub struct ProgramArgs {
+    /// Program name (kebab-case on disk + in `sunscreen.yml`).
+    pub name: String,
+    /// Optional Anchor program ID (base58 pubkey). Defaults to the canonical
+    /// dummy ID — replace later via `solana-keygen new -o target/deploy/...`
+    /// and `anchor keys sync`.
+    #[arg(long, value_name = "PUBKEY")]
+    pub id: Option<String>,
+    /// Print the planned changes without touching disk.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 /// Flags for `sunscreen scaffold account`.
@@ -118,10 +133,7 @@ pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
         ScaffoldCmd::Account(args) => run_account(args, json),
         ScaffoldCmd::Event(args) => run_event(args, json),
         ScaffoldCmd::Error(args) => run_error(args, json),
-        ScaffoldCmd::Program => {
-            eprintln!("scaffold: noun reserved for Phase 2 R4+");
-            Ok(0)
-        }
+        ScaffoldCmd::Program(args) => run_program(args, json),
     }
 }
 
@@ -1005,12 +1017,8 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
 
     let unchanged = account_status == FileStatus::Unchanged && mod_status == FileStatus::Unchanged;
 
-    // First-time creation of state/mod.rs → ensure `pub mod state;` in lib.rs.
-    let lib_new = if mod_action == ModAction::Create {
-        ensure_lib_mod_decl(&program.lib_rs, "state")?
-    } else {
-        None
-    };
+    // Ensure `pub mod state;` in lib.rs (idempotent — no-op if already present).
+    let lib_new = ensure_lib_mod_decl(&program.lib_rs, "state")?;
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
     let mut plan_files = plan_files;
     if lib_new.is_some() {
@@ -1252,14 +1260,11 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
     };
     let unchanged = file_status == FileStatus::Unchanged;
 
-    // If we are creating events.rs for the first time, ensure `pub mod events;`
-    // exists in lib.rs so downstream `use crate::events::*` (e.g. from
-    // `scaffold instruction --emit X`) resolves without manual edits.
-    let lib_new = if action == ModAction::Create {
-        ensure_lib_mod_decl(&program.lib_rs, "events")?
-    } else {
-        None
-    };
+    // Ensure `pub mod events;` in lib.rs (idempotent — no-op if already present).
+    // This guarantees downstream `use crate::events::*` (e.g. from
+    // `scaffold instruction --emit X`) resolves without manual edits, even if
+    // events.rs already existed without being declared in lib.rs.
+    let lib_new = ensure_lib_mod_decl(&program.lib_rs, "events")?;
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
     let mut plan_files = plan_files;
     if lib_new.is_some() {
@@ -1510,12 +1515,8 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
     };
     let unchanged = file_status == FileStatus::Unchanged;
 
-    // First-time creation of errors.rs → ensure `pub mod errors;` in lib.rs.
-    let lib_new = if action == ModAction::Create {
-        ensure_lib_mod_decl(&program.lib_rs, "errors")?
-    } else {
-        None
-    };
+    // Ensure `pub mod errors;` in lib.rs (idempotent — no-op if already present).
+    let lib_new = ensure_lib_mod_decl(&program.lib_rs, "errors")?;
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
     let mut plan_files = plan_files;
     if lib_new.is_some() {
@@ -1710,6 +1711,331 @@ fn emit_noun_result(
         for f in files {
             println!("  {f}");
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// scaffold program
+// ---------------------------------------------------------------------------
+
+const DEFAULT_PROGRAM_ID: &str = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS";
+
+fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
+    use heck::ToKebabCase;
+
+    validate_program_name(&args.name)?;
+    let program_kebab = args.name.to_kebab_case();
+    let program_snake = args.name.to_snake_case();
+    let program_id = args.id.as_deref().unwrap_or(DEFAULT_PROGRAM_ID);
+    validate_program_id(program_id)?;
+
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let workspace_root = ws.root.clone();
+    let project_name = ws.config.project.name.clone();
+    let anchor_version = ws
+        .config
+        .project
+        .anchor_version
+        .clone()
+        .unwrap_or_else(|| "0.30.1".to_string());
+    let rust_edition = ws.config.project.rust_edition.clone();
+
+    // Idempotency check #1: program already declared in sunscreen.yml.
+    if ws
+        .config
+        .programs
+        .iter()
+        .any(|p| p.name.to_snake_case() == program_snake || p.name.to_kebab_case() == program_kebab)
+    {
+        return Err(SunscreenError::UserInput(format!(
+            "program `{program_kebab}` already declared in sunscreen.yml; \
+             pick a different name or remove the existing entry"
+        )));
+    }
+
+    // Idempotency check #2: directory already exists on disk.
+    let program_dir_rel = format!("programs/{program_snake}");
+    let program_dir_abs = workspace_root.join(&program_dir_rel);
+    if program_dir_abs.exists() {
+        return Err(SunscreenError::UserInput(format!(
+            "program directory already exists at {}; \
+             remove it manually before re-scaffolding",
+            program_dir_rel
+        )));
+    }
+
+    // Render program crate into a temp staging dir so we can adopt every
+    // file into the transaction atomically.
+    let staging_tmp = tempfile::tempdir().map_err(|e| SunscreenError::Other(anyhow::anyhow!(e)))?;
+    let ctx = serde_json::json!({
+        "program_name": program_snake,
+        "project_name": project_name,
+        "anchor_version": anchor_version,
+        "rust_edition": rust_edition,
+    });
+    let rendered = render_program(&ctx, staging_tmp.path())
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render program: {e}")))?;
+
+    // Planned file list (workspace-relative, forward-slash).
+    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    let mut planned: Vec<String> = Vec::new();
+    for abs in &rendered {
+        let rel = abs
+            .strip_prefix(staging_tmp.path())
+            .unwrap_or(abs)
+            .to_path_buf();
+        // Files are emitted under `programs/__program__/...` — substitution was
+        // already done at render time, so prepend program_dir_rel.
+        let rel_str = to_fwd(&rel);
+        planned.push(rel_str);
+    }
+
+    // Patches to existing manifests.
+    let anchor_toml_abs = workspace_root.join("Anchor.toml");
+    let sunscreen_yml_abs = workspace_root.join("sunscreen.yml");
+    let anchor_toml_rel = "Anchor.toml".to_string();
+    let sunscreen_yml_rel = "sunscreen.yml".to_string();
+
+    let anchor_new = if anchor_toml_abs.exists() {
+        Some(patch_anchor_toml(
+            &anchor_toml_abs,
+            &program_snake,
+            program_id,
+        )?)
+    } else {
+        None
+    };
+    let sunscreen_new = patch_sunscreen_yml(&sunscreen_yml_abs, &program_kebab, &program_snake)?;
+
+    let mut all_files = planned.clone();
+    if anchor_new.is_some() {
+        all_files.push(anchor_toml_rel.clone());
+    }
+    all_files.push(sunscreen_yml_rel.clone());
+
+    if args.dry_run {
+        if json {
+            let payload = serde_json::json!({
+                "ok": true,
+                "dry_run": true,
+                "noun": "program",
+                "name": program_kebab,
+                "files": all_files,
+                "program_id": program_id,
+            });
+            println!("{payload}");
+        } else {
+            println!("dry-run: would scaffold program `{program_kebab}`");
+            for f in &all_files {
+                println!("  {f}");
+            }
+        }
+        return Ok(0);
+    }
+
+    // Commit: stage all new files + Anchor.toml / sunscreen.yml replacements.
+    let mut tx = Transaction::new(&workspace_root).map_err(map_tx_err)?;
+    for abs in &rendered {
+        let rel = abs
+            .strip_prefix(staging_tmp.path())
+            .unwrap_or(abs)
+            .to_path_buf();
+        let bytes = std::fs::read(abs).map_err(|e| {
+            SunscreenError::Other(anyhow::anyhow!("read staged {}: {e}", abs.display()))
+        })?;
+        tx.stage(&to_fwd(&rel), &bytes).map_err(map_tx_err)?;
+    }
+    if let Some(ref new_toml) = anchor_new {
+        tx.stage_replace(&anchor_toml_abs, new_toml.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    tx.stage_replace(&sunscreen_yml_abs, sunscreen_new.as_bytes())
+        .map_err(map_tx_err)?;
+    let written = tx.commit().map_err(map_tx_err)?;
+
+    if json {
+        let payload = serde_json::json!({
+            "ok": true,
+            "noun": "program",
+            "name": program_kebab,
+            "files": all_files,
+            "written": written.len()
+                + usize::from(anchor_new.is_some())
+                + 1, // sunscreen.yml
+            "program_id": program_id,
+            "anchor_toml_patched": anchor_new.is_some(),
+            "sunscreen_yml_patched": true,
+        });
+        println!("{payload}");
+    } else {
+        println!(
+            "scaffolded program `{program_kebab}` ({} files)",
+            all_files.len()
+        );
+        for f in &all_files {
+            println!("  {f}");
+        }
+    }
+    Ok(0)
+}
+
+fn validate_program_name(name: &str) -> Result<(), SunscreenError> {
+    if name.is_empty() {
+        return Err(SunscreenError::UserInput("program name is empty".into()));
+    }
+    let first = name.chars().next().unwrap();
+    if !first.is_ascii_alphabetic() {
+        return Err(SunscreenError::UserInput(format!(
+            "program name `{name}` must start with an ASCII letter"
+        )));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(SunscreenError::UserInput(format!(
+            "program name `{name}` may only contain letters, digits, '-', and '_'"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_program_id(id: &str) -> Result<(), SunscreenError> {
+    // Base58 pubkeys are 32 bytes → 43-44 chars; valid base58 alphabet.
+    const B58: &str = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    if id.len() < 32 || id.len() > 64 {
+        return Err(SunscreenError::UserInput(format!(
+            "invalid --id pubkey length: {} chars",
+            id.len()
+        )));
+    }
+    if !id.chars().all(|c| B58.contains(c)) {
+        return Err(SunscreenError::UserInput(
+            "invalid --id: must be base58 (no 0OIl)".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Inject a `<program> = "<id>"` entry under `[programs.localnet]` and
+/// `[programs.devnet]` in `Anchor.toml`. Idempotent.
+fn patch_anchor_toml(
+    path: &std::path::Path,
+    program_snake: &str,
+    program_id: &str,
+) -> Result<String, SunscreenError> {
+    let existing = std::fs::read_to_string(path)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let mut out = String::with_capacity(existing.len() + 128);
+    let mut in_localnet = false;
+    let mut in_devnet = false;
+    let mut localnet_done = false;
+    let mut devnet_done = false;
+    let entry = format!("{program_snake} = \"{program_id}\"");
+
+    let lines: Vec<&str> = existing.lines().collect();
+    let needle_localnet = "[programs.localnet]";
+    let needle_devnet = "[programs.devnet]";
+
+    for (i, line) in lines.iter().enumerate() {
+        out.push_str(line);
+        out.push('\n');
+        let trimmed = line.trim();
+        // When we hit a new section header, close out whichever we were in.
+        if trimmed.starts_with('[') {
+            in_localnet = trimmed == needle_localnet;
+            in_devnet = trimmed == needle_devnet;
+        }
+        // Once we're in a programs.* section, append the entry right after the
+        // header — but only if no equivalent entry already exists in that
+        // section (idempotent).
+        if in_localnet && !localnet_done && trimmed == needle_localnet {
+            if !section_contains_key(&lines, i + 1, program_snake) {
+                out.push_str(&entry);
+                out.push('\n');
+            }
+            localnet_done = true;
+        }
+        if in_devnet && !devnet_done && trimmed == needle_devnet {
+            if !section_contains_key(&lines, i + 1, program_snake) {
+                out.push_str(&entry);
+                out.push('\n');
+            }
+            devnet_done = true;
+        }
+    }
+
+    // If sections were missing entirely, append them.
+    if !localnet_done {
+        out.push_str(&format!("\n{needle_localnet}\n{entry}\n"));
+    }
+    if !devnet_done {
+        out.push_str(&format!("\n{needle_devnet}\n{entry}\n"));
+    }
+    Ok(out)
+}
+
+fn section_contains_key(lines: &[&str], start: usize, key: &str) -> bool {
+    for line in lines.iter().skip(start) {
+        let t = line.trim();
+        if t.starts_with('[') {
+            return false;
+        }
+        if let Some(lhs) = t.split('=').next() {
+            if lhs.trim() == key {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Append a new `programs:` entry to `sunscreen.yml`. The loader will then
+/// re-resolve the program on the next workspace lookup.
+fn patch_sunscreen_yml(
+    path: &std::path::Path,
+    program_kebab: &str,
+    program_snake: &str,
+) -> Result<String, SunscreenError> {
+    let existing = std::fs::read_to_string(path)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+    let lines: Vec<&str> = existing.lines().collect();
+    // Find the `programs:` key (top-level).
+    let programs_idx = lines.iter().position(|l| l.trim_start() == "programs:");
+    let entry = format!("  - name: {program_kebab}\n    path: programs/{program_snake}\n");
+    if let Some(idx) = programs_idx {
+        // Find the end of the programs list (next top-level key, i.e. line
+        // not starting with whitespace and not empty).
+        let mut end = lines.len();
+        for (j, l) in lines.iter().enumerate().skip(idx + 1) {
+            if l.is_empty() {
+                continue;
+            }
+            let starts_with_ws = l.starts_with(' ') || l.starts_with('\t');
+            if !starts_with_ws {
+                end = j;
+                break;
+            }
+        }
+        let mut out = String::with_capacity(existing.len() + entry.len());
+        for line in &lines[..end] {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push_str(&entry);
+        for line in &lines[end..] {
+            out.push_str(line);
+            out.push('\n');
+        }
+        Ok(out)
+    } else {
+        let mut out = existing.clone();
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str("programs:\n");
+        out.push_str(&entry);
+        Ok(out)
     }
 }
 

@@ -1,0 +1,21 @@
+//! `{{ program_name | snake_case }}` — Anchor program scaffolded by `sunscreen scaffold program`.
+//!
+//! The `segment=*` blocks below are managed by the `sunscreen scaffold`
+//! family of commands. Edits inside the markers will be overwritten on the
+//! next scaffold run; code outside the markers is preserved.
+
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+#[allow(unused_imports)]
+use instructions::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod {{ program_name | snake_case }} {
+    use super::*;
+
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=program ===
+    // === sunscreen:auto-generated:end segment=dispatch ===
+}

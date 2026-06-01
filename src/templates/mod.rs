@@ -14,6 +14,7 @@ pub mod error;
 pub mod event;
 pub mod funcs;
 pub mod instruction;
+pub mod program;
 pub mod render;
 pub mod workspace;
 
@@ -33,5 +34,6 @@ pub use instruction::{
     render_dispatch_segment, render_instruction, render_instructions_mod_segment, AccountKind,
     AccountSpec, ArgSpec, InstructionCtx, InstructionDispatch,
 };
+pub use program::render_program;
 pub use render::render;
 pub use workspace::render_workspace;

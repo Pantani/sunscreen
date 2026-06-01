@@ -193,7 +193,7 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
     let runtime_choice = args
         .runtime
         .unwrap_or_else(|| ws.config.runtime.engine.into());
-    let ports = RuntimePorts::new(ws.config.runtime.port, ws.config.runtime.port + 1);
+    let ports = runtime_ports(ws.config.runtime.port)?;
     let runner = SubprocessRunner;
     let mut runtime = start_runtime_with_fallback(
         &ws.root,
@@ -210,24 +210,26 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
         println!("{}", model.render_text());
     }
 
-    emit_serve_event(serde_json::json!({
-        "event": "chain_serve_started",
-        "workspace": ws.root.display().to_string(),
-        "runtime": runtime_report.runtime,
-        "rpc_endpoint": runtime_report.rpc_endpoint,
-        "ws_endpoint": runtime_report.ws_endpoint,
-        "codama": !args.no_codama,
-        "frontend": !args.no_frontend,
-        "debounce_ms": args.debounce_ms,
-    }));
+    if structured {
+        emit_serve_event(serde_json::json!({
+            "event": "chain_serve_started",
+            "workspace": ws.root.display().to_string(),
+            "runtime": runtime_report.runtime,
+            "rpc_endpoint": runtime_report.rpc_endpoint,
+            "ws_endpoint": runtime_report.ws_endpoint,
+            "codama": !args.no_codama,
+            "frontend": !args.no_frontend,
+            "debounce_ms": args.debounce_ms,
+        }));
 
-    emit_serve_event(serde_json::json!({
-        "event": "runtime_started",
-        "runtime": runtime_report.runtime,
-        "pid": runtime_report.pid,
-        "rpc_endpoint": runtime_report.rpc_endpoint,
-        "ws_endpoint": runtime_report.ws_endpoint,
-    }));
+        emit_serve_event(serde_json::json!({
+            "event": "runtime_started",
+            "runtime": runtime_report.runtime,
+            "pid": runtime_report.pid,
+            "rpc_endpoint": runtime_report.rpc_endpoint,
+            "ws_endpoint": runtime_report.ws_endpoint,
+        }));
+    }
 
     let source = match NotifyWatchSource::new(&ws.root) {
         Ok(source) => source,
@@ -270,15 +272,19 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
             }
         };
         for event in events {
-            emit_serve_event(event);
+            if structured {
+                emit_serve_event(event);
+            }
         }
     }
 
     runtime.stop().map_err(map_runtime_stop_err)?;
-    emit_serve_event(serde_json::json!({
-        "event": "chain_serve_stopped",
-        "runtime": runtime_report.runtime,
-    }));
+    if structured {
+        emit_serve_event(serde_json::json!({
+            "event": "chain_serve_stopped",
+            "runtime": runtime_report.runtime,
+        }));
+    }
     Ok(0)
 }
 
@@ -358,6 +364,15 @@ fn emit_build_event(payload: serde_json::Value) {
 
 fn emit_serve_event(payload: serde_json::Value) {
     println!("{payload}");
+}
+
+fn runtime_ports(rpc_port: u16) -> Result<RuntimePorts, SunscreenError> {
+    let ws_port = rpc_port.checked_add(1).ok_or_else(|| {
+        SunscreenError::UserInput(
+            "runtime.port must be less than 65535 so a websocket port can be allocated".into(),
+        )
+    })?;
+    Ok(RuntimePorts::new(rpc_port, ws_port))
 }
 
 enum ManagedRuntime {
@@ -1468,6 +1483,16 @@ pub enum DemoError {
 pub enum DemoError {}
 "#;
         assert!(rewrap_error_variants_marker_block(single_line).is_none());
+    }
+
+    #[test]
+    fn runtime_ports_rejects_u16_overflow() {
+        let ports = runtime_ports(8899).expect("valid ports");
+        assert_eq!(ports.rpc, 8899);
+        assert_eq!(ports.ws, 8900);
+
+        let err = runtime_ports(u16::MAX).expect_err("65535 cannot allocate ws port");
+        assert_eq!(err.exit_code(), 4);
     }
 
     #[test]

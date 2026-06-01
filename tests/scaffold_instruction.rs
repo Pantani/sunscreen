@@ -167,6 +167,12 @@ fn scaffold_instruction_patches_lib_rs_dispatch_segment() {
         .flatten()
         .filter(|e| e.path().is_dir())
         .collect();
+    assert_eq!(
+        entries.len(),
+        1,
+        "expected exactly one program directory under programs/, found {}",
+        entries.len()
+    );
     let program_name = entries[0].file_name().to_string_lossy().into_owned();
 
     // Sanity: the seeded lib.rs already has the dispatch markers.

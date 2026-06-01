@@ -23,6 +23,7 @@ idl-build = ["anchor-lang/idl-build"]
 
 [dependencies]
 anchor-lang = "0.30.1"
+anchor-spl = "0.30.1"
 === programs/token_sale/Xargo.toml ===
 [target.bpfel-unknown-unknown.dependencies.std]
 features = []

@@ -748,16 +748,17 @@ fn rebuild_dispatch_marker_block(
     existing: &str,
     program: &crate::workspace::ProgramView,
 ) -> Result<Option<String>, SunscreenError> {
-    let insert_line = match find_program_module_close_line(existing) {
-        Some(line) => line,
+    let (open_line, close_line) = match find_program_module_bounds(existing) {
+        Some(bounds) => bounds,
         None => return Ok(None),
     };
     let dispatches = collect_instruction_dispatches(program)?;
+    if program_module_contains_dispatch_wrappers(existing, open_line, close_line) {
+        return Ok(None);
+    }
     let body = render_dispatch_segment(&program.name, &dispatches);
     Ok(Some(insert_dispatch_marker_block(
-        existing,
-        insert_line,
-        &body,
+        existing, close_line, &body,
     )))
 }
 
@@ -784,51 +785,67 @@ fn collect_instruction_dispatches(
         }
         let source = std::fs::read_to_string(&path)
             .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", path.display())))?;
+        let Some(args) = parse_handler_args(&source) else {
+            continue;
+        };
         out.push(InstructionDispatch {
             name: stem.to_string(),
-            args: parse_handler_args(&source),
+            args,
         });
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
 }
 
-fn parse_handler_args(source: &str) -> Vec<ArgSpec> {
-    let Some(start) = source.find("pub fn handler(") else {
-        return Vec::new();
-    };
+fn parse_handler_args(source: &str) -> Option<Vec<ArgSpec>> {
+    let start = source.find("pub fn handler(")?;
     let tail = &source[start + "pub fn handler(".len()..];
-    let Some(params) = take_param_list(tail) else {
-        return Vec::new();
-    };
-    split_params(params)
-        .into_iter()
-        .filter_map(|param| {
-            let param = param.trim();
-            if param.is_empty() || param.starts_with("ctx:") || param.starts_with("ctx :") {
-                return None;
-            }
-            let (name, ty) = param.split_once(':')?;
-            let name = name.trim();
-            let ty = ty.trim();
-            if name.is_empty() || ty.is_empty() {
-                return None;
-            }
-            Some(ArgSpec {
-                name: name.to_string(),
-                ty: ty.to_string(),
+    let params = take_param_list(tail)?;
+    Some(
+        split_params(params)
+            .into_iter()
+            .filter_map(|param| {
+                let param = param.trim();
+                if param.is_empty() || param.starts_with("ctx:") || param.starts_with("ctx :") {
+                    return None;
+                }
+                let (name, ty) = param.split_once(':')?;
+                let name = name.trim();
+                let ty = ty.trim();
+                if name.is_empty() || ty.is_empty() {
+                    return None;
+                }
+                Some(ArgSpec {
+                    name: name.to_string(),
+                    ty: ty.to_string(),
+                })
             })
-        })
-        .collect()
+            .collect(),
+    )
 }
 
 fn take_param_list(tail: &str) -> Option<&str> {
     let mut angle_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
     for (idx, ch) in tail.char_indices() {
         match ch {
             '<' => angle_depth += 1,
             '>' if angle_depth > 0 => angle_depth -= 1,
-            ')' if angle_depth == 0 => return Some(&tail[..idx]),
+            '(' => paren_depth += 1,
+            '[' => bracket_depth += 1,
+            ']' if bracket_depth > 0 => bracket_depth -= 1,
+            '{' => brace_depth += 1,
+            '}' if brace_depth > 0 => brace_depth -= 1,
+            ')' if angle_depth == 0
+                && paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0 =>
+            {
+                return Some(&tail[..idx]);
+            }
+            ')' if paren_depth > 0 => paren_depth -= 1,
             _ => {}
         }
     }
@@ -840,13 +857,23 @@ fn split_params(params: &str) -> Vec<&str> {
     let mut start = 0usize;
     let mut angle_depth = 0usize;
     let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
     for (idx, ch) in params.char_indices() {
         match ch {
             '<' => angle_depth += 1,
             '>' if angle_depth > 0 => angle_depth -= 1,
             '(' => paren_depth += 1,
             ')' if paren_depth > 0 => paren_depth -= 1,
-            ',' if angle_depth == 0 && paren_depth == 0 => {
+            '[' => bracket_depth += 1,
+            ']' if bracket_depth > 0 => bracket_depth -= 1,
+            '{' => brace_depth += 1,
+            '}' if brace_depth > 0 => brace_depth -= 1,
+            ',' if angle_depth == 0
+                && paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0 =>
+            {
                 parts.push(&params[start..idx]);
                 start = idx + ch.len_utf8();
             }
@@ -857,7 +884,7 @@ fn split_params(params: &str) -> Vec<&str> {
     parts
 }
 
-fn find_program_module_close_line(existing: &str) -> Option<usize> {
+fn find_program_module_bounds(existing: &str) -> Option<(usize, usize)> {
     let lines: Vec<&str> = existing.lines().collect();
     let mut saw_program_attr = false;
     let mut start = None;
@@ -877,26 +904,22 @@ fn find_program_module_close_line(existing: &str) -> Option<usize> {
     }
 
     let start = start?;
-    let mut depth = 0isize;
-    let mut saw_open = false;
-    for (idx, line) in lines.iter().enumerate().skip(start) {
-        for ch in line.chars() {
-            match ch {
-                '{' => {
-                    depth += 1;
-                    saw_open = true;
-                }
-                '}' if saw_open => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(idx);
-                    }
-                }
-                _ => {}
-            }
-        }
+    let close = find_matching_brace_line(existing, start)?;
+    Some((start, close))
+}
+
+fn program_module_contains_dispatch_wrappers(
+    existing: &str,
+    open_line: usize,
+    close_line: usize,
+) -> bool {
+    let lines: Vec<&str> = existing.lines().collect();
+    if close_line <= open_line + 1 {
+        return false;
     }
-    None
+    lines[open_line + 1..close_line]
+        .iter()
+        .any(|line| line.trim_start().starts_with("pub fn "))
 }
 
 fn insert_dispatch_marker_block(existing: &str, insert_line: usize, body: &str) -> String {
@@ -939,9 +962,10 @@ fn insert_dispatch_marker_block(existing: &str, insert_line: usize, body: &str) 
 
 fn rewrap_error_variants_marker_block(existing: &str) -> Option<String> {
     let (open_line, close_line) = find_error_enum_bounds(existing)?;
-    Some(insert_error_variants_marker_block(
-        existing, open_line, close_line,
-    ))
+    if close_line <= open_line {
+        return None;
+    }
+    insert_error_variants_marker_block(existing, open_line, close_line)
 }
 
 fn find_error_enum_bounds(existing: &str) -> Option<(usize, usize)> {
@@ -964,23 +988,141 @@ fn find_error_enum_bounds(existing: &str) -> Option<(usize, usize)> {
     }
 
     let start = start?;
-    let mut depth = 0isize;
-    let mut saw_open = false;
-    for (idx, line) in lines.iter().enumerate().skip(start) {
-        for ch in line.chars() {
-            match ch {
-                '{' => {
-                    depth += 1;
-                    saw_open = true;
+    let close = find_matching_brace_line(existing, start)?;
+    Some((start, close))
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StringScanMode {
+    Normal { escaped: bool },
+    Raw { hashes: usize },
+}
+
+#[derive(Debug, Default)]
+struct RustBraceScanner {
+    block_comment_depth: usize,
+    string_mode: Option<StringScanMode>,
+}
+
+impl RustBraceScanner {
+    fn scan_line(&mut self, line: &str, mut on_brace: impl FnMut(char)) {
+        let mut idx = 0usize;
+        while idx < line.len() {
+            let rest = &line[idx..];
+            if self.block_comment_depth > 0 {
+                if rest.starts_with("/*") {
+                    self.block_comment_depth += 1;
+                    idx += 2;
+                } else if rest.starts_with("*/") {
+                    self.block_comment_depth -= 1;
+                    idx += 2;
+                } else {
+                    idx += next_char_len(rest);
                 }
-                '}' if saw_open => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some((start, idx));
+                continue;
+            }
+
+            if let Some(mode) = self.string_mode {
+                match mode {
+                    StringScanMode::Normal { escaped } => {
+                        let ch = rest.chars().next().expect("non-empty rest");
+                        if escaped {
+                            self.string_mode = Some(StringScanMode::Normal { escaped: false });
+                        } else if ch == '\\' {
+                            self.string_mode = Some(StringScanMode::Normal { escaped: true });
+                        } else if ch == '"' {
+                            self.string_mode = None;
+                        }
+                        idx += ch.len_utf8();
+                    }
+                    StringScanMode::Raw { hashes } => {
+                        if let Some(end_len) = raw_string_end_len(rest, hashes) {
+                            self.string_mode = None;
+                            idx += end_len;
+                        } else {
+                            idx += next_char_len(rest);
+                        }
                     }
                 }
-                _ => {}
+                continue;
             }
+
+            if rest.starts_with("//") {
+                break;
+            }
+            if rest.starts_with("/*") {
+                self.block_comment_depth += 1;
+                idx += 2;
+                continue;
+            }
+            if let Some(hashes) = raw_string_hashes(rest) {
+                self.string_mode = Some(StringScanMode::Raw { hashes });
+                idx += 2 + hashes;
+                continue;
+            }
+
+            let ch = rest.chars().next().expect("non-empty rest");
+            if ch == '"' {
+                self.string_mode = Some(StringScanMode::Normal { escaped: false });
+            } else if ch == '{' || ch == '}' {
+                on_brace(ch);
+            }
+            idx += ch.len_utf8();
+        }
+    }
+}
+
+fn next_char_len(input: &str) -> usize {
+    input.chars().next().map(char::len_utf8).unwrap_or(0)
+}
+
+fn raw_string_hashes(input: &str) -> Option<usize> {
+    let mut chars = input.chars();
+    if chars.next()? != 'r' {
+        return None;
+    }
+    let mut hashes = 0usize;
+    for ch in chars {
+        match ch {
+            '#' => hashes += 1,
+            '"' => return Some(hashes),
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn raw_string_end_len(input: &str, hashes: usize) -> Option<usize> {
+    let after_quote = input.strip_prefix('"')?;
+    let bytes = after_quote.as_bytes();
+    if bytes.len() < hashes {
+        return None;
+    }
+    if bytes[..hashes].iter().all(|byte| *byte == b'#') {
+        Some(1 + hashes)
+    } else {
+        None
+    }
+}
+
+fn find_matching_brace_line(existing: &str, start_line: usize) -> Option<usize> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut scanner = RustBraceScanner::default();
+    let mut depth = 0isize;
+    let mut saw_open = false;
+    for (idx, line) in lines.iter().enumerate().skip(start_line) {
+        scanner.scan_line(line, |ch| match ch {
+            '{' => {
+                depth += 1;
+                saw_open = true;
+            }
+            '}' if saw_open => {
+                depth -= 1;
+            }
+            _ => {}
+        });
+        if saw_open && depth == 0 {
+            return Some(idx);
         }
     }
     None
@@ -990,7 +1132,7 @@ fn insert_error_variants_marker_block(
     existing: &str,
     open_line: usize,
     close_line: usize,
-) -> String {
+) -> Option<String> {
     let nl = crate::cli::scaffold::detect_line_ending(existing);
     let trailing_nl = existing.ends_with('\n');
     let lines: Vec<&str> = existing.lines().collect();
@@ -999,6 +1141,43 @@ fn insert_error_variants_marker_block(
         .map(|line| line.chars().take_while(|ch| ch.is_whitespace()).collect())
         .unwrap_or_default();
     let marker_indent = format!("{enum_indent}    ");
+    let begin_fragment = "sunscreen:auto-generated:begin segment=error_variants";
+    let end_fragment = "sunscreen:auto-generated:end segment=error_variants";
+    let begin_line = (open_line + 1..close_line).find(|idx| lines[*idx].contains(begin_fragment));
+    let end_line = (open_line + 1..close_line).find(|idx| lines[*idx].contains(end_fragment));
+
+    match (begin_line, end_line) {
+        (Some(begin), Some(end)) if begin < end => {
+            let mut out = Vec::with_capacity(lines.len());
+            for (idx, line) in lines.iter().enumerate() {
+                if idx == begin {
+                    out.push(format!(
+                        "{marker_indent}// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=doctor ==="
+                    ));
+                } else if idx == end {
+                    out.push(format!(
+                        "{marker_indent}// === sunscreen:auto-generated:end segment=error_variants ==="
+                    ));
+                } else {
+                    out.push((*line).to_string());
+                }
+            }
+            let mut joined = out.join(nl);
+            if trailing_nl {
+                joined.push_str(nl);
+            }
+            return Some(joined);
+        }
+        (None, None) => {}
+        _ => return None,
+    }
+
+    if lines[open_line + 1..close_line]
+        .iter()
+        .any(|line| !line.trim().is_empty())
+    {
+        return None;
+    }
 
     let mut out = Vec::with_capacity(lines.len() + 2);
     for (idx, line) in lines.iter().enumerate() {
@@ -1018,7 +1197,7 @@ fn insert_error_variants_marker_block(
     if trailing_nl {
         joined.push_str(nl);
     }
-    joined
+    Some(joined)
 }
 
 #[cfg(test)]
@@ -1038,5 +1217,62 @@ mod tests {
         assert!(validate_name("1abc").is_err());
         assert!(validate_name("has space").is_err());
         assert!(validate_name("dot.name").is_err());
+    }
+
+    #[test]
+    fn parse_handler_args_preserves_tuple_types_and_no_arg_handlers() {
+        let args = parse_handler_args(
+            "pub fn handler(ctx: Context<Deposit>, pair: (u64, u64), maybe: Option<(u64, u64)>, callback: fn(u64) -> u64) -> Result<()> {}",
+        )
+        .expect("handler should parse");
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0].name, "pair");
+        assert_eq!(args[0].ty, "(u64, u64)");
+        assert_eq!(args[1].name, "maybe");
+        assert_eq!(args[1].ty, "Option<(u64, u64)>");
+        assert_eq!(args[2].name, "callback");
+        assert_eq!(args[2].ty, "fn(u64) -> u64");
+
+        let no_args =
+            parse_handler_args("pub fn handler(ctx: Context<Ping>) -> Result<()> { Ok(()) }")
+                .expect("no-arg handler should still be a handler");
+        assert!(no_args.is_empty());
+
+        assert!(parse_handler_args("pub fn helper() {}").is_none());
+    }
+
+    #[test]
+    fn find_error_enum_bounds_ignores_braces_inside_messages() {
+        let source = r#"use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    #[msg("bad } input")]
+    BadInput,
+}
+"#;
+        let (open_line, close_line) =
+            find_error_enum_bounds(source).expect("error enum should be found");
+        assert_eq!(open_line, 3);
+        assert_eq!(close_line, 6);
+    }
+
+    #[test]
+    fn rewrap_error_variants_refuses_ambiguous_and_single_line_enums() {
+        let ambiguous = r#"use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    ExistingVariant,
+}
+"#;
+        assert!(rewrap_error_variants_marker_block(ambiguous).is_none());
+
+        let single_line = r#"use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {}
+"#;
+        assert!(rewrap_error_variants_marker_block(single_line).is_none());
     }
 }

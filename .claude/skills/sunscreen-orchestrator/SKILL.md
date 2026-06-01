@@ -5,7 +5,7 @@ description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana
 
 # Sunscreen Orchestrator
 
-Coordena a implementação do CLI `sunscreen` (Rust, inspirado em Ignite CLI, alvo: ecossistema Solana). Fonte de verdade viva: `ROADMAP.md`. `docs/adr/ADR-0001-solis-cli.md` e `IMPLEMENTATION-KICKOFF.md` são contexto histórico; preserve as decisões estratégicas, mas traduza Go/solis para Rust/sunscreen.
+Coordena a implementação do CLI `sunscreen` (Rust, inspirado em Ignite CLI, alvo: ecossistema Solana). Fonte de verdade viva: `ROADMAP.md`. `docs/adr/ADR-0001-solis-cli.md` e `IMPLEMENTATION-KICKOFF.md` é contexto histórico; preserve as decisões estratégicas, mas traduza Go/solis para Rust/sunscreen.
 
 ## Phase 0: Contexto
 
@@ -22,15 +22,15 @@ Antes de qualquer ação, determine o modo de execução:
 Identifique o escopo dentro de `ROADMAP.md`. Estado atual do projeto:
 
 - Phase 0 e Phase 1 estão concluídas.
-- Phase 2 está em R5 polish. Antes de iniciar Phase 3, feche ou registre explicitamente as pendências R5.
-- Phase 3 (Runtime Orchestration: `chain build`, `chain serve`, watcher, runtime e TUI) é a próxima fase planejada, mas depende do fechamento da Phase 2.
+- Phase 2 está concluída via PR #7; o único carry-over ativo é o reparo pequeno de empty-account instruction.
+- Phase 3 (Runtime Orchestration: `chain build`, `chain serve`, watcher, runtime e TUI) está em fatias iniciais.
 
 Escopo padrão para pedidos como "seguir próximos passos", "próxima fase" ou "pendências":
 
-1. Auditar R5 da Phase 2.
-2. Implementar uma fatia testável da R5 com TDD.
+1. Confirmar se há carry-over de Phase 2 que bloqueia a fatia.
+2. Implementar uma fatia testável de Phase 3 com TDD.
 3. Atualizar `ROADMAP.md` e `CLAUDE.md` quando o estado mudar.
-4. Só então abrir uma fatia inicial de Phase 3.
+4. Manter `chain serve --headless` como caminho primário antes da TUI.
 
 ## Phase 2: Execução
 
@@ -50,14 +50,14 @@ Use subagentes somente quando o ambiente disponibilizar essa capacidade e o pedi
 ### R5 checklist
 
 - `tests/rustfmt_roundtrip.rs`: roda `rustfmt --edition=2021` sobre fixture com todos os segmentos documentados e reescaneia os markers.
-- Non-appendable recovery: `chain doctor --fix-markers` deve reparar sites seguros sem escrever Rust inválido; `dispatch` deve ser reconstruído dentro de `#[program]` quando houver instruções suficientes, e `error_variants` deve ser reembrulhado dentro de `#[error_code] pub enum` preservando variantes existentes.
-- Compile tests offline: `tests/compile_generated_workspace.rs` cobre 25/25 cenários com `cargo check --workspace --all-targets --offline` em workspaces gerados, usando shims locais de `anchor-lang` e `anchor-spl`.
-- Golden tests: `tests/golden/render_scaffolders_matrix.rs` leva a cobertura para 75 snapshots, cobrindo os cinco scaffolders (`account`, `event`, `error`, `instruction`, `program`) além dos goldens existentes de workspace/program/instruction.
-- Meta R5 restante: >=5 integrações reais (`anchor build`, inspeção de IDL e codama regen). A execução local está bloqueada sem `anchor`, `solana` e `pnpm`; registre o bloqueio sem mascarar como concluído.
+- Non-appendable recovery: `chain doctor --fix-markers` deve reparar sites seguros sem escrever Rust inválido; `dispatch` deve ser reconstruído dentro de `#[program]` quando o segmento inteiro tiver sumido e houver instruções suficientes, e `error_variants` só deve inserir markers quando o enum estiver vazio ou a região marcada existente for inequívoca.
+- Compile tests offline: `tests/compile_generated.rs` cobre 25 cenários com `cargo check` em workspaces gerados.
+- Golden tests: `tests/golden/render_{account,event,error,instruction_matrix,program_matrix}.rs` mantêm a cobertura de scaffolders.
+- Integrações reais: `tests/integration_anchor.rs` contém 5 cenários `anchor build`/IDL/codama, `#[ignore]` e skip quando a toolchain está ausente.
 
 ### Phase 3 opening checklist
 
-Phase 3 pode receber fatias pequenas quando o estado R5 estiver explicitamente claro, mas não marque a fase como desbloqueada até a meta de integrações reais ser cumprida ou reescopada. Estado atual:
+Estado atual de Phase 3:
 
 1. `chain build --headless` JSON-first já existe, reusa workspace discovery e chama `anchor build`.
 2. `src/runtime/subprocess.rs` já existe com trait mínimo e runner de subprocesso testável.
@@ -65,8 +65,9 @@ Phase 3 pode receber fatias pequenas quando o estado R5 estiver explicitamente c
 4. `src/runtime/watcher.rs` já existe com debounce determinístico testável para mudanças Rust/config relevantes, dedupe/sort de caminhos e filtro para saídas geradas/unrelated.
 5. `WatchBuildLoop` já conecta `notify::Event` → debounce → `BuildPipeline`, relativizando paths absolutos pelo workspace antes de filtrar.
 6. `src/runtime/serve.rs` e `chain serve --headless` já existem: o comando instancia `notify`, recebe eventos, faz tick do debounce e emite JSON para builds acionados pelo watcher.
-7. Próxima fatia recomendada: `src/runtime/surfpool.rs` + `testvalidator.rs` com um `Runtime` trait testável e supervisor mínimo sem TUI.
-8. Depois integrar runtime + watcher + build em `serve`; TUI ratatui vem após o caminho headless funcionar.
+7. `src/runtime/surfpool.rs`, `testvalidator.rs`, `validator.rs` e `supervisor.rs` já existem: `Runtime` trait, endpoints, comandos de Surfpool/test-validator e supervisor mínimo start/stop com spawner injetável.
+8. Próxima fatia recomendada: integrar o `RuntimeSupervisor` ao `chain serve --headless`, com seleção/fallback de runtime e eventos JSON de start/stop.
+9. Depois frontend notify e TUI ratatui; teardown Ctrl-C deve fechar o ciclo da Phase 3.
 
 ## Phase 3: Relatório
 

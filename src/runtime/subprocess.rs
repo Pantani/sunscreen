@@ -4,7 +4,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 use std::time::Instant;
 
 /// A command plus execution context.
@@ -135,6 +135,24 @@ pub trait ProcessRunner {
     fn run(&self, spec: CommandSpec) -> Result<CommandOutput, ProcessError>;
 }
 
+/// A long-running managed child process.
+pub trait ManagedProcess {
+    /// Operating-system process id.
+    fn id(&self) -> u32;
+
+    /// Return an exit code when the process already exited.
+    fn try_wait(&mut self) -> io::Result<Option<i32>>;
+
+    /// Stop the process and wait for it to exit.
+    fn stop(&mut self) -> io::Result<()>;
+}
+
+/// Spawns long-running subprocesses.
+pub trait ProcessSpawner {
+    /// Spawn the command spec without waiting for completion.
+    fn spawn(&self, spec: CommandSpec) -> Result<Box<dyn ManagedProcess>, ProcessError>;
+}
+
 /// Production subprocess runner backed by [`std::process::Command`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SubprocessRunner;
@@ -160,5 +178,46 @@ impl ProcessRunner for SubprocessRunner {
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             duration_ms: started.elapsed().as_millis(),
         })
+    }
+}
+
+impl ProcessSpawner for SubprocessRunner {
+    fn spawn(&self, spec: CommandSpec) -> Result<Box<dyn ManagedProcess>, ProcessError> {
+        let mut command = Command::new(&spec.program);
+        command.args(&spec.args);
+        if let Some(cwd) = &spec.cwd {
+            command.current_dir(cwd);
+        }
+        for (key, value) in &spec.env {
+            command.env(key, value);
+        }
+        let child = command
+            .spawn()
+            .map_err(|e| ProcessError::new(&spec.program, e))?;
+        Ok(Box::new(SubprocessChild { child }))
+    }
+}
+
+struct SubprocessChild {
+    child: Child,
+}
+
+impl ManagedProcess for SubprocessChild {
+    fn id(&self) -> u32 {
+        self.child.id()
+    }
+
+    fn try_wait(&mut self) -> io::Result<Option<i32>> {
+        self.child
+            .try_wait()
+            .map(|status| status.map(|status| status.code().unwrap_or(1)))
+    }
+
+    fn stop(&mut self) -> io::Result<()> {
+        if self.try_wait()?.is_none() {
+            self.child.kill()?;
+            let _ = self.child.wait()?;
+        }
+        Ok(())
     }
 }

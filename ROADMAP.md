@@ -145,12 +145,12 @@ Shipped via #5 (`67b0338`).
 
 - [x] `src/cli/scaffold.rs::run_program` — `scaffold program <name>` (adds a new program crate to `programs/`, registers in `Anchor.toml` and root `Cargo.toml`)
 - [x] `templates/scaffold/program/` template tree
-- [x] `sunscreen chain doctor --fix-markers` (`src/cli/chain.rs::run_doctor`) — scans the workspace for marker corruption, appends missing marker pairs for **appendable** host files (state/mod.rs, instructions/mod.rs, etc.), reconstructs the non-appendable `dispatch` segment inside `#[program]` when instruction files provide enough information, and rewraps `error_variants` inside `#[error_code]` enums while preserving existing variants.
+- [x] `sunscreen chain doctor --fix-markers` (`src/cli/chain.rs::run_doctor`) — scans the workspace for marker corruption, appends missing marker pairs for **appendable** host files (state/mod.rs, instructions/mod.rs, etc.), reconstructs the non-appendable `dispatch` segment inside `#[program]` when the generated body is gone and instruction files provide enough information, and inserts `error_variants` markers only for safe empty enums or existing marked regions.
 - [x] Auto-injection of `pub mod events;` / `pub mod errors;` / `pub mod state;` in `lib.rs` on first relevant scaffold (closes a R3 gap where users had to add the line manually)
 - [x] `tests/scaffold_program.rs` (also covers `chain doctor --fix-markers` paths)
 - [x] `tests/rustfmt_roundtrip.rs` — golden test that runs `rustfmt --edition=2021` over fixture files containing every documented marker segment and re-scans the result; matches the invariant promised in `docs/reference/markers.md` §5 and ADR-0004 §4 (shipped in R5)
-- [x] Reconstruction of the non-appendable `dispatch` site when the generated segment is gone — `chain doctor --fix-markers` inserts a fresh marker block inside `#[program]` and rebuilds wrappers from instruction files that define `pub fn handler`.
-- [x] Safe recovery for `error_variants` — `chain doctor --fix-markers` inserts markers for safe empty multi-line `#[error_code]` enums and refuses ambiguous existing enum contents instead of wrapping user variants or appending invalid Rust at EOF.
+- [x] Reconstruction of the non-appendable `dispatch` site when both markers and generated body are gone — `chain doctor --fix-markers` inserts a fresh `dispatch` marker block inside `#[program]`, rebuilds wrappers from instruction files that define `pub fn handler`, and refuses ambiguous cases where wrappers already remain.
+- [x] Safe recovery for the remaining non-appendable `error_variants` site — `chain doctor --fix-markers` inserts markers for empty multi-line `#[error_code]` enums and refuses ambiguous existing enum contents instead of wrapping user variants or appending invalid Rust at EOF.
 
 #### R5 — Polish ✅
 
@@ -169,12 +169,12 @@ Shipped via PR #7.
 
 ### Phase 3 — Runtime Orchestration 🚧
 
-**Status.** 🚧 Initial build slice started. `chain build --headless` now reuses workspace discovery and runs `anchor build` + optional Codama regeneration through a testable runtime pipeline with parseable line-delimited JSON events. The watcher debounce core, notify-event-to-pipeline bridge, and `chain serve --headless` watcher loop are also in place.
+**Status.** 🚧 Initial build slice started. `chain build --headless` now reuses workspace discovery and runs `anchor build` + optional Codama regeneration through a testable runtime pipeline with parseable line-delimited JSON events. The watcher debounce core, notify-event-to-pipeline bridge, `chain serve --headless` watcher loop, and local-runtime trait/adapters are also in place.
 
 **Goal.** `sunscreen chain serve` orchestrates Surfpool, file-watcher, codama regen, and a ratatui TUI in one supervised process tree.
 
 **Deliverables.**
-- [ ] `src/runtime/surfpool.rs` + `testvalidator.rs` implementing a `Runtime` trait
+- [x] `src/runtime/surfpool.rs` + `testvalidator.rs` implementing a `Runtime` trait, shared endpoint contract, and minimal `RuntimeSupervisor` start/stop boundary
 - [x] `src/runtime/watcher.rs` debounce core — batches relevant Rust/config changes after a quiet period, dedupes/sorts paths, and ignores generated/unrelated paths
 - [x] `notify::Event` adapter — feeds raw notify paths into the debouncer and relativizes absolute paths against the workspace before pipeline filtering
 - [x] `chain build --headless` initial runner — discovers the workspace, invokes `anchor build` at the workspace root, emits parseable line-delimited JSON, returns exit 2 when `anchor` is missing, and preserves the Anchor exit code on build failure
@@ -184,6 +184,7 @@ Shipped via PR #7.
 - [x] Long-running watcher source — `chain serve --headless` instantiates `notify`, receives filesystem events, ticks debounce deadlines, and emits parseable line-delimited JSON for watcher-triggered builds
 - [ ] Frontend notify after Codama regeneration
 - [ ] `src/tui/serve_model.rs` — ratatui panels (validator / build / faucet / frontend / logs), 80×24 minimum
+- [ ] Integrate runtime supervisor into `chain serve --headless` — runtime selection/fallback, start event, stop event, and build watcher loop in one supervised path
 - [ ] `chain serve` full runtime — Surfpool/test-validator supervisor + watcher + build/codama + frontend notify; `--headless` remains parseable line-delimited JSON
 - [ ] Clean Ctrl-C teardown (process tree, no orphans)
 

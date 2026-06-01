@@ -30,14 +30,14 @@
 
 ### 1.1 Problem framing
 
-The original plan in ADR-0001 (Phases 0–8) assumes an **intermediate Solana dev** — someone who already understands `Pubkey`, knows the difference between `Account` and `AccountInfo`, knows the `anchor build → anchor deploy` cycle, and is comfortable editing `Anchor.toml`. Phases 0–2 R3 (already delivered) reflect that audience: `chain new` requires explicit flags (`--framework anchor --frontend next --clients ts,rs`), scaffolders expect the user to know what an "instruction" is, and `doctor` reports toolchain status in jargon (`anchor-cli 0.30.x`, `solana-cli 2.0.x`).
+The original plan in ADR-0001 (Phases 0–8) assumes an **intermediate Solana dev** — someone who already understands `Pubkey`, knows the difference between `Account` and `AccountInfo`, knows the `anchor build → anchor deploy` cycle, and is comfortable editing `Anchor.toml`. Phases 0–2 R3 (already delivered) reflect that audience: `chain new <name>` takes a required positional and clap-defaulted flags (`--framework anchor`, `--frontend none`) with no guided prompting and no client-SDK selection surface yet, scaffolders expect the user to know what an "instruction" is, and `doctor` reports toolchain status in jargon (`anchor-cli 0.30.x`, `solana-cli 2.0.x`).
 
 The **product vision**, however, is more ambitious: `sunscreen` should be **the entry point for devs who don't know Rust or Solana deeply** — a TypeScript developer curious about NFTs, a student who has heard of SPL tokens, an indie who wants to prototype a DAO in an afternoon. This audience:
 
 - Doesn't know they need a keypair before doing an `airdrop`.
 - Doesn't know the difference between `localnet`, `devnet`, `testnet`, `mainnet`.
 - Doesn't know what a PDA is, and therefore doesn't know *why* `scaffold account` asks about seeds.
-- Will abandon the CLI in the first 5 minutes if the first screen is `error: missing required argument '--framework <FRAMEWORK>'`.
+- Will abandon the CLI in the first 5 minutes if the first screen is `error: the following required arguments were not provided: <NAME>` (`chain new` requires the project name as a positional, with no interactive fallback today).
 
 This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that will be prioritized between Phase 5 (recipes) and v1.0 (release).
 

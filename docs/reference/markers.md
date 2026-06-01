@@ -14,7 +14,7 @@
 - There are **two kinds** of region:
   - `auto-generated` — `sunscreen`'s territory. Will be **overwritten** on every `sunscreen scaffold`.
   - `user-region` — the human's territory. `sunscreen` **never touches** it after initial creation.
-- Markers work in pairs (`begin` / `end`) and are matched by **line-by-line parsing**: `sunscreen` detects lines containing `// === sunscreen:`, ignores leading indentation, and tokenizes `key=value` attributes by whitespace. No regex.
+- Markers work in pairs (`begin` / `end`) and are matched by **line-by-line parsing**: `sunscreen` recognises a line only when its trimmed prefix is `// ===` followed by a `sunscreen:` namespace (see `src/rustpatch/marker.rs::strip_marker_prefix`). Leading indentation is stripped and attributes are tokenised by whitespace as `key=value`. No regex; mid-line occurrences are NOT treated as markers.
 
 ---
 

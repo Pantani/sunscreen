@@ -1,0 +1,6 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+pub mod vault;
+pub use vault::*;

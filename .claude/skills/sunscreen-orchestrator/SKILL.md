@@ -51,15 +51,22 @@ Use subagentes somente quando o ambiente disponibilizar essa capacidade e o pedi
 
 - `tests/rustfmt_roundtrip.rs`: roda `rustfmt --edition=2021` sobre fixture com todos os segmentos documentados e reescaneia os markers.
 - Non-appendable recovery: `chain doctor --fix-markers` deve reparar sites seguros sem escrever Rust inválido; `dispatch` deve ser reconstruído dentro de `#[program]` quando houver instruções suficientes, e `error_variants` deve ser reembrulhado dentro de `#[error_code] pub enum` preservando variantes existentes.
-- Aumentar cobertura gradualmente rumo às metas R5: >=75 golden, >=25 compile e >=5 integração. Registre gaps sem mascarar como concluídos.
+- Compile tests offline: `tests/compile_generated_workspace.rs` cobre 25/25 cenários com `cargo check --workspace --all-targets --offline` em workspaces gerados, usando shims locais de `anchor-lang` e `anchor-spl`.
+- Golden tests: `tests/golden/render_scaffolders_matrix.rs` leva a cobertura para 75 snapshots, cobrindo os cinco scaffolders (`account`, `event`, `error`, `instruction`, `program`) além dos goldens existentes de workspace/program/instruction.
+- Meta R5 restante: >=5 integrações reais (`anchor build`, inspeção de IDL e codama regen). A execução local está bloqueada sem `anchor`, `solana` e `pnpm`; registre o bloqueio sem mascarar como concluído.
 
 ### Phase 3 opening checklist
 
-Só iniciar Phase 3 depois que R5 estiver em estado claro. Primeira fatia recomendada:
+Phase 3 pode receber fatias pequenas quando o estado R5 estiver explicitamente claro, mas não marque a fase como desbloqueada até a meta de integrações reais ser cumprida ou reescopada. Estado atual:
 
-1. `chain build` headless e JSON-first, reusando workspace discovery.
-2. `src/runtime/` com trait mínimo e runner de subprocesso testável.
-3. Depois `watcher` e `serve`; TUI ratatui vem após o caminho headless funcionar.
+1. `chain build --headless` JSON-first já existe, reusa workspace discovery e chama `anchor build`.
+2. `src/runtime/subprocess.rs` já existe com trait mínimo e runner de subprocesso testável.
+3. `src/runtime/pipeline.rs` já existe com build → codama e runner injetável; `chain build` usa esse pipeline e aceita `--no-codama`.
+4. `src/runtime/watcher.rs` já existe com debounce determinístico testável para mudanças Rust/config relevantes, dedupe/sort de caminhos e filtro para saídas geradas/unrelated.
+5. `WatchBuildLoop` já conecta `notify::Event` → debounce → `BuildPipeline`, relativizando paths absolutos pelo workspace antes de filtrar.
+6. `src/runtime/serve.rs` e `chain serve --headless` já existem: o comando instancia `notify`, recebe eventos, faz tick do debounce e emite JSON para builds acionados pelo watcher.
+7. Próxima fatia recomendada: `src/runtime/surfpool.rs` + `testvalidator.rs` com um `Runtime` trait testável e supervisor mínimo sem TUI.
+8. Depois integrar runtime + watcher + build em `serve`; TUI ratatui vem após o caminho headless funcionar.
 
 ## Phase 3: Relatório
 

@@ -4,12 +4,16 @@
 //! (`serve`, `build`, `deploy`) are stubs.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand, ValueEnum};
 
 use crate::config::schema::{Config, Framework as CfgFramework, Frontend as CfgFrontend};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
+use crate::runtime::pipeline::{BuildPipeline, PipelineError, PipelineOptions, PipelineStep};
+use crate::runtime::serve::{HeadlessServeLoop, NotifyWatchSource, ServeLoopInput};
+use crate::runtime::subprocess::SubprocessRunner;
 use crate::templates::{render_dispatch_segment, render_workspace, ArgSpec, InstructionDispatch};
 use crate::toolchain::preflight::{self, PreflightError};
 
@@ -22,10 +26,10 @@ const RUST_EDITION: &str = "2021";
 pub enum ChainCmd {
     /// Bootstrap a new Solana workspace.
     New(NewArgs),
-    /// Run a local validator + program build loop (stub).
-    Serve,
-    /// Build all programs in the workspace (stub).
-    Build,
+    /// Run a local validator + program build loop.
+    Serve(ServeArgs),
+    /// Build all programs in the workspace.
+    Build(BuildArgs),
     /// Deploy programs to a cluster (stub).
     Deploy,
     /// Audit workspace marker integrity. Pass `--fix-markers` to insert
@@ -97,12 +101,37 @@ pub struct NewArgs {
     pub dry_run: bool,
 }
 
+/// Flags for `sunscreen chain build`.
+#[derive(Debug, Args)]
+pub struct BuildArgs {
+    /// Emit line-delimited JSON events suitable for CI logs.
+    #[arg(long, default_value_t = false)]
+    pub headless: bool,
+    /// Skip Codama client regeneration after a successful Anchor build.
+    #[arg(long, default_value_t = false)]
+    pub no_codama: bool,
+}
+
+/// Flags for `sunscreen chain serve`.
+#[derive(Debug, Args)]
+pub struct ServeArgs {
+    /// Emit line-delimited JSON events and skip the TUI.
+    #[arg(long, default_value_t = false)]
+    pub headless: bool,
+    /// Skip Codama client regeneration after a successful Anchor build.
+    #[arg(long, default_value_t = false)]
+    pub no_codama: bool,
+    /// Debounce filesystem changes before running the build pipeline.
+    #[arg(long, default_value_t = 150)]
+    pub debounce_ms: u64,
+}
+
 /// Dispatch entry point invoked from `cli::root`.
 pub fn run(cmd: &ChainCmd, json: bool) -> Result<i32, SunscreenError> {
     match cmd {
         ChainCmd::New(args) => run_new(args, json),
-        ChainCmd::Serve => stub("chain serve"),
-        ChainCmd::Build => stub("chain build"),
+        ChainCmd::Serve(args) => run_serve(args, json),
+        ChainCmd::Build(args) => run_build(args, json),
         ChainCmd::Deploy => stub("chain deploy"),
         ChainCmd::Doctor(args) => run_doctor(args, json),
     }
@@ -111,6 +140,147 @@ pub fn run(cmd: &ChainCmd, json: bool) -> Result<i32, SunscreenError> {
 fn stub(name: &str) -> Result<i32, SunscreenError> {
     eprintln!("{name}: TODO (Phase 2+)");
     Ok(0)
+}
+
+fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
+    use crate::workspace;
+
+    let structured = json || args.headless;
+    if !structured {
+        eprintln!("chain serve: TUI mode TODO (Phase 3); use --headless for the watcher loop");
+        return Ok(0);
+    }
+    if args.debounce_ms == 0 {
+        return Err(SunscreenError::UserInput(
+            "--debounce-ms must be greater than zero".into(),
+        ));
+    }
+
+    let ws = workspace::find_root(None)?;
+    let debounce = Duration::from_millis(args.debounce_ms);
+    emit_serve_event(serde_json::json!({
+        "event": "chain_serve_started",
+        "workspace": ws.root.display().to_string(),
+        "codama": !args.no_codama,
+        "debounce_ms": args.debounce_ms,
+    }));
+
+    let source = NotifyWatchSource::new(&ws.root)
+        .map_err(|err| SunscreenError::Other(anyhow::anyhow!("watch workspace: {err}")))?;
+    let mut loop_ = HeadlessServeLoop::new(
+        &ws.root,
+        debounce,
+        PipelineOptions {
+            run_codama: !args.no_codama,
+        },
+    );
+    let runner = SubprocessRunner;
+
+    loop {
+        let input = match source
+            .recv_timeout(debounce)
+            .map_err(|err| SunscreenError::Other(anyhow::anyhow!("watch workspace: {err}")))?
+        {
+            Some(event) => ServeLoopInput::NotifyEvent(event, Instant::now()),
+            None => ServeLoopInput::Tick(Instant::now()),
+        };
+        let events = loop_
+            .handle_input(input, &runner)
+            .map_err(|err| map_pipeline_err(err, "sunscreen chain serve"))?;
+        for event in events {
+            emit_serve_event(event);
+        }
+    }
+}
+
+fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
+    use crate::workspace;
+
+    let ws = workspace::find_root(None)?;
+    let structured = json || args.headless;
+    let programs: Vec<_> = ws
+        .programs
+        .iter()
+        .map(|program| program.name.clone())
+        .collect();
+
+    if structured {
+        emit_build_event(serde_json::json!({
+            "event": "chain_build_started",
+            "workspace": ws.root.display().to_string(),
+            "programs": programs,
+            "codama": !args.no_codama,
+        }));
+    } else {
+        println!(
+            "chain build: running build pipeline in {}",
+            ws.root.display()
+        );
+    }
+
+    let report = BuildPipeline::new(&ws.root)
+        .run(
+            &SubprocessRunner,
+            PipelineOptions {
+                run_codama: !args.no_codama,
+            },
+        )
+        .map_err(|err| map_pipeline_err(err, "sunscreen chain build"))?;
+    let exit_code = report.exit_code;
+    let success = report.success();
+    let status = if success { "ok" } else { "failed" };
+
+    if structured {
+        for event in &report.events {
+            emit_build_event(event.to_json());
+        }
+        emit_build_event(serde_json::json!({
+            "event": "chain_build_finished",
+            "status": status,
+            "exit_code": exit_code,
+        }));
+    } else {
+        for event in &report.events {
+            if event.event != "command_finished" {
+                continue;
+            }
+            if let Some(stdout) = &event.stdout {
+                print!("{stdout}");
+            }
+            if let Some(stderr) = &event.stderr {
+                eprint!("{stderr}");
+            }
+        }
+        if success {
+            println!("chain build: ok");
+        } else {
+            eprintln!("chain build: pipeline failed with exit code {exit_code}");
+        }
+    }
+
+    Ok(if success { 0 } else { exit_code })
+}
+
+fn emit_build_event(payload: serde_json::Value) {
+    println!("{payload}");
+}
+
+fn emit_serve_event(payload: serde_json::Value) {
+    println!("{payload}");
+}
+
+fn map_pipeline_err(err: PipelineError, command: &str) -> SunscreenError {
+    if err.source.is_not_found() {
+        let (tool, install_hint) = match err.step {
+            PipelineStep::AnchorBuild => ("anchor", "install Anchor"),
+            PipelineStep::CodamaRun => ("pnpm", "install pnpm before running Codama"),
+        };
+        SunscreenError::ToolchainMissing(format!(
+            "{tool} not found on PATH; {install_hint} before running `{command}`"
+        ))
+    } else {
+        SunscreenError::Other(anyhow::anyhow!("run build pipeline: {err}"))
+    }
 }
 
 fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {

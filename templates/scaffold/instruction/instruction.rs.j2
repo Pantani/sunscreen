@@ -8,7 +8,7 @@ use crate::events::{{ emit | pascal_case }};
 {%- if args %}
 #[instruction({% for a in args %}{{ a.name | snake_case }}: {{ a.ty }}{% if not loop.last %}, {% endif %}{% endfor %})]
 {%- endif %}
-pub struct {{ instruction_name | pascal_case }}<'info> {
+pub struct {{ instruction_name | pascal_case }}{% if accounts %}<'info>{% endif %} {
 {%- for acc in accounts %}
     {%- if acc.kind == "SystemProgram" %}
     pub {{ acc.name | snake_case }}: Program<'info, System>,
@@ -44,7 +44,15 @@ pub fn handler(
     let _ = &{{ a.name | snake_case }};
 {%- endfor %}
 {%- if emit %}
+    {%- if emit_fields %}
+    emit!({{ emit | pascal_case }} {
+        {%- for f in emit_fields %}
+        {{ f | snake_case }}: todo!("set {{ emit | pascal_case }}.{{ f | snake_case }}"),
+        {%- endfor %}
+    });
+    {%- else %}
     emit!({{ emit | pascal_case }} {});
+    {%- endif %}
 {%- endif %}
     Ok(())
 }

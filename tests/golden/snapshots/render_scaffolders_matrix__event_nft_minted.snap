@@ -1,0 +1,10 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct NftMinted {
+    pub mint: Pubkey,
+    pub owner: Pubkey,
+    pub uri: String,
+}

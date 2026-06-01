@@ -96,6 +96,8 @@ pub struct InstructionCtx {
     /// If `Some(EventName)`, the generated handler emits that event and the
     /// auto-generated region imports `crate::events::<EventName>`.
     pub emit: Option<String>,
+    /// Field names for the emitted event, when the event is known locally.
+    pub emit_fields: Vec<String>,
 }
 
 /// Dispatch entry consumed by [`render_dispatch_segment`].
@@ -155,6 +157,7 @@ fn to_jinja_ctx(ctx: &InstructionCtx) -> serde_json::Value {
         "args": ctx.args,
         "accounts": accounts,
         "emit": ctx.emit,
+        "emit_fields": ctx.emit_fields,
     })
 }
 

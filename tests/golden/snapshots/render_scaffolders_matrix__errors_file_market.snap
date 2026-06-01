@@ -1,0 +1,17 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("vault is already closed")]
+    AlreadyClosed,
+    #[msg("vault is already open")]
+    AlreadyOpen,
+    #[msg("mint does not match")]
+    InvalidMint,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}

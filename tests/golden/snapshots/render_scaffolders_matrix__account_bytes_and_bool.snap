@@ -1,0 +1,13 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct Metadata {
+    pub active: bool,
+    pub digest: [u8; 32],
+}
+// === sunscreen:auto-generated:end segment=file ===

@@ -1,0 +1,31 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(enabled: bool, count: u64, label: String, owner: Pubkey)]
+pub struct Configure<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<Configure>,
+    enabled: bool,
+    count: u64,
+    label: String,
+    owner: Pubkey,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &enabled;
+    let _ = &count;
+    let _ = &label;
+    let _ = &owner;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

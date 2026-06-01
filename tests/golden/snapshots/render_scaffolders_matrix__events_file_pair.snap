@@ -1,0 +1,19 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+use anchor_lang::prelude::*;
+
+// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
+#[event]
+pub struct Deposited {
+    pub authority: Pubkey,
+    pub amount: u64,
+}
+#[event]
+pub struct Configured {
+    pub enabled: bool,
+    pub count: u64,
+    pub label: String,
+}
+// === sunscreen:auto-generated:end segment=events ===

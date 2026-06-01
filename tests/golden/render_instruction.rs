@@ -17,6 +17,7 @@ fn ctx_simple() -> InstructionCtx {
             kind: AccountKind::Generic,
         }],
         emit: None,
+        emit_fields: vec![],
     }
 }
 
@@ -58,6 +59,7 @@ fn ctx_with_pda_and_args() -> InstructionCtx {
             },
         ],
         emit: None,
+        emit_fields: vec![],
     }
 }
 
@@ -77,6 +79,7 @@ fn ctx_with_emit() -> InstructionCtx {
             kind: AccountKind::Generic,
         }],
         emit: Some("Pinged".into()),
+        emit_fields: vec!["nonce".into()],
     }
 }
 

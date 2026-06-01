@@ -145,6 +145,12 @@ sunscreen scaffold instruction deposit \
   --accounts "vault:mut|seeds=b\"vault\",depositor:signer|mut,system_program:system"
 ```
 
+`--accounts` accepts both the pipe-separated form above and the ADR-style
+colon-separated form (`vault:mut:signer`, `system_program`, `token_program`).
+When `--emit` targets an existing event with fields, generated handlers emit a
+complete event literal with `todo!()` placeholders for each field so the code
+continues to compile while leaving semantic values for the user-owned handler.
+
 ### 8.1 `programs/escrow/src/instructions/mod.rs`
 
 ```rust

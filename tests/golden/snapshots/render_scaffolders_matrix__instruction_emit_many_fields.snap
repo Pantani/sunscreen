@@ -1,0 +1,33 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::Configured;
+
+#[derive(Accounts)]
+#[instruction(enabled: bool, label: String)]
+pub struct ConfigureEmit<'info> {
+    pub admin: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<ConfigureEmit>,
+    enabled: bool,
+    label: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &enabled;
+    let _ = &label;
+    emit!(Configured {
+        enabled: todo!("set Configured.enabled"),
+        count: todo!("set Configured.count"),
+        label: todo!("set Configured.label"),
+        owner: todo!("set Configured.owner"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

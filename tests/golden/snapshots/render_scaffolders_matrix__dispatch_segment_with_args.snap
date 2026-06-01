@@ -1,0 +1,10 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+pub fn initialize(ctx: Context<Initialize>, seed: u64) -> Result<()> {
+    instructions::initialize::handler(ctx, seed)
+}
+pub fn configure(ctx: Context<Configure>, enabled: bool, label: String) -> Result<()> {
+    instructions::configure::handler(ctx, enabled, label)
+}

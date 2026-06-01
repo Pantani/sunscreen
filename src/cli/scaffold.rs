@@ -115,9 +115,10 @@ pub struct InstructionArgs {
     pub args: String,
     /// Comma-separated accounts, e.g. `"vault:mut|signer,user:signer|seeds=b\"vault\";user.key()"`.
     ///
-    /// Per-account flags are pipe-separated. Supported flags:
-    /// `mut`, `signer`, `system`, `token`, `assoc_token`, `seeds=<expr>[;<expr>...]`
-    /// (multiple seed expressions separated by `;` inside `seeds=`).
+    /// Per-account flags can be pipe-separated or ADR-style colon-separated.
+    /// Supported flags: `mut`, `signer`, `system`, `token`, `assoc_token`,
+    /// `ata`, `seeds=<expr>[;<expr>...]`. Shorthands such as `system_program`,
+    /// `token_program`, and `associated_token_program` infer program accounts.
     #[arg(long, value_name = "LIST", default_value = "")]
     pub accounts: String,
     /// If set, emit `<EventName>` from the handler.
@@ -153,6 +154,11 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     // 1. Locate workspace.
     let ws = workspace::find_root(None).map_err(map_ws_err)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let emit_fields = if let Some(emit) = &args.emit {
+        event_fields_for_emit(program, emit)?
+    } else {
+        Vec::new()
+    };
 
     // 2. Render instruction body.
     let ctx = InstructionCtx {
@@ -161,6 +167,7 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
         args: parsed_args.clone(),
         accounts: parsed_accounts,
         emit: args.emit.clone(),
+        emit_fields,
     };
     let instruction_body = render_instruction(&ctx)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render instruction: {e}")))?;
@@ -493,17 +500,15 @@ fn parse_accounts(raw: &str) -> Result<Vec<AccountSpec>, SunscreenError> {
             None => (entry, ""),
         };
         validate_ident(name, "account name")?;
-        let parts = flag_str.split('|');
-
         let mut spec = AccountSpec {
             name: name.to_string(),
             mutable: false,
             signer: false,
             seeds: None,
-            kind: AccountKind::Generic,
+            kind: account_kind_for_shorthand(name).unwrap_or(AccountKind::Generic),
         };
 
-        for flag in parts {
+        for flag in split_account_flags(flag_str) {
             let flag = flag.trim();
             if flag.is_empty() {
                 continue;
@@ -513,7 +518,7 @@ fn parse_accounts(raw: &str) -> Result<Vec<AccountSpec>, SunscreenError> {
                 "signer" => spec.signer = true,
                 "system" => spec.kind = AccountKind::SystemProgram,
                 "token" => spec.kind = AccountKind::TokenProgram,
-                "assoc_token" => spec.kind = AccountKind::AssociatedTokenProgram,
+                "assoc_token" | "ata" => spec.kind = AccountKind::AssociatedTokenProgram,
                 other => {
                     if let Some(seed_list) = other.strip_prefix("seeds=") {
                         let seeds: Vec<String> = seed_list
@@ -538,6 +543,34 @@ fn parse_accounts(raw: &str) -> Result<Vec<AccountSpec>, SunscreenError> {
         out.push(spec);
     }
     Ok(out)
+}
+
+fn account_kind_for_shorthand(name: &str) -> Option<AccountKind> {
+    match name {
+        "system_program" => Some(AccountKind::SystemProgram),
+        "token_program" => Some(AccountKind::TokenProgram),
+        "associated_token_program" | "associated_token" => {
+            Some(AccountKind::AssociatedTokenProgram)
+        }
+        _ => None,
+    }
+}
+
+fn split_account_flags(raw: &str) -> Vec<&str> {
+    if raw.contains('|') {
+        return raw.split('|').collect();
+    }
+    if let Some(seeds_start) = raw.find("seeds=") {
+        let mut flags: Vec<&str> = raw[..seeds_start]
+            .trim_end_matches(':')
+            .split(':')
+            .filter(|part| !part.is_empty())
+            .collect();
+        flags.push(&raw[seeds_start..]);
+        flags
+    } else {
+        raw.split(':').collect()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1436,6 +1469,45 @@ fn parse_event_entries(body: &str) -> Vec<(String, String)> {
     out
 }
 
+fn event_fields_for_emit(program: &ProgramView, emit: &str) -> Result<Vec<String>, SunscreenError> {
+    let events_abs = program.src_dir.join("events.rs");
+    if !events_abs.exists() {
+        return Ok(Vec::new());
+    }
+
+    let existing = std::fs::read_to_string(&events_abs).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read {}: {e}", events_abs.display()))
+    })?;
+    let Some(body) = extract_segment_body(&existing, "events") else {
+        return Ok(Vec::new());
+    };
+    let emit_pascal = emit.to_pascal_case();
+    for (name, raw) in parse_event_entries(&body) {
+        if name == emit_pascal {
+            return Ok(parse_event_field_names(&raw));
+        }
+    }
+    Ok(Vec::new())
+}
+
+fn parse_event_field_names(raw_event: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    for line in raw_event.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("pub ") else {
+            continue;
+        };
+        let Some((name, _ty)) = rest.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        if !name.is_empty() {
+            fields.push(name.to_string());
+        }
+    }
+    fields
+}
+
 fn normalize_entry(s: &str) -> String {
     s.lines()
         .map(str::trim_end)
@@ -2133,6 +2205,24 @@ mod tests {
         assert!(v[0].mutable);
         assert!(v[0].signer);
         assert_eq!(v[1].kind, AccountKind::SystemProgram);
+    }
+
+    #[test]
+    fn parse_accounts_accepts_adr_style_colon_flags_and_program_shorthands() {
+        let v = parse_accounts(
+            "vault:mut:signer:seeds=b\"vault\";payer.key().as_ref(),payer:signer:mut,system_program,token_program,associated_token_program,ata_program:ata",
+        )
+        .unwrap();
+        assert_eq!(v.len(), 6);
+        assert!(v[0].mutable);
+        assert!(v[0].signer);
+        assert_eq!(v[0].seeds.as_ref().unwrap().len(), 2);
+        assert!(v[1].mutable);
+        assert!(v[1].signer);
+        assert_eq!(v[2].kind, AccountKind::SystemProgram);
+        assert_eq!(v[3].kind, AccountKind::TokenProgram);
+        assert_eq!(v[4].kind, AccountKind::AssociatedTokenProgram);
+        assert_eq!(v[5].kind, AccountKind::AssociatedTokenProgram);
     }
 
     #[test]

@@ -1,0 +1,25 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+use anchor_lang::prelude::*;
+
+// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
+#[event]
+pub struct MarketOpened {
+    pub asset: Pubkey,
+    pub quote_mint: Pubkey,
+}
+#[event]
+pub struct OrderFilled {
+    pub order_id: u128,
+    pub base_amount: u64,
+    pub quote_amount: u64,
+}
+#[event]
+pub struct NftMinted {
+    pub mint: Pubkey,
+    pub owner: Pubkey,
+    pub uri: String,
+}
+// === sunscreen:auto-generated:end segment=events ===

@@ -1,0 +1,30 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::VoteCast;
+
+#[derive(Accounts)]
+#[instruction(choice: u8)]
+pub struct CastVote<'info> {
+    pub voter: Signer<'info>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<CastVote>,
+    choice: u8,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &choice;
+    emit!(VoteCast {
+        proposal: todo!("set VoteCast.proposal"),
+        voter: todo!("set VoteCast.voter"),
+        choice: todo!("set VoteCast.choice"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===

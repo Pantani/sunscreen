@@ -1,0 +1,27 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum DemoError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("caller is not authorized")]
+    Unauthorized,
+    #[msg("calculation overflowed")]
+    MathOverflow,
+    #[msg("vault is already closed")]
+    AlreadyClosed,
+    #[msg("vault is already open")]
+    AlreadyOpen,
+    #[msg("mint does not match")]
+    InvalidMint,
+    #[msg("required bump was not found")]
+    MissingBump,
+    #[msg("quote contained \"bad\" content")]
+    BadQuote,
+    #[msg("path contains \\ separator")]
+    PathIssue,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}

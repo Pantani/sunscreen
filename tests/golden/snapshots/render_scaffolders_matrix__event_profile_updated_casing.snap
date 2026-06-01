@@ -1,0 +1,9 @@
+---
+source: tests/golden/render_scaffolders_matrix.rs
+expression: value
+---
+#[event]
+pub struct ProfileUpdated {
+    pub display_name: String,
+    pub active: bool,
+}

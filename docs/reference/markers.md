@@ -88,7 +88,7 @@ Additional rules:
 | Segment | Default kind | Location | Content |
 |---|---|---|---|
 | `instructions` | `auto-generated` | `programs/<prog>/src/instructions/mod.rs` | `pub mod <ix>;` per instruction + re-exports |
-| `dispatch` | `auto-generated` | `programs/<prog>/src/lib.rs` inside `#[program] pub mod <prog> { … }` | `pub fn {ix}(ctx: Context<…>, …) -> Result<()> { instructions::{ix}::handler(ctx, …) }` (e.g. `instructions::deposit::handler`) |
+| `dispatch` | `auto-generated` | `programs/<prog>/src/lib.rs` inside `#[program] pub mod <prog> { … }` | one `pub fn` per instruction, e.g. `pub fn deposit(ctx: Context<…>, …) -> Result<()> { instructions::deposit::handler(ctx, …) }` (the instruction name `<ix>` is substituted directly into both positions) |
 | `file` | `auto-generated` | `programs/<prog>/src/instructions/<ix>.rs` | imports, `#[derive(Accounts)] struct <Ix>`, auxiliary structs |
 | `handler` | `user-region` | same file as `file` | body of `pub fn handler(...) -> Result<()> { … }` |
 | `accounts` *(R3)* | `auto-generated` | `programs/<prog>/src/state/mod.rs` | `pub mod <acc>;` |
@@ -118,7 +118,8 @@ Future segments are added to this table and introduced with `version=1`; subsequ
 | `error: duplicate begin segment=instructions in src/instructions/mod.rs` | unresolved merge conflict | resolve the conflict; keep only one pair |
 | `error: marker drift: version=1 expected, found version=2` | CLI downgrade | upgrade `sunscreen` to a version that understands `version=2` (no reverse migrator exists yet — see § 7) |
 | `error: marker inside expression` | user moved the marker inside a `match` | move it back to item scope |
-| `warning: user-region with version=` | spec violation | sunscreen ignores the `version` and proceeds |
+
+> The scanner currently tolerates extra attributes on `user-region` markers silently (including a stray `version=`); enforcement is deferred until a real version bump exists for user regions. Treat extra attributes as a spec violation even though no warning is emitted today.
 
 `sunscreen doctor` (R4 of this phase) will validate markers across the entire workspace and offer `--fix-markers` for recoverable cases.
 

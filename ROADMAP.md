@@ -148,6 +148,7 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 - [ ] `sunscreen doctor --fix-markers` — detect corrupted / missing marker comments and offer repair
 - [ ] Auto-injection of `pub mod events;` / `pub mod errors;` / `pub mod state;` in `lib.rs` on first relevant scaffold (closes a R3 gap where users had to add the line manually)
 - [ ] `tests/scaffold_program.rs` + `tests/doctor_fix_markers.rs`
+- [ ] `tests/rustfmt_roundtrip.rs` — golden test that runs `rustfmt --edition=2021` over fixture files containing every documented marker segment and re-scans the result; matches the invariant promised in `docs/reference/markers.md` §5 and ADR-0004 §4
 
 #### R5 — Polish target 📋
 

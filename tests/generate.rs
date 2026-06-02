@@ -81,6 +81,37 @@ fn write_target_idl(ws: &Path, program: &str) -> PathBuf {
     path
 }
 
+fn write_target_idl_with_instruction(ws: &Path, program: &str, instruction: &str) -> PathBuf {
+    let idl_dir = ws.join("target/idl");
+    std::fs::create_dir_all(&idl_dir).expect("create idl dir");
+    let path = idl_dir.join(format!("{program}.json"));
+    std::fs::write(
+        &path,
+        format!(
+            r#"{{
+  "address": "{program}1111111111111111111111111111111111",
+  "metadata": {{
+    "name": "{program}",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  }},
+  "instructions": [
+    {{
+      "name": "{instruction}",
+      "accounts": [],
+      "args": []
+    }}
+  ],
+  "accounts": [],
+  "errors": [],
+  "types": []
+}}"#
+        ),
+    )
+    .expect("write idl");
+    path
+}
+
 fn prepend_path(bin_dir: &Path) -> std::ffi::OsString {
     let mut paths = vec![bin_dir.to_path_buf()];
     if let Some(existing) = std::env::var_os("PATH") {
@@ -306,6 +337,77 @@ fn generate_frontend_hooks_emits_react_solid_hooks_and_is_idempotent_for_next() 
         0
     );
     assert_eq!(before, read_tree(&generated_root));
+}
+
+#[test]
+fn generate_frontend_hooks_program_ignores_stale_exported_idls() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("program_filter_app");
+    run_chain_new(&ws, "program_filter_app", "next");
+    write_target_idl(&ws, "program_filter_app");
+
+    let stale_dir = ws.join("clients/idl");
+    std::fs::create_dir_all(&stale_dir).unwrap();
+    std::fs::write(
+        stale_dir.join("stale_app.json"),
+        sample_idl("stale_app").replace("initializeVault", "staleInstruction"),
+    )
+    .unwrap();
+
+    let out = run_generate(
+        &ws,
+        &[
+            "--json",
+            "generate",
+            "frontend-hooks",
+            "--program",
+            "program_filter_app",
+        ],
+    );
+
+    assert!(
+        out.status.success(),
+        "generate frontend-hooks failed: code={:?}\nstdout={}\nstderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let generated_root = ws.join("app/src/generated/sunscreen");
+    let idl = std::fs::read_to_string(generated_root.join("idl.ts")).unwrap();
+    let react = std::fs::read_to_string(generated_root.join("react.ts")).unwrap();
+    assert!(idl.contains("program_filter_app"));
+    assert!(!idl.contains("stale_app"));
+    assert!(!react.contains("useStaleInstructionMutation"));
+}
+
+#[test]
+fn generate_frontend_hooks_namespaces_duplicate_instruction_names_across_programs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("multi_hooks_app");
+    run_chain_new(&ws, "multi_hooks_app", "next");
+    write_target_idl_with_instruction(&ws, "alpha_app", "initialize");
+    write_target_idl_with_instruction(&ws, "beta_app", "initialize");
+
+    let idl = run_generate(&ws, &["--json", "generate", "idl"]);
+    assert!(idl.status.success());
+    let hooks = run_generate(&ws, &["--json", "generate", "frontend-hooks"]);
+    assert!(
+        hooks.status.success(),
+        "generate frontend-hooks failed: code={:?}\nstdout={}\nstderr={}",
+        hooks.status.code(),
+        String::from_utf8_lossy(&hooks.stdout),
+        String::from_utf8_lossy(&hooks.stderr)
+    );
+
+    let generated_root = ws.join("app/src/generated/sunscreen");
+    let react = std::fs::read_to_string(generated_root.join("react.ts")).unwrap();
+    let solid = std::fs::read_to_string(generated_root.join("solid.ts")).unwrap();
+    assert!(react.contains("useAlphaAppInitializeMutation"));
+    assert!(react.contains("useBetaAppInitializeMutation"));
+    assert!(solid.contains("createAlphaAppInitializeMutation"));
+    assert!(solid.contains("createBetaAppInitializeMutation"));
+    assert!(!react.contains("export type InitializeInput"));
+    assert!(!solid.contains("export type InitializeInput"));
 }
 
 #[test]

@@ -7,8 +7,7 @@ use serde::Deserialize;
 
 use super::idl::{export_idls, IdlExportOptions};
 use super::{
-    ensure_safe_relative_subpath, relative_path, sorted_json_files, write_if_changed, CodegenError,
-    FileWrite,
+    ensure_safe_relative_subpath, relative_path, write_if_changed, CodegenError, FileWrite,
 };
 
 /// Hook target selector.
@@ -95,6 +94,13 @@ struct InstructionHooks {
     input_type: String,
 }
 
+#[derive(Debug)]
+struct InstructionExport<'a> {
+    name: &'a str,
+    pascal: String,
+    input_type: &'a str,
+}
+
 /// Generate TypeScript IDL/core files plus TanStack React/Solid Query hooks.
 pub fn generate_frontend_hooks(
     workspace_root: &Path,
@@ -109,7 +115,7 @@ pub fn generate_frontend_hooks(
     )?;
     let frontend_root = resolve_frontend_root(workspace_root, options.frontend_path.as_deref())?;
     let generated = frontend_root.join("src/generated/sunscreen");
-    let programs = load_program_hooks(workspace_root)?;
+    let programs = load_program_hooks(&idl_report.files)?;
 
     let mut files = idl_report.files;
     files.push(write_if_changed(
@@ -164,20 +170,20 @@ fn resolve_frontend_root(
     Ok(workspace_root.join(rel))
 }
 
-fn load_program_hooks(workspace_root: &Path) -> Result<Vec<ProgramHooks>, CodegenError> {
-    let files = sorted_json_files(&workspace_root.join("clients/idl"))?;
+fn load_program_hooks(files: &[FileWrite]) -> Result<Vec<ProgramHooks>, CodegenError> {
     if files.is_empty() {
         return Err(CodegenError::UserInput(
             "no exported IDL files found under clients/idl".into(),
         ));
     }
     let mut programs = Vec::new();
-    for path in files {
-        let raw = std::fs::read_to_string(&path).map_err(|err| CodegenError::io(&path, err))?;
+    for file in files {
+        let path = &file.path;
+        let raw = std::fs::read_to_string(path).map_err(|err| CodegenError::io(path, err))?;
         let idl: AnchorIdl =
-            serde_json::from_str(&raw).map_err(|err| CodegenError::json(&path, err))?;
+            serde_json::from_str(&raw).map_err(|err| CodegenError::json(path, err))?;
         let idl_json: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|err| CodegenError::json(&path, err))?;
+            serde_json::from_str(&raw).map_err(|err| CodegenError::json(path, err))?;
         let fallback = path
             .file_stem()
             .and_then(|stem| stem.to_str())
@@ -305,13 +311,13 @@ fn render_react_ts(programs: &[ProgramHooks]) -> String {
 
 "#,
     );
-    for ix in all_instructions(programs) {
+    for ix in instruction_exports(programs) {
         out.push_str(&format!(
             "export function use{}Mutation<TResult = unknown>(executor: {}Executor<TResult>) {{\n  return useMutation<TResult, Error, {}Input>({{ mutationKey: [\"sunscreen\", {}], mutationFn: executor }});\n}}\n\n",
             ix.pascal,
             ix.pascal,
             ix.pascal,
-            json_string(&ix.name)
+            json_string(ix.name)
         ));
     }
     out
@@ -336,12 +342,12 @@ fn render_solid_ts(programs: &[ProgramHooks]) -> String {
 
 "#,
     );
-    for ix in all_instructions(programs) {
+    for ix in instruction_exports(programs) {
         out.push_str(&format!(
             "export function create{}Mutation<TResult = unknown>(executor: {}Executor<TResult>) {{\n  return createMutation(() => ({{ mutationKey: [\"sunscreen\", {}], mutationFn: executor }}));\n}}\n\n",
             ix.pascal,
             ix.pascal,
-            json_string(&ix.name)
+            json_string(ix.name)
         ));
     }
     out
@@ -363,7 +369,7 @@ fn render_index_ts(target: HookTarget) -> String {
 
 fn shared_hook_types(programs: &[ProgramHooks]) -> String {
     let mut out = String::new();
-    for ix in all_instructions(programs) {
+    for ix in instruction_exports(programs) {
         out.push_str(&format!(
             "export type {}Input = {};\n",
             ix.pascal, ix.input_type
@@ -376,11 +382,21 @@ fn shared_hook_types(programs: &[ProgramHooks]) -> String {
     out
 }
 
-fn all_instructions(programs: &[ProgramHooks]) -> Vec<&InstructionHooks> {
+fn instruction_exports(programs: &[ProgramHooks]) -> Vec<InstructionExport<'_>> {
     let mut out = Vec::new();
+    let include_program_prefix = programs.len() > 1;
     for program in programs {
         for ix in &program.instructions {
-            out.push(ix);
+            let pascal = if include_program_prefix {
+                format!("{}{}", program.key.to_pascal_case(), ix.pascal)
+            } else {
+                ix.pascal.clone()
+            };
+            out.push(InstructionExport {
+                name: &ix.name,
+                pascal,
+                input_type: &ix.input_type,
+            });
         }
     }
     out

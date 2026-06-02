@@ -8,11 +8,23 @@ use super::render_event_path;
 use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 use crate::codegen::codama;
 
+/// Program build strategy selected from `sunscreen.yml`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BuildKind {
+    /// Anchor workspace (`anchor build`) plus optional Codama.
+    #[default]
+    Anchor,
+    /// Pinocchio workspace (`cargo build-sbf`), with Codama disabled.
+    Pinocchio,
+}
+
 /// One step in the build pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStep {
     /// `anchor build`
     AnchorBuild,
+    /// `cargo build-sbf`
+    PinocchioBuild,
     /// `pnpm exec codama run --all --config codama.json`
     CodamaRun,
     /// Write the frontend reload sentinel after generated clients change.
@@ -25,6 +37,7 @@ impl PipelineStep {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::AnchorBuild => "anchor_build",
+            Self::PinocchioBuild => "pinocchio_build",
             Self::CodamaRun => "codama_run",
             Self::FrontendNotify => "frontend_notify",
         }
@@ -33,6 +46,7 @@ impl PipelineStep {
     fn command(self, cwd: &Path) -> Option<CommandSpec> {
         match self {
             Self::AnchorBuild => Some(CommandSpec::new("anchor").arg("build").cwd(cwd)),
+            Self::PinocchioBuild => Some(CommandSpec::new("cargo").arg("build-sbf").cwd(cwd)),
             Self::CodamaRun => Some(codama::codama_run_command(cwd)),
             Self::FrontendNotify => None,
         }
@@ -42,6 +56,8 @@ impl PipelineStep {
 /// Build pipeline options.
 #[derive(Debug, Clone)]
 pub struct PipelineOptions {
+    /// Program build strategy.
+    pub build_kind: BuildKind,
     /// Run managed Codama client regeneration after a successful Anchor build.
     pub run_codama: bool,
     /// Notify a scaffolded frontend after successful Codama regeneration.
@@ -53,6 +69,7 @@ pub struct PipelineOptions {
 impl Default for PipelineOptions {
     fn default() -> Self {
         Self {
+            build_kind: BuildKind::Anchor,
             run_codama: true,
             notify_frontend: true,
             frontend_path: None,
@@ -231,8 +248,13 @@ impl BuildPipeline {
         options: PipelineOptions,
     ) -> Result<PipelineReport, PipelineError> {
         let mut events = Vec::new();
-        let mut steps = vec![PipelineStep::AnchorBuild];
-        if options.run_codama {
+        let build_step = match options.build_kind {
+            BuildKind::Anchor => PipelineStep::AnchorBuild,
+            BuildKind::Pinocchio => PipelineStep::PinocchioBuild,
+        };
+        let should_run_codama = options.build_kind == BuildKind::Anchor && options.run_codama;
+        let mut steps = vec![build_step];
+        if should_run_codama {
             steps.push(PipelineStep::CodamaRun);
         }
 
@@ -269,7 +291,7 @@ impl BuildPipeline {
             }
         }
 
-        if options.run_codama && options.notify_frontend {
+        if should_run_codama && options.notify_frontend {
             match notify_frontend(&self.workspace_root, options.frontend_path.as_deref()) {
                 Ok(Some(path)) => {
                     events.push(PipelineEvent::frontend_notified(

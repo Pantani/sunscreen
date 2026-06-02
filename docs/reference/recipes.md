@@ -44,7 +44,8 @@ Generates an internal SPL-token-oriented slice:
 - `InvalidMint` and `<Name>Unauthorized` errors
 - `tests/<program>/<name>-spl-token.test.ts`
 
-This is a core recipe, not a plugin. Token-2022 extension plugins remain Phase 6.
+This is a core recipe, not a plugin. Token-2022 extension work now belongs to
+the Phase 6 plugin/reference marketplace path.
 
 ### `sunscreen scaffold metaplex-nft <Name>`
 

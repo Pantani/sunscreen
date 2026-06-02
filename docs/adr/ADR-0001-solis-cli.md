@@ -288,7 +288,7 @@ version: 1
 
 workspace:
   name: my-protocol
-  framework: anchor             # anchor | pinocchio (post-MVP) | shank (post-MVP)
+  framework: anchor             # anchor | pinocchio | shank (future IDL-native flow)
   anchor_version: "1.0.2"
   solana_version: "2.1.0"
   rust_version: "1.79.0"
@@ -424,7 +424,7 @@ solis
 solis chain new <name> [flags]
 
 Flags:
-  --framework string          anchor | pinocchio (post-MVP)        (default "anchor")
+  --framework string          anchor | pinocchio                  (default "anchor")
   --template string           multiple | single (Anchor only)       (default "multiple")
   --frontend string           next | vite | expo | none             (default "next")
   --clients strings           js,rust,go (comma-separated)          (default "js")
@@ -1499,7 +1499,7 @@ Total MVP (phases 0–5): **~16 weeks of focused work**.
 
 ### 10.9 Out of Scope for v1.0
 
-- Pinocchio support is **Phase 7** (post-v1.0). Scope it as a separate ADR.
+- Pinocchio support was originally scoped as **Phase 7** post-v1.0; the bootstrap MVP was promoted and implemented by ADR-0006.
 - Multi-program-workspace composition beyond what Anchor already supports.
 - Verifiable build orchestration beyond shelling out to `solana-verify`.
 - Mobile (React Native / Solana Mobile) templates — defer to community plugins.

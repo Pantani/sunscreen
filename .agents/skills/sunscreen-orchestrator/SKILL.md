@@ -1,6 +1,6 @@
 ---
 name: sunscreen-orchestrator
-description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, validar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 6", "plugins", "app", "marketplace", "stdio", "gRPC", "Phase 8", "CI", "integration", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
+description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, validar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 6", "plugins", "app", "marketplace", "stdio", "gRPC", "Phase 7", "Pinocchio", "Phase 8", "CI", "integration", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
 ---
 
 # Sunscreen Orchestrator
@@ -25,6 +25,7 @@ Antes de qualquer ação:
 - Phase 5 está concluída: `scaffold {crud, spl-token, metaplex-nft}` como receitas compostas sobre os scaffolders Phase 2.
 - Phase 5.5 está concluída: `init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn` e erros com `next_step`.
 - Phase 6 está concluída: lifecycle `app`, manifesto `sunscreen-plugin.json`, runtime manager, stdio JSON-RPC, contrato gRPC, sandbox/trust model, marketplace local/reference, hooks e comando dinâmico `scaffold <noun>`.
+- Phase 7 está concluída: `chain new --framework pinocchio`, template `pinocchio-minimal`, preflight sem Anchor, `chain build` com `cargo build-sbf`, e guards claros para scaffold/generate Anchor-only.
 - Phase 8 (Distribution & Docs / v1.0) é a próxima fase: cargo-dist multi-OS completo, docs site, shell completions, changelog/SemVer e release polish.
 - A camada Ignite-style de integração CLI já existe e roda no CI: `tests/integration_{chain,scaffold,generate,onboarding}.rs` com `tests/support/mod.rs`.
 - O CI principal já tem smoke explícito de integração, `--locked`, check `--no-default-features`, permissões read-only, concorrência e timeouts.
@@ -92,6 +93,15 @@ Antes de qualquer ação:
 - `proto/plugin.proto` define `initialize`, `capabilities`, `run_command`, `run_hook` e `shutdown`.
 - Falhas de runtime/sandbox usam exit 9 (`plugin_runtime`); exit 7 continua reservado a `path_conflict`.
 - `tests/app_lifecycle.rs` cobre lifecycle + runtime local, falha não-zero, sandbox traversal e dynamic scaffold.
+
+### Phase 7 closure
+
+- `sunscreen chain new <name> --framework pinocchio` cria workspace Pinocchio sem `Anchor.toml` e sem `anchor-lang`.
+- `templates/workspace/pinocchio-minimal/` contém Cargo workspace, programa `no_std`/BPF-aware e `sunscreen.yml` com `project.framework: pinocchio`.
+- Preflight Pinocchio exige Rust/Cargo/Solana e não exige Anchor; frontend JS continua exigindo Node/pnpm.
+- `chain build --headless` em workspace Pinocchio emite `pinocchio_build`, executa `cargo build-sbf`, reporta `framework: pinocchio` e `codama: false`.
+- Built-in scaffolders e `generate` recusam Pinocchio com erro `user_input` antes de escrever; plugin-backed `scaffold <noun>` permanece disponível.
+- `docs/adr/ADR-0006-pinocchio-bootstrap.md`, `docs/reference/pinocchio.md`, `ROADMAP.md`, `AGENTS.md` e `CLAUDE.md` refletem Phase 7 fechada.
 
 ### Phase 8 / CI QA
 

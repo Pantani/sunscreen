@@ -2,7 +2,7 @@
 //!
 //! `chain new` (and similar) call into [`preflight_chain_new`] to confirm
 //! that the *minimum* set of tools required to render and validate a fresh
-//! Anchor workspace is present and at acceptable versions. This is a
+//! Anchor or Pinocchio workspace is present and at acceptable versions. This is a
 //! tighter subset than `sunscreen doctor`, which surfaces every known
 //! tool. The contract:
 //!
@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use super::detect::{detect_all, CommandRunner, Status, ToolReport};
 use super::registry::{known, ToolSpec};
-use crate::config::Config;
+use crate::config::{Config, Framework};
 
 /// Frontend selection forwarded by `chain new`. Determines whether
 /// node/pnpm need to be present.
@@ -53,9 +53,10 @@ pub struct PreflightReport {
 }
 
 /// Convenience wrapper using [`super::detect::RealRunner`] and the
-/// provided config. The minimum tools required are:
-/// `rustc`, `cargo`, `anchor`, `solana` — plus `node`/`pnpm` when
-/// `frontend == Frontend::Js`.
+/// provided config. Anchor workspaces require `rustc`, `cargo`, `anchor`,
+/// and `solana`. Pinocchio workspaces require `rustc`, `cargo`, and
+/// `solana`; `cargo build-sbf` is supplied by the Solana CLI toolchain.
+/// Frontends additionally require `node` and `pnpm`.
 ///
 /// Returns [`PreflightReport`] on success (warnings may still be present)
 /// or [`PreflightError::Failed`] on hard failure.
@@ -72,7 +73,7 @@ pub fn preflight_chain_new_with<R: CommandRunner>(
     config: &Config,
     frontend: Frontend,
 ) -> Result<PreflightReport, PreflightError> {
-    let specs = required_specs(frontend);
+    let specs = required_specs(config.project.framework, frontend);
     let reports = detect_all(runner, &specs, &config.toolchain.required);
 
     let mut failures: Vec<String> = Vec::new();
@@ -106,12 +107,13 @@ pub fn preflight_chain_new_with<R: CommandRunner>(
 }
 
 /// Return the subset of [`known`] tools required for `chain new`.
-fn required_specs(frontend: Frontend) -> Vec<ToolSpec> {
+fn required_specs(framework: Framework, frontend: Frontend) -> Vec<ToolSpec> {
     let needs_js = matches!(frontend, Frontend::Js);
     known()
         .into_iter()
         .filter(|s| match s.name {
-            "rustc" | "cargo" | "anchor" | "solana" => true,
+            "rustc" | "cargo" | "solana" => true,
+            "anchor" => matches!(framework, Framework::Anchor),
             "node" | "pnpm" => needs_js,
             _ => false,
         })
@@ -202,6 +204,22 @@ mod tests {
         assert!(names.contains(&"anchor"));
         assert!(!names.contains(&"node"));
         assert!(report.warnings.is_empty());
+    }
+
+    #[test]
+    fn pinocchio_skips_anchor_preflight() {
+        let mut runner = happy_runner();
+        runner.paths.remove("anchor");
+        runner.responses.remove("anchor");
+        let mut cfg = Config::default();
+        cfg.project.framework = Framework::Pinocchio;
+        let report = preflight_chain_new_with(&runner, &cfg, Frontend::None)
+            .expect("pinocchio preflight should not require anchor");
+        let names: Vec<_> = report.reports.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"rustc"));
+        assert!(names.contains(&"cargo"));
+        assert!(names.contains(&"solana"));
+        assert!(!names.contains(&"anchor"));
     }
 
     #[test]

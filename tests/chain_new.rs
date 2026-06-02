@@ -84,6 +84,86 @@ fn chain_new_json_uses_stable_file_and_written_fields() {
 }
 
 #[test]
+fn chain_new_pinocchio_writes_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out_path = tmp.path().join("pinocchio_app");
+
+    let out = Command::new(sunscreen_bin())
+        .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
+        .args([
+            "chain",
+            "new",
+            "pinocchio_app",
+            "--framework",
+            "pinocchio",
+            "--frontend",
+            "none",
+            "--path",
+        ])
+        .arg(&out_path)
+        .output()
+        .expect("invoke sunscreen");
+
+    assert!(
+        out.status.success(),
+        "exit={:?} stderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    for rel in [
+        "Cargo.toml",
+        "sunscreen.yml",
+        "programs/pinocchio_app/Cargo.toml",
+        "programs/pinocchio_app/src/lib.rs",
+    ] {
+        let p = out_path.join(rel);
+        assert!(p.exists(), "missing file: {}", p.display());
+    }
+    assert!(
+        !out_path.join("Anchor.toml").exists(),
+        "Pinocchio bootstrap should not create Anchor.toml"
+    );
+
+    let cfg = sunscreen::config::load(Some(&out_path.join("sunscreen.yml"))).expect("loader");
+    assert_eq!(
+        cfg.project.framework,
+        sunscreen::config::Framework::Pinocchio
+    );
+    assert_eq!(
+        cfg.scaffolding.default_template.as_deref(),
+        Some("workspace/pinocchio-minimal")
+    );
+    assert_eq!(
+        cfg.toolchain.required.get("cargo").map(String::as_str),
+        Some("1.89.0")
+    );
+    cfg.validate().expect("generated sunscreen.yml validates");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("cargo build-sbf"));
+    assert!(!stdout.contains("anchor test"));
+}
+
+#[test]
+fn chain_new_help_lists_pinocchio_framework() {
+    let out = Command::new(sunscreen_bin())
+        .args(["chain", "new", "--help"])
+        .output()
+        .expect("invoke sunscreen");
+
+    assert!(
+        out.status.success(),
+        "exit={:?} stderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("anchor"));
+    assert!(stdout.contains("pinocchio"));
+}
+
+#[test]
 fn chain_new_writes_workspace() {
     let tmp = tempfile::tempdir().unwrap();
     let out_path = tmp.path().join("demo_app");

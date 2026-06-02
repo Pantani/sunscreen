@@ -16,8 +16,10 @@ fn base_ctx() -> serde_json::Value {
         "project_name": "MyDapp",
         "program_name": "my_dapp",
         "anchor_version": "0.30.1",
+        "pinocchio_version": "0.11.1",
         "solana_version": "1.18.18",
         "rust_edition": "2021",
+        "pinocchio_min_rust_version": "1.89.0",
         "frontend": "none",
         "cluster": "localnet",
     })
@@ -100,6 +102,16 @@ fn anchor_multiple_frontend_vite() {
     std::fs::create_dir_all(&app_root).unwrap();
     render_one("frontend-vite", &ctx, &app_root).expect("frontend-vite render");
     insta::assert_snapshot!("anchor_multiple_frontend_vite", corpus(tmp.path()));
+}
+
+#[test]
+fn pinocchio_minimal_frontend_none() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ctx = base_ctx();
+    ctx["frontend"] = json!("none");
+    render_one("pinocchio-minimal", &ctx, tmp.path()).expect("pinocchio render");
+    render_one("frontend-none", &ctx, tmp.path()).expect("frontend-none render");
+    insta::assert_snapshot!("pinocchio_minimal_frontend_none", corpus(tmp.path()));
 }
 
 #[test]

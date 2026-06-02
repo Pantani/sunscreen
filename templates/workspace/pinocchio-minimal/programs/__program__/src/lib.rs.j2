@@ -1,0 +1,24 @@
+#![cfg_attr(target_os = "solana", no_std)]
+
+// === sunscreen:auto-generated:begin segment=pinocchio_runtime version=1 generator=pinocchio ===
+#[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
+pinocchio::program_entrypoint!(process_instruction);
+#[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
+pinocchio::nostd_panic_handler!();
+#[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
+pinocchio::no_allocator!();
+// === sunscreen:auto-generated:end segment=pinocchio_runtime ===
+
+use pinocchio::{AccountView, Address, ProgramResult};
+
+// === sunscreen:auto-generated:begin segment=pinocchio_entrypoint version=1 generator=pinocchio ===
+#[inline(never)]
+pub fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let _ = (program_id, accounts, instruction_data);
+    Ok(())
+}
+// === sunscreen:auto-generated:end segment=pinocchio_entrypoint ===

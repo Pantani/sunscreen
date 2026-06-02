@@ -156,7 +156,7 @@
       "additionalProperties": false
     },
     "Framework": {
-      "description": "Program framework. MVP scopes `anchor`; others are post-MVP placeholders.",
+      "description": "Program framework. Anchor and Pinocchio are scaffoldable; Shank is reserved for future IDL-first native program flows.",
       "type": "string",
       "enum": [
         "anchor",

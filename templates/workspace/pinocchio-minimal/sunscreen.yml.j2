@@ -1,0 +1,19 @@
+version: 1
+project:
+  name: {{ project_name | kebab_case }}
+  description: "{{ project_name }} — Pinocchio workspace scaffolded by sunscreen"
+  framework: pinocchio
+  solana_version: "{{ solana_version }}"
+  rust_edition: "{{ rust_edition }}"
+toolchain:
+  required:
+    solana: "{{ solana_version }}"
+    cargo: "{{ pinocchio_min_rust_version }}"
+    rustc: "{{ pinocchio_min_rust_version }}"
+scaffolding:
+  default_template: workspace/pinocchio-minimal
+programs:
+  - name: {{ project_name | kebab_case }}
+    path: programs/{{ program_name }}
+workspace:
+  frontend: {{ frontend }}

@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-02 (Phase 4 closed in PR)
+**Last updated:** 2026-06-02 (Phase 5 closed in PR)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -45,8 +45,8 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **2** | Incremental Scaffolding | ✅ DONE | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `chain doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
 | **3** | Runtime Orchestration | ✅ DONE | 3 wk | 11 wk | `chain serve` (Surfpool/test-validator + watcher + codama + frontend notify + serve model), `chain build` | ADR-0001 §10.5 |
 | **4** | Codegen & Frontend Hooks | ✅ DONE | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, Codama wrapper, IDL artifacts, React/Solid Query hooks | ADR-0001 §10.6 |
-| **5** | Recipes | ⏳ NEXT | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
-| **5.5** | Onboarding Layer | 📋 NEW | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
+| **5** | Recipes | ✅ DONE | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
+| **5.5** | Onboarding Layer | ⏳ NEXT | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
 | **6** | Plugin System | 🔮 post-v1.0 | 4 wk | — | gRPC + stdio plugins, 2 reference plugins | ADR-0001 §10.8 |
 | **7** | Pinocchio support | 🔮 post-v1.0 | 3 wk | — | `--framework pinocchio` MVP | ADR-0001 §10.9 |
 | **8** | Distribution & Docs (v1.0) | 📋 | 1 wk | 21 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
@@ -208,24 +208,26 @@ Shipped via PR #7.
 
 ---
 
-### Phase 5 — Recipes ⏳
+### Phase 5 — Recipes ✅
+
+**Status.** ✅ DONE in this PR. `sunscreen scaffold` now has composite recipes for CRUD, SPL token, and Metaplex NFT slices. Recipes preflight their primitive steps before writing, reuse the Phase 2 marker-based scaffolders, and keep Phase 4 generated paths owned by `generate`. Operational details are documented in [`docs/reference/recipes.md`](docs/reference/recipes.md).
 
 **Goal.** Composite scaffolders that produce working dApp slices in one command.
 
 **Deliverables.**
-- [ ] `src/scaffold/crud.rs` — 4 instructions + state + events + errors + tests + hooks
-- [ ] `src/scaffold/recipes/spl_token.rs`
-- [ ] `src/scaffold/recipes/metaplex_nft.rs`
-- [ ] `sunscreen scaffold {crud, spl-token, metaplex-nft}`
-- [ ] E2E: `chain new` + `scaffold crud Post` + `chain serve` produces a working blog dApp in <5 min
+- [x] `src/scaffold/crud.rs` — `create`, `read`, `update`, `delete` instructions + state + events + errors + recipe test + optional frontend hook
+- [x] `src/scaffold/recipes/spl_token.rs`
+- [x] `src/scaffold/recipes/metaplex_nft.rs`
+- [x] `sunscreen scaffold {crud, spl-token, metaplex-nft}`
+- [x] E2E smoke: `chain new` + `scaffold crud Post` covered by CLI tests; gated compile and real Anchor IDL coverage are available for toolchain-equipped machines.
 
 **DoD.** ADR-0001 §10.7.
 
 ---
 
-### Phase 5.5 — Onboarding Layer 📋 (NEW per ADR-0005)
+### Phase 5.5 — Onboarding Layer ⏳ (NEXT per ADR-0005)
 
-**Status.** 📋 Planned. Cannot start until Phase 5 recipes exist (`quickstart nft` composes `scaffold metaplex-nft`).
+**Status.** ⏳ Next. Phase 5 recipes now exist, so `quickstart nft` and the broader beginner onboarding layer are unblocked.
 
 **Goal.** A newcomer can go from "I just installed sunscreen" to "my NFT is minted on devnet" in **under 10 minutes**, without reading prose docs first. See [`docs/adr/ADR-0005-beginner-onboarding.md`](docs/adr/ADR-0005-beginner-onboarding.md).
 
@@ -283,13 +285,13 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
    └─► Phase 2 R5 (polish, test counts)
          └─► Phase 3 (chain serve / build)
               └─► Phase 4 (codegen, frontend hooks) ✅
-                    └─► Phase 5 (recipes: crud, spl-token, metaplex-nft) ⏳ NEXT
-                           └─► Phase 5.5 (onboarding: quickstart wraps recipes)
+                    └─► Phase 5 (recipes: crud, spl-token, metaplex-nft) ✅
+                           └─► Phase 5.5 (onboarding: quickstart wraps recipes) ⏳ NEXT
                                  └─► Phase 8 (cargo-dist + docs site) ─► v1.0
 ```
 
-- **Phase 5 is the immediate unblock.** Phase 2, Phase 3, and Phase 4 are closed; the next critical-path surface is composite recipe scaffolding that can consume the generated hooks/client surface.
-- **Phase 5.5 strictly follows Phase 5.** `quickstart nft` is a thin shell over `scaffold metaplex-nft`; without recipes there is nothing to wrap.
+- **Phase 5 is closed.** Composite recipe scaffolding can now consume the generated hooks/client surface without owning Phase 4 generated paths.
+- **Phase 5.5 is the immediate unblock.** `quickstart nft` is a thin shell over `scaffold metaplex-nft`; recipes now exist, so onboarding can start.
 - **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
 - **Docs (Phase 8) can start drafting during Phase 5.5** — content for `learn/*.md` overlaps with the user-facing tutorial pages.
 

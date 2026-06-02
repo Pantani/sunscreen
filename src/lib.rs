@@ -9,6 +9,7 @@ pub mod error;
 pub mod fsutil;
 pub mod runtime;
 pub mod rustpatch;
+pub mod scaffold;
 pub mod templates;
 pub mod toolchain;
 pub mod tui;

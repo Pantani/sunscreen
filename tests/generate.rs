@@ -288,7 +288,7 @@ fn generate_idl_refuses_output_directory_that_escapes_workspace() {
 }
 
 #[test]
-fn generate_frontend_hooks_emits_react_solid_hooks_and_is_idempotent_for_next() {
+fn generate_frontend_hooks_defaults_to_react_hooks_for_next() {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("hooks_app");
     run_chain_new(&ws, "hooks_app", "next");
@@ -305,20 +305,19 @@ fn generate_frontend_hooks_emits_react_solid_hooks_and_is_idempotent_for_next() 
         String::from_utf8_lossy(&first.stderr)
     );
     let generated_root = ws.join("app/src/generated/sunscreen");
-    for rel in ["idl.ts", "core.ts", "react.ts", "solid.ts", "index.ts"] {
+    for rel in ["idl.ts", "core.ts", "react.ts", "index.ts"] {
         assert!(generated_root.join(rel).exists(), "missing generated {rel}");
     }
+    assert!(
+        !generated_root.join("solid.ts").exists(),
+        "React frontend default should not generate Solid hooks"
+    );
 
     let react = std::fs::read_to_string(generated_root.join("react.ts")).unwrap();
     assert!(react.contains("@tanstack/react-query"));
     assert!(react.contains("useInitializeVaultMutation"));
     assert!(react.contains("useCloseVaultMutation"));
     assert!(react.contains("useProgramAccountsQuery"));
-
-    let solid = std::fs::read_to_string(generated_root.join("solid.ts")).unwrap();
-    assert!(solid.contains("@tanstack/solid-query"));
-    assert!(solid.contains("createInitializeVaultMutation"));
-    assert!(solid.contains("createProgramAccountsQuery"));
 
     let core = std::fs::read_to_string(generated_root.join("core.ts")).unwrap();
     assert!(core.contains("createSurfpoolRpc"));
@@ -337,6 +336,37 @@ fn generate_frontend_hooks_emits_react_solid_hooks_and_is_idempotent_for_next() 
         0
     );
     assert_eq!(before, read_tree(&generated_root));
+}
+
+#[test]
+fn generate_frontend_hooks_target_all_emits_react_and_solid_hooks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("hooks_all_app");
+    run_chain_new(&ws, "hooks_all_app", "next");
+    write_target_idl(&ws, "hooks_all_app");
+    assert!(run_generate(&ws, &["--json", "generate", "idl"])
+        .status
+        .success());
+
+    let out = run_generate(
+        &ws,
+        &["--json", "generate", "frontend-hooks", "--target", "all"],
+    );
+
+    assert!(
+        out.status.success(),
+        "generate frontend-hooks failed: code={:?}\nstdout={}\nstderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let generated_root = ws.join("app/src/generated/sunscreen");
+    let react = std::fs::read_to_string(generated_root.join("react.ts")).unwrap();
+    let solid = std::fs::read_to_string(generated_root.join("solid.ts")).unwrap();
+    assert!(react.contains("useInitializeVaultMutation"));
+    assert!(solid.contains("@tanstack/solid-query"));
+    assert!(solid.contains("createInitializeVaultMutation"));
+    assert!(solid.contains("createProgramAccountsQuery"));
 }
 
 #[test]
@@ -390,7 +420,10 @@ fn generate_frontend_hooks_namespaces_duplicate_instruction_names_across_program
 
     let idl = run_generate(&ws, &["--json", "generate", "idl"]);
     assert!(idl.status.success());
-    let hooks = run_generate(&ws, &["--json", "generate", "frontend-hooks"]);
+    let hooks = run_generate(
+        &ws,
+        &["--json", "generate", "frontend-hooks", "--target", "all"],
+    );
     assert!(
         hooks.status.success(),
         "generate frontend-hooks failed: code={:?}\nstdout={}\nstderr={}",
@@ -483,14 +516,22 @@ fn generated_frontend_hooks_typecheck_vanilla_next_project_when_dependencies_are
 
 fn read_tree(root: &Path) -> BTreeMap<String, String> {
     let mut files = BTreeMap::new();
-    for entry in std::fs::read_dir(root).unwrap().flatten() {
-        if !entry.path().is_file() {
-            continue;
-        }
-        files.insert(
-            entry.file_name().to_string_lossy().into_owned(),
-            std::fs::read_to_string(entry.path()).unwrap(),
-        );
-    }
+    read_tree_into(root, root, &mut files);
     files
+}
+
+fn read_tree_into(root: &Path, current: &Path, files: &mut BTreeMap<String, String>) {
+    for entry in std::fs::read_dir(current).unwrap().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            read_tree_into(root, &path, files);
+        } else if path.is_file() {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.insert(rel, std::fs::read_to_string(path).unwrap());
+        }
+    }
 }

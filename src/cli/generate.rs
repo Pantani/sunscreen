@@ -12,7 +12,7 @@ use crate::codegen::idl::{export_idls, IdlExportOptions};
 use crate::codegen::{relative_path, CodegenError};
 use crate::error::SunscreenError;
 use crate::runtime::subprocess::SubprocessRunner;
-use crate::workspace;
+use crate::{config::schema::Frontend as ConfigFrontend, workspace};
 
 /// Subcommands grouped under `sunscreen generate`.
 #[derive(Debug, Subcommand)]
@@ -55,8 +55,8 @@ pub struct GenerateFrontendHooksArgs {
     #[arg(long, value_name = "DIR")]
     pub frontend_path: Option<PathBuf>,
     /// Hook target to generate.
-    #[arg(long, value_enum, default_value_t = HookTargetArg::All)]
-    pub target: HookTargetArg,
+    #[arg(long, value_enum)]
+    pub target: Option<HookTargetArg>,
 }
 
 /// CLI hook target selector.
@@ -175,7 +175,10 @@ fn run_frontend_hooks(args: &GenerateFrontendHooksArgs, json: bool) -> Result<i3
         &FrontendHooksOptions {
             program: args.program.clone(),
             frontend_path: args.frontend_path.clone(),
-            target: args.target.into(),
+            target: args
+                .target
+                .map(HookTarget::from)
+                .unwrap_or_else(|| default_hook_target(ws.config.workspace.frontend)),
         },
     )
     .map_err(|err| map_codegen_err(err, "sunscreen generate frontend-hooks"))?;
@@ -200,6 +203,13 @@ fn run_frontend_hooks(args: &GenerateFrontendHooksArgs, json: bool) -> Result<i3
         );
     }
     Ok(0)
+}
+
+fn default_hook_target(frontend: ConfigFrontend) -> HookTarget {
+    match frontend {
+        ConfigFrontend::Next | ConfigFrontend::Vite => HookTarget::React,
+        ConfigFrontend::None => HookTarget::All,
+    }
 }
 
 fn map_codegen_err(err: CodegenError, command: &str) -> SunscreenError {

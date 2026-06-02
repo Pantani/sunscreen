@@ -64,7 +64,7 @@ pub fn infer_idl_stem(
     let files = sorted_json_files(&target_idl)?;
     if let Some(path) = files.first() {
         if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
-            return Ok(stem.to_string());
+            return Ok(stem.to_snake_case());
         }
     }
 

@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use sunscreen::codegen::codama::infer_idl_stem;
 use sunscreen::codegen::codama_config::{render_codama_config_json, write_codama_config};
 
 #[test]
@@ -9,18 +10,7 @@ fn codama_config_serializes_stable_js_client_script() {
     let rendered = render_codama_config_json("demo-app", "demo_app").expect("render codama config");
     let value: serde_json::Value = serde_json::from_str(&rendered).expect("valid json");
 
-    assert_eq!(
-        value.get("idl").and_then(|v| v.as_str()),
-        Some("target/idl/demo_app.json")
-    );
-    assert_eq!(
-        value.pointer("/scripts/js/from").and_then(|v| v.as_str()),
-        Some("@codama/renderers-js")
-    );
-    assert_eq!(
-        value.pointer("/scripts/js/args/0").and_then(|v| v.as_str()),
-        Some("clients/js/src/generated")
-    );
+    insta::assert_json_snapshot!(value);
     assert!(rendered.ends_with('\n'));
 }
 
@@ -37,10 +27,8 @@ fn write_codama_config_is_idempotent() {
     assert!(!second.changed);
     assert_eq!(first.path, tmp.path().join("codama.json"));
     assert_eq!(second.path, first.path);
-    assert_eq!(
-        std::fs::read_to_string(tmp.path().join("codama.json")).unwrap(),
-        render_codama_config_json("demo-app", "demo_app").unwrap()
-    );
+    let content = std::fs::read_to_string(tmp.path().join("codama.json")).unwrap();
+    insta::assert_snapshot!(content);
 }
 
 #[test]
@@ -51,6 +39,22 @@ fn write_codama_config_rejects_missing_workspace_directory() {
     let err = write_codama_config(&missing, "demo-app", "demo_app")
         .expect_err("missing workspace must fail");
 
-    assert!(err.to_string().contains("codama.json"));
+    let rendered = err.to_string().replace(
+        &missing.join("codama.json").display().to_string(),
+        "<workspace>/codama.json",
+    );
+    insta::assert_snapshot!(rendered);
     assert!(!Path::new(&missing).exists());
+}
+
+#[test]
+fn infer_idl_stem_normalizes_target_idl_filename() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let idl_dir = tmp.path().join("target/idl");
+    std::fs::create_dir_all(&idl_dir).expect("create idl dir");
+    std::fs::write(idl_dir.join("DemoApp.json"), "{}\n").expect("write idl");
+
+    let stem = infer_idl_stem(tmp.path(), None).expect("infer idl stem");
+
+    assert_eq!(stem, "demo_app");
 }

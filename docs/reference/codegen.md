@@ -11,7 +11,7 @@ Phase 4 adds the managed codegen surface for Anchor IDLs, Codama clients, and fr
 | `clients/js/src/generated/` | Codama | `sunscreen generate clients` |
 | `app/src/generated/sunscreen/idl.ts` | sunscreen | `sunscreen generate frontend-hooks` |
 | `app/src/generated/sunscreen/core.ts` | sunscreen | `sunscreen generate frontend-hooks` |
-| `app/src/generated/sunscreen/react.ts` | sunscreen | `sunscreen generate frontend-hooks --target react|all` |
+| `app/src/generated/sunscreen/react.ts` | sunscreen | `sunscreen generate frontend-hooks` for React frontends, or `--target react|all` |
 | `app/src/generated/sunscreen/solid.ts` | sunscreen | `sunscreen generate frontend-hooks --target solid|all` |
 | `app/src/generated/sunscreen/index.ts` | sunscreen | `sunscreen generate frontend-hooks` |
 
@@ -61,7 +61,7 @@ Options:
 
 - `--program <NAME>` generates hooks for one program.
 - `--frontend-path <DIR>` writes hooks into an explicit frontend root. This is required for workspaces created with `--frontend none`.
-- `--target all|react|solid` selects hook files. The default is `all`.
+- `--target all|react|solid` selects hook files. For scaffolded Next.js and Vite React frontends, the default is `react`; pass `--target solid` or `--target all` only when the app installs Solid Query dependencies.
 
 The generated `core.ts` includes `createSurfpoolRpc()` with the local endpoint `http://127.0.0.1:8899`, plus `getProgramAccounts()` for local Surfpool/test-validator reads. Instruction mutations are generated from IDL instruction names and argument lists; callers provide the transaction executor so wallet/client policy remains application-owned.
 

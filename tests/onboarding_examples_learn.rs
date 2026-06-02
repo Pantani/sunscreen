@@ -47,6 +47,7 @@ fn examples_list_describe_and_use_are_embedded_and_deterministic() {
     let tmp = tempfile::tempdir().unwrap();
     let dest = tmp.path().join("copied");
     let out = Command::new(sunscreen_bin())
+        .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
         .args(["--json", "examples", "use", "blog-crud"])
         .arg(&dest)
         .output()
@@ -58,8 +59,15 @@ fn examples_list_describe_and_use_are_embedded_and_deterministic() {
     );
     let payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(payload["example"], "blog-crud");
+    assert_eq!(
+        payload["next_step"],
+        format!("cd {} && sunscreen chain serve --headless", dest.display())
+    );
     assert!(dest.join("README.md").exists());
-    assert!(dest.join("sunscreen.example").exists());
+    assert!(dest.join("sunscreen.yml").exists());
+    assert!(dest.join("Anchor.toml").exists());
+    assert!(dest.join("programs/blog_crud/src/state/post.rs").exists());
+    assert!(dest.join(".sunscreen/example/sunscreen.example").exists());
 }
 
 #[test]

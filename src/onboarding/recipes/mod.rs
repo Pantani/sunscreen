@@ -36,12 +36,19 @@ pub fn run(args: &QuickstartArgs, json: bool) -> Result<i32, SunscreenError> {
         dry_run: false,
     };
     let workspace = chain::create_workspace(&new_args)?;
-    {
-        let _cwd = CurrentDirGuard::push(&workspace.path)?;
-        apply_recipe(args.recipe, &name, args.frontend)?;
-    }
+    apply_recipe_in_workspace(args.recipe, &name, args.frontend, &workspace.path)?;
     emit_report(json, &plan, false, workspace.written);
     Ok(0)
+}
+
+pub(crate) fn apply_recipe_in_workspace(
+    recipe: QuickstartRecipeArg,
+    project_name: &str,
+    frontend: Frontend,
+    workspace_path: &Path,
+) -> Result<(), SunscreenError> {
+    let _cwd = CurrentDirGuard::push(workspace_path)?;
+    apply_recipe(recipe, project_name, frontend)
 }
 
 fn apply_recipe(

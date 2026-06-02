@@ -4,14 +4,14 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::cli::chain::{self, Framework, NewArgs};
-use crate::cli::onboarding::InitArgs;
+use crate::cli::onboarding::{InitArgs, QuickstartRecipeArg};
 use crate::error::SunscreenError;
-use crate::onboarding::tty;
+use crate::onboarding::{recipes, tty};
 use crate::strings::en_US;
 
 pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
     let name = resolve_name(args)?;
-    validate_preset(args.from_preset.as_deref())?;
+    let preset = resolve_preset(args.from_preset.as_deref())?;
     let dest = args.path.clone().unwrap_or_else(|| PathBuf::from(&name));
     preflight_path(&dest, args.dry_run)?;
 
@@ -23,6 +23,11 @@ pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
         dry_run: args.dry_run,
     };
     let report = chain::create_workspace(&new_args)?;
+    if let Some(recipe) = preset {
+        if !report.dry_run {
+            recipes::apply_recipe_in_workspace(recipe, &name, args.frontend, &report.path)?;
+        }
+    }
     let next_step = en_US::INIT_NEXT_STEP.replace("{path}", &report.path.display().to_string());
 
     if json {
@@ -32,7 +37,8 @@ pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
                 "ok": true,
                 "command": "init",
                 "project": name,
-                "preset": args.from_preset,
+                "preset": args.from_preset.as_deref().unwrap_or("empty"),
+                "preset_applied": preset.is_some() && !report.dry_run,
                 "frontend": format!("{:?}", args.frontend).to_ascii_lowercase(),
                 "path": report.path.display().to_string(),
                 "dry_run": report.dry_run,
@@ -89,12 +95,16 @@ fn resolve_name(args: &InitArgs) -> Result<String, SunscreenError> {
     Ok(name.to_string())
 }
 
-fn validate_preset(preset: Option<&str>) -> Result<(), SunscreenError> {
+fn resolve_preset(preset: Option<&str>) -> Result<Option<QuickstartRecipeArg>, SunscreenError> {
     let Some(preset) = preset else {
-        return Ok(());
+        return Ok(None);
     };
     match preset {
-        "token" | "nft" | "dao" | "blog" | "empty" => Ok(()),
+        "empty" => Ok(None),
+        "token" => Ok(Some(QuickstartRecipeArg::Token)),
+        "nft" => Ok(Some(QuickstartRecipeArg::Nft)),
+        "dao" => Ok(Some(QuickstartRecipeArg::Dao)),
+        "blog" => Ok(Some(QuickstartRecipeArg::Blog)),
         other => Err(SunscreenError::UserInput(format!(
             "unknown init preset `{other}`; expected token, nft, dao, blog, or empty"
         ))),

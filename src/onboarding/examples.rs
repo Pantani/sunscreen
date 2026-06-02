@@ -4,9 +4,11 @@ use std::path::{Component, Path, PathBuf};
 
 use rust_embed::RustEmbed;
 
-use crate::cli::onboarding::{ExampleUseArgs, ExamplesCmd, ExamplesListArgs};
+use crate::cli::chain::{self, Framework, Frontend, NewArgs};
+use crate::cli::onboarding::{ExampleUseArgs, ExamplesCmd, ExamplesListArgs, QuickstartRecipeArg};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
+use crate::onboarding::recipes;
 
 #[derive(RustEmbed)]
 #[folder = "assets/examples/"]
@@ -19,6 +21,7 @@ pub struct Example {
     pub description: &'static str,
     pub tags: &'static [&'static str],
     pub est_minutes: u8,
+    pub preset: Option<QuickstartRecipeArg>,
 }
 
 const EXAMPLES: &[Example] = &[
@@ -28,6 +31,7 @@ const EXAMPLES: &[Example] = &[
         description: "SPL token minting starter with a faucet-style UX.",
         tags: &["token", "spl", "beginner"],
         est_minutes: 8,
+        preset: Some(QuickstartRecipeArg::Token),
     },
     Example {
         name: "nft-collection",
@@ -35,6 +39,7 @@ const EXAMPLES: &[Example] = &[
         description: "Metaplex NFT collection starter for devnet demos.",
         tags: &["nft", "metaplex", "devnet"],
         est_minutes: 10,
+        preset: Some(QuickstartRecipeArg::Nft),
     },
     Example {
         name: "escrow",
@@ -42,6 +47,7 @@ const EXAMPLES: &[Example] = &[
         description: "Two-party escrow skeleton focused on account flow.",
         tags: &["pda", "cpi", "intermediate"],
         est_minutes: 12,
+        preset: None,
     },
     Example {
         name: "voting-dao",
@@ -49,6 +55,7 @@ const EXAMPLES: &[Example] = &[
         description: "Proposal and voting starter for governance prototypes.",
         tags: &["dao", "governance", "crud"],
         est_minutes: 10,
+        preset: Some(QuickstartRecipeArg::Dao),
     },
     Example {
         name: "blog-crud",
@@ -56,6 +63,7 @@ const EXAMPLES: &[Example] = &[
         description: "CRUD dApp starter built from the Phase 5 blog recipe.",
         tags: &["blog", "crud", "frontend"],
         est_minutes: 7,
+        preset: Some(QuickstartRecipeArg::Blog),
     },
 ];
 
@@ -123,12 +131,31 @@ fn run_use(args: &ExampleUseArgs, json: bool) -> Result<i32, SunscreenError> {
         return Ok(0);
     }
 
+    let workspace = chain::create_workspace(&NewArgs {
+        name: example.name.to_string(),
+        framework: Framework::Anchor,
+        frontend: Frontend::None,
+        path: Some(dest.clone()),
+        dry_run: false,
+    })?;
+    if let Some(preset) = example.preset {
+        recipes::apply_recipe_in_workspace(preset, example.name, Frontend::None, &workspace.path)?;
+    }
+
     let mut tx = Transaction::new(&dest).map_err(map_tx_err)?;
     for (rel, bytes) in &files {
-        tx.stage(rel, bytes).map_err(map_tx_err)?;
+        tx.stage(&format!(".sunscreen/example/{rel}"), bytes)
+            .map_err(map_tx_err)?;
     }
     let written = tx.commit().map_err(map_tx_err)?.len();
-    emit_use_result(json, example, &dest, &files, false, written);
+    emit_use_result(
+        json,
+        example,
+        &dest,
+        &files,
+        false,
+        workspace.written + written,
+    );
     Ok(0)
 }
 
@@ -222,7 +249,10 @@ fn emit_use_result(
     dry_run: bool,
     written: usize,
 ) {
-    let paths = files.iter().map(|(path, _)| path).collect::<Vec<_>>();
+    let paths = files
+        .iter()
+        .map(|(path, _)| format!(".sunscreen/example/{path}"))
+        .collect::<Vec<_>>();
     if json {
         println!(
             "{}",

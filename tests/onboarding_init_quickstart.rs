@@ -105,6 +105,33 @@ fn init_non_interactive_requires_name_and_dry_run_writes_nothing() {
 }
 
 #[test]
+fn init_from_preset_applies_corresponding_recipe() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dest = tmp.path().join("blog_init");
+    let out = run_ok(
+        &[
+            "--json",
+            "init",
+            "blog_init",
+            "--non-interactive",
+            "--from-preset",
+            "blog",
+            "--frontend",
+            "none",
+            "--path",
+        ],
+        Some(&dest),
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(payload["preset"], "blog");
+    assert_eq!(payload["preset_applied"], true);
+    assert!(dest.join("programs/blog_init/src/state/post.rs").exists());
+    assert!(dest
+        .join("programs/blog_init/src/instructions/create_post.rs")
+        .exists());
+}
+
+#[test]
 fn quickstart_recipes_compose_phase_5_scaffolders() {
     let tmp = tempfile::tempdir().unwrap();
     for (recipe, name, expected) in [

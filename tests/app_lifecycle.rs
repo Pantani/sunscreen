@@ -27,6 +27,14 @@ fn seed_workspace(root: &Path) {
     fs::write(prog.parent().unwrap().join("lib.rs"), "// noop\n").expect("write lib.rs");
 }
 
+fn seed_workspace_with_config(root: &Path, config: &str) {
+    fs::write(root.join("sunscreen.yml"), config).expect("write sunscreen.yml");
+    let prog = root.join("programs/demo/src/instructions");
+    fs::create_dir_all(&prog).expect("create program dir");
+    fs::write(prog.join("mod.rs"), "// noop\n").expect("write mod.rs");
+    fs::write(prog.parent().unwrap().join("lib.rs"), "// noop\n").expect("write lib.rs");
+}
+
 fn seeded(env: &CliEnv, sub: &str) -> PathBuf {
     let ws = env.path(sub);
     fs::create_dir_all(&ws).expect("create workspace dir");
@@ -45,7 +53,17 @@ fn app_help_lists_subcommands_without_todo() {
     cmd.args(["app", "--help"]);
     let out = env.ok("app --help", &mut cmd);
     let text = String::from_utf8_lossy(&out.stdout);
-    for sub in ["install", "uninstall", "list", "describe", "update"] {
+    for sub in [
+        "install",
+        "uninstall",
+        "list",
+        "describe",
+        "update",
+        "commands",
+        "run",
+        "hook",
+        "marketplace",
+    ] {
         assert!(
             text.contains(sub),
             "app --help missing subcommand `{sub}`:\n{text}"
@@ -55,6 +73,117 @@ fn app_help_lists_subcommands_without_todo() {
         !text.contains("TODO"),
         "app --help still prints TODO:\n{text}"
     );
+}
+
+#[cfg(unix)]
+fn write_stdio_plugin_script(path: &Path, body_json: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let response = format!("Content-Length: {}\r\n\r\n{}", body_json.len(), body_json);
+    fs::write(
+        path,
+        format!(
+            "#!/bin/sh\ncat >/tmp/sunscreen-plugin-stdin.$$ || true\nprintf '%s' '{}'\n",
+            response.replace('\'', "'\\''")
+        ),
+    )
+    .expect("write plugin script");
+    let mut perms = fs::metadata(path).expect("metadata").permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(path, perms).expect("chmod plugin script");
+}
+
+#[cfg(unix)]
+fn seed_stdio_plugin_workspace(env: &CliEnv, sub: &str) -> PathBuf {
+    let ws = env.path(sub);
+    fs::create_dir_all(ws.join("plugins/hello")).expect("create plugin dir");
+    write_stdio_plugin_script(
+        &ws.join("plugins/hello/plugin.sh"),
+        r#"{"jsonrpc":"2.0","id":1,"result":{"ok":true,"message":"hello from plugin","files":[{"path":"programs/demo/src/hello.rs","action":"would_write"}]}}"#,
+    );
+    fs::write(
+        ws.join("plugins/hello/sunscreen-plugin.json"),
+        r#"{
+  "name": "hello",
+  "version": "0.1.0",
+  "transport": "stdio-jsonrpc",
+  "entrypoint": ["./plugin.sh"],
+  "commands": [
+    { "name": "hello", "kind": "app", "summary": "Run hello" },
+    { "name": "indexer", "kind": "scaffold", "summary": "Scaffold an indexer" }
+  ],
+  "hooks": ["post-codama"],
+  "capabilities": { "network": false, "filesystem": ["workspace", "scratch"] }
+}
+"#,
+    )
+    .expect("write plugin manifest");
+    seed_workspace_with_config(
+        &ws,
+        "version: 1
+project:
+  name: demo
+  framework: anchor
+programs:
+  - name: demo
+    path: programs/demo
+plugins:
+  - source: plugins/hello
+    version: 0.1.0
+    manifest: plugins/hello/sunscreen-plugin.json
+",
+    );
+    ws
+}
+
+#[cfg(unix)]
+fn seed_bad_plugin_workspace(
+    env: &CliEnv,
+    sub: &str,
+    manifest_entrypoint: &str,
+    script: &str,
+) -> PathBuf {
+    let ws = env.path(sub);
+    fs::create_dir_all(ws.join("plugins/hello")).expect("create plugin dir");
+    fs::write(ws.join("plugins/hello/plugin.sh"), script).expect("write plugin script");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(ws.join("plugins/hello/plugin.sh"))
+            .expect("metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(ws.join("plugins/hello/plugin.sh"), perms).expect("chmod");
+    }
+    fs::write(
+        ws.join("plugins/hello/sunscreen-plugin.json"),
+        format!(
+            r#"{{
+  "name": "hello",
+  "version": "0.1.0",
+  "transport": "stdio-jsonrpc",
+  "entrypoint": [{manifest_entrypoint}],
+  "commands": [{{ "name": "hello", "kind": "app" }}]
+}}
+"#
+        ),
+    )
+    .expect("write plugin manifest");
+    seed_workspace_with_config(
+        &ws,
+        "version: 1
+project:
+  name: demo
+  framework: anchor
+programs:
+  - name: demo
+    path: programs/demo
+plugins:
+  - source: plugins/hello
+    version: 0.1.0
+    manifest: plugins/hello/sunscreen-plugin.json
+",
+    );
+    ws
 }
 
 #[test]
@@ -75,6 +204,165 @@ fn list_in_empty_workspace_returns_empty_apps() {
     );
     assert_eq!(payload["changed"], false);
     assert_eq!(payload["dry_run"], false);
+}
+
+#[cfg(unix)]
+#[test]
+fn commands_lists_manifest_declared_dynamic_commands() {
+    let env = CliEnv::new();
+    let ws = seed_stdio_plugin_workspace(&env, "ws-plugin-commands");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "commands"]);
+    let payload = env.json_ok("app commands", &mut cmd);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["command"], "app commands");
+    let commands = payload["commands"].as_array().expect("commands array");
+    assert!(
+        commands.iter().any(|cmd| {
+            cmd["plugin"] == "hello"
+                && cmd["name"] == "hello"
+                && cmd["kind"] == "app"
+                && cmd["transport"] == "stdio-jsonrpc"
+        }),
+        "missing app command in payload: {payload}"
+    );
+    assert!(
+        commands.iter().any(|cmd| cmd["plugin"] == "hello"
+            && cmd["name"] == "indexer"
+            && cmd["kind"] == "scaffold"),
+        "missing scaffold command in payload: {payload}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_executes_stdio_jsonrpc_plugin_command() {
+    let env = CliEnv::new();
+    let ws = seed_stdio_plugin_workspace(&env, "ws-plugin-run");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "hello", "hello", "--", "Alice"]);
+    let payload = env.json_ok("app run", &mut cmd);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["command"], "app run");
+    assert_eq!(payload["plugin"], "hello");
+    assert_eq!(payload["plugin_command"], "hello");
+    assert_eq!(payload["transport"], "stdio-jsonrpc");
+    assert_eq!(payload["result"]["message"], "hello from plugin");
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_executes_declared_stdio_plugin_hook() {
+    let env = CliEnv::new();
+    let ws = seed_stdio_plugin_workspace(&env, "ws-plugin-hook");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args([
+        "--json",
+        "app",
+        "hook",
+        "post-codama",
+        "--",
+        "clients/idl/demo.json",
+    ]);
+    let payload = env.json_ok("app hook", &mut cmd);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["command"], "app hook");
+    assert_eq!(payload["hook"], "post-codama");
+    assert_eq!(payload["reports"][0]["plugin"], "hello");
+    assert_eq!(
+        payload["reports"][0]["result"]["message"],
+        "hello from plugin"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_rejects_entrypoint_that_escapes_plugin_directory() {
+    let env = CliEnv::new();
+    let ws = seed_bad_plugin_workspace(
+        &env,
+        "ws-plugin-path-traversal",
+        r#""../evil.sh""#,
+        "#!/bin/sh\nexit 0\n",
+    );
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "hello", "hello"]);
+    let payload = env.json_err("app run traversal", &mut cmd, 9);
+    assert_eq!(payload["kind"], "plugin_runtime");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_maps_nonzero_plugin_exit_to_plugin_runtime() {
+    let env = CliEnv::new();
+    let ws = seed_bad_plugin_workspace(
+        &env,
+        "ws-plugin-nonzero",
+        r#""./plugin.sh""#,
+        "#!/bin/sh\necho plugin failed >&2\nexit 23\n",
+    );
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "hello", "hello"]);
+    let payload = env.json_err("app run nonzero", &mut cmd, 9);
+    assert_eq!(payload["kind"], "plugin_runtime");
+    assert!(
+        payload["error"]
+            .as_str()
+            .unwrap()
+            .contains("exited with code"),
+        "unexpected error payload: {payload}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn scaffold_external_subcommand_routes_to_plugin_runtime() {
+    let env = CliEnv::new();
+    let ws = seed_stdio_plugin_workspace(&env, "ws-plugin-scaffold");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args([
+        "--json",
+        "scaffold",
+        "indexer",
+        "--",
+        "--cluster",
+        "localnet",
+    ]);
+    let payload = env.json_ok("plugin scaffold", &mut cmd);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["command"], "scaffold indexer");
+    assert_eq!(payload["plugin"], "hello");
+    assert_eq!(payload["transport"], "stdio-jsonrpc");
+    assert_eq!(payload["result"]["message"], "hello from plugin");
+}
+
+#[test]
+fn marketplace_lists_reference_plugins() {
+    let env = CliEnv::new();
+    let mut cmd = env.sunscreen();
+    cmd.args(["--json", "app", "marketplace"]);
+    let payload = env.json_ok("app marketplace", &mut cmd);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["command"], "app marketplace");
+    let plugins = payload["plugins"].as_array().expect("plugins array");
+    assert!(
+        plugins
+            .iter()
+            .any(|plugin| plugin["name"] == "spl-token-2022" && plugin["transport"] == "grpc"),
+        "missing spl-token-2022 reference plugin: {payload}"
+    );
+    assert!(
+        plugins.iter().any(|plugin| {
+            plugin["name"] == "yellowstone-indexer" && plugin["transport"] == "stdio-jsonrpc"
+        }),
+        "missing yellowstone-indexer reference plugin: {payload}"
+    );
 }
 
 #[test]

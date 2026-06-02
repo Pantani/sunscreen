@@ -90,6 +90,7 @@ jobs:
           --test integration_scaffold
           --test integration_generate
           --test integration_onboarding
+          --test app_lifecycle
 
   feature-gates:
     name: Feature gates

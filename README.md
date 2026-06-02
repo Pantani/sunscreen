@@ -143,7 +143,7 @@ Most scaffold commands also support `--dry-run` and `--json`, so you can preview
 | `wallet {new,list,airdrop,balance,set-default}` | ✅ | Manage local Solana wallets and devnet balances |
 | `deploy <cluster>` | ✅ | Plan or run Anchor deploys with safety gates |
 | `learn [topic]` | ✅ | Render embedded learning topics offline |
-| `app {install,uninstall,list,describe,update}` | ✅ | Declarative plugin lifecycle in `sunscreen.yml` (MVP — Phase 6 runtime still deferred) |
+| `app {install,uninstall,list,describe,update,commands,run,hook,marketplace}` | ✅ | Plugin lifecycle plus Phase 6 runtime command surface in `sunscreen.yml` |
 
 ---
 
@@ -198,7 +198,7 @@ docs/reference/ # operational command/reference docs
 
 ## Roadmap
 
-Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total planned time to v1.0 is ~21 focused weeks.
+Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total planned time to v1.0 is ~25 focused weeks.
 
 - **Phase 0** — Foundations: CLI shell, config, doctor, template engine. ✅
 - **Phase 1** — Workspace bootstrap (`chain new` + Anchor + frontend variants). ✅
@@ -207,11 +207,11 @@ Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total pl
 - **Phase 4** — Codegen & frontend hooks. ✅
 - **Phase 5** — Recipes (CRUD, SPL token, Metaplex NFT). ✅
 - **Phase 5.5** — Onboarding layer (`init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, actionable errors) — see [ADR-0005](docs/adr/ADR-0005-beginner-onboarding.md). ✅
-- **Phase 8** — Distribution & docs (cuts v1.0). ⏳ next
-- **Phase 6** — Plugin system. 🔮 post-v1.0
+- **Phase 6** — Plugin system: lifecycle, manifest/runtime, stdio/gRPC transport contract, sandbox, marketplace/reference plugins. ✅
+- **Phase 8** — Distribution & docs (cuts v1.0 after plugin closure). ⏳ next
 - **Phase 7** — Pinocchio support. 🔮 post-v1.0
 
-Phase 8 cuts v1.0. Phases 6 and 7 are intentionally deferred so plugins and Pinocchio support do not block the first stable release.
+Phase 6 is now closed in the v1.0 line. Phase 8 cuts v1.0; Phase 7 remains intentionally deferred.
 
 ---
 

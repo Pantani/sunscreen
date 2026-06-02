@@ -67,6 +67,10 @@ fn default_faucet_sol() -> u64 {
     100
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// Top-level configuration document for `sunscreen.yml` v1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -166,9 +170,10 @@ impl Config {
                 });
             }
         }
-        // Plugin semantic validation. Schema v1 only persists `source` +
-        // optional `version`; everything else (runtime, transport, sandbox)
-        // is deferred to Phase 6 and intentionally absent here.
+        // Plugin semantic validation. Phase 6 extends the original
+        // declaration-only entries with optional runtime hints. A manifest
+        // can still supply transport/entrypoint/capabilities, so all runtime
+        // fields remain optional in `sunscreen.yml`.
         let mut seen_sources: std::collections::BTreeSet<String> =
             std::collections::BTreeSet::new();
         for plugin in &self.plugins {
@@ -185,12 +190,24 @@ impl Config {
                     });
                 }
             }
-            // Duplicate detection uses the trimmed source. We deliberately
-            // do NOT case-fold here: local filesystem paths on Linux and
-            // some case-sensitive Git hosts treat `local/Foo` and
-            // `local/foo` as distinct, and dropping that distinction would
-            // reject legitimate configs.
-            if !seen_sources.insert(trimmed.to_string()) {
+            if plugin
+                .manifest
+                .as_deref()
+                .is_some_and(|path| path.trim().is_empty())
+            {
+                return Err(ValidationError::EmptyPluginManifest {
+                    plugin: plugin.source.clone(),
+                });
+            }
+            for entry in &plugin.entrypoint {
+                if entry.trim().is_empty() {
+                    return Err(ValidationError::EmptyPluginEntrypoint {
+                        plugin: plugin.source.clone(),
+                    });
+                }
+            }
+            let key = normalize_plugin_source_key(trimmed);
+            if !seen_sources.insert(key) {
                 return Err(ValidationError::DuplicatePluginSource {
                     plugin: plugin.source.clone(),
                 });
@@ -219,6 +236,10 @@ pub enum ValidationError {
     InvalidPluginVersion { plugin: String, value: String },
     #[error("duplicate plugin source {plugin:?}")]
     DuplicatePluginSource { plugin: String },
+    #[error("plugin {plugin:?} has empty `manifest` path")]
+    EmptyPluginManifest { plugin: String },
+    #[error("plugin {plugin:?} has an empty `entrypoint` item")]
+    EmptyPluginEntrypoint { plugin: String },
 }
 
 fn is_kebab_case(s: &str) -> bool {
@@ -244,6 +265,12 @@ fn is_kebab_case(s: &str) -> bool {
         prev_dash = b == b'-';
     }
     true
+}
+
+fn normalize_plugin_source_key(source: &str) -> String {
+    let trimmed = source.trim().trim_end_matches('/');
+    let trimmed = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+    trimmed.to_ascii_lowercase()
 }
 
 /// Project metadata.
@@ -407,13 +434,54 @@ pub enum RuntimeEngine {
     TestValidator,
 }
 
-/// Plugin reference (placeholder for v1; full plugin protocol lands later).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// Plugin reference under `plugins[]`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PluginCfg {
     pub source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<PluginTransport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entrypoint: Vec<String>,
+    #[serde(default, skip_serializing_if = "PluginCapabilities::is_default")]
+    pub capabilities: PluginCapabilities,
+}
+
+/// Plugin transport advertised either in `sunscreen.yml` or the plugin
+/// manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PluginTransport {
+    StdioJsonrpc,
+    Grpc,
+}
+
+/// Coarse filesystem scopes granted to a plugin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PluginFilesystemScope {
+    Workspace,
+    Scratch,
+}
+
+/// Coarse capabilities requested by a plugin runtime.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PluginCapabilities {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub network: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub filesystem: Vec<PluginFilesystemScope>,
+}
+
+impl PluginCapabilities {
+    fn is_default(value: &Self) -> bool {
+        value == &Self::default()
+    }
 }
 
 #[cfg(test)]
@@ -481,10 +549,12 @@ mod tests {
         cfg.plugins.push(PluginCfg {
             source: "github.com/org/foo.git".into(),
             version: Some("v1.2.3".into()),
+            ..PluginCfg::default()
         });
         cfg.plugins.push(PluginCfg {
             source: "local/bar".into(),
             version: None,
+            ..PluginCfg::default()
         });
         cfg.validate().expect("valid plugins");
     }
@@ -495,6 +565,7 @@ mod tests {
         cfg.plugins.push(PluginCfg {
             source: "   ".into(),
             version: None,
+            ..PluginCfg::default()
         });
         assert_eq!(cfg.validate(), Err(ValidationError::EmptyPluginSource));
     }
@@ -505,6 +576,7 @@ mod tests {
         cfg.plugins.push(PluginCfg {
             source: "foo".into(),
             version: Some("latest".into()),
+            ..PluginCfg::default()
         });
         match cfg.validate() {
             Err(ValidationError::InvalidPluginVersion { plugin, value }) => {
@@ -521,10 +593,12 @@ mod tests {
         cfg.plugins.push(PluginCfg {
             source: "github.com/org/foo.git".into(),
             version: None,
+            ..PluginCfg::default()
         });
         cfg.plugins.push(PluginCfg {
             source: "github.com/org/foo.git".into(),
             version: Some("1.0.0".into()),
+            ..PluginCfg::default()
         });
         match cfg.validate() {
             Err(ValidationError::DuplicatePluginSource { plugin }) => {
@@ -532,6 +606,47 @@ mod tests {
             }
             other => panic!("expected DuplicatePluginSource, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_normalized_plugin_sources() {
+        let mut cfg = workspace_skeleton();
+        cfg.plugins.push(PluginCfg {
+            source: " GitHub.com/Org/Foo.git ".into(),
+            version: None,
+            ..PluginCfg::default()
+        });
+        cfg.plugins.push(PluginCfg {
+            source: "github.com/org/foo".into(),
+            version: None,
+            ..PluginCfg::default()
+        });
+        match cfg.validate() {
+            Err(ValidationError::DuplicatePluginSource { plugin }) => {
+                assert_eq!(plugin, "github.com/org/foo");
+            }
+            other => panic!("expected DuplicatePluginSource, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_phase6_plugin_runtime_fields() {
+        let mut cfg = workspace_skeleton();
+        cfg.plugins.push(PluginCfg {
+            source: "plugins/hello".into(),
+            version: Some("0.1.0".into()),
+            manifest: Some("plugins/hello/sunscreen-plugin.json".into()),
+            transport: Some(PluginTransport::StdioJsonrpc),
+            entrypoint: vec!["./plugin.sh".into()],
+            capabilities: PluginCapabilities {
+                network: false,
+                filesystem: vec![
+                    PluginFilesystemScope::Workspace,
+                    PluginFilesystemScope::Scratch,
+                ],
+            },
+        });
+        cfg.validate().expect("phase6 plugin config is valid");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-02 (Phase 7 Pinocchio support closed)
+**Last updated:** 2026-06-02 (Phase 7 Pinocchio support closed + review hardening)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -48,7 +48,7 @@ Total to **v1.0**: ~28 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **5** | Recipes | ✅ DONE | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
 | **5.5** | Onboarding Layer | ✅ DONE | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
 | **6** | Plugin System | ✅ DONE | 4 wk | 24 wk | runtime manager, gRPC proto contract + stdio plugins, sandbox/trust model, marketplace/local plugins, 2 reference plugins | ADR-0001 §10.8 |
-| **7** | Pinocchio support | ✅ DONE | 3 wk | 27 wk | `--framework pinocchio` MVP, Pinocchio template, `cargo build-sbf` pipeline, Anchor-only guards | ADR-0006 |
+| **7** | Pinocchio support | ✅ DONE | 3 wk | 27 wk | `--framework pinocchio` MVP, Pinocchio template, Cargo/Solana toolchain config, `cargo build-sbf` pipeline, Anchor-only guards | ADR-0006 |
 | **8** | Distribution & Docs (v1.0) | ⏳ NEXT | 1 wk | 28 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
 
 > Phases are listed in ascending numeric order. Phase 6 and Phase 7 are now closed in the v1.0 line; Phase 8 cuts v1.0 after plugin and Pinocchio bootstrap closure.
@@ -286,8 +286,8 @@ Shipped via PR #7.
 
 **Deliverables.**
 - [x] `sunscreen chain new <name> --framework pinocchio` with `--dry-run`, `--json`, preflight, path conflict handling, frontend variants, and Pinocchio-specific next steps
-- [x] `templates/workspace/pinocchio-minimal/` — Cargo workspace + no_std/BPF-aware Pinocchio program crate, no `Anchor.toml`, no `anchor-lang`
-- [x] `sunscreen.yml` emits `project.framework: pinocchio` and `scaffolding.default_template: workspace/pinocchio-minimal`
+- [x] `templates/workspace/pinocchio-minimal/` — Cargo workspace + no_std/Solana-SBF-aware Pinocchio program crate, stable runtime/entrypoint markers, no `Anchor.toml`, no `anchor-lang`
+- [x] `sunscreen.yml` emits `project.framework: pinocchio`, `scaffolding.default_template: workspace/pinocchio-minimal`, and Rust/Cargo/Solana toolchain requirements
 - [x] `chain build --headless` and watcher/serve pipeline route Pinocchio workspaces through `cargo build-sbf` and skip Codama by default
 - [x] Preflight for Pinocchio requires Rust/Cargo/Solana but not Anchor; JS frontends still require Node/pnpm
 - [x] Built-in scaffolders and `generate` reject Pinocchio workspaces with clear user-input errors; plugin-backed `scaffold <noun>` remains available for ecosystem-specific Pinocchio extensions

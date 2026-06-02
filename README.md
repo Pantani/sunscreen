@@ -1,6 +1,6 @@
 # sunscreen
 
-> A Rust CLI for scaffolding, repairing, and orchestrating Solana Anchor workspaces.
+> A Rust CLI for scaffolding, repairing, and orchestrating Solana Anchor and Pinocchio workspaces.
 
 `sunscreen` helps Solana developers move from an empty folder to a working Anchor or Pinocchio project without hand-stitching `anchor`, `solana`, `cargo`, `codama`, `surfpool`, and frontend tooling. It focuses on deterministic project generation, marker-based incremental edits, plugins, and a supervised local development loop.
 
@@ -12,7 +12,7 @@
 
 Today, `sunscreen` can:
 
-- Diagnose your local Solana and Rust toolchain.
+- Diagnose your local Solana, Rust, and Cargo toolchain.
 - Create a new multi-program Anchor workspace or minimal Pinocchio workspace with optional frontend variants.
 - Add programs, instructions, accounts, events, and errors to an existing workspace.
 - Scaffold complete CRUD, SPL token, and Metaplex NFT recipe slices.
@@ -71,6 +71,8 @@ sunscreen chain new fast-program --framework pinocchio --frontend none
 cd fast-program
 sunscreen chain build --headless
 ```
+
+Pinocchio workspaces declare the Rust/Cargo/Solana requirements in `sunscreen.yml`, use Solana SBF-aware entrypoint cfgs, and keep generated entrypoint regions marker-wrapped for future repair/scaffold flows. Anchor-only scaffolders and `generate` commands stop before writing when run inside a Pinocchio workspace.
 
 Add generated code incrementally:
 
@@ -222,7 +224,7 @@ Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total pl
 - **Phase 5** — Recipes (CRUD, SPL token, Metaplex NFT). ✅
 - **Phase 5.5** — Onboarding layer (`init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, actionable errors) — see [ADR-0005](docs/adr/ADR-0005-beginner-onboarding.md). ✅
 - **Phase 6** — Plugin system: lifecycle, manifest/runtime, stdio/gRPC transport contract, sandbox, marketplace/reference plugins. ✅
-- **Phase 7** — Pinocchio support (`chain new --framework pinocchio`, `cargo build-sbf` pipeline, Anchor-only guards). ✅
+- **Phase 7** — Pinocchio support (`chain new --framework pinocchio`, Cargo/Solana toolchain config, `cargo build-sbf` pipeline, Anchor-only guards). ✅
 - **Phase 8** — Distribution & docs (cuts v1.0 after plugin and Pinocchio closure). ⏳ next
 
 Phase 6 and Phase 7 are now closed in the v1.0 line. Phase 8 cuts v1.0.

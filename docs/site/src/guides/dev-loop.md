@@ -52,13 +52,13 @@ Sunscreen watches your workspace tree minus a list of ignored paths (`target/`, 
 
 If any step fails, the TUI shows the error and the validator stays up — fix and save again.
 
-## Choose your validator
+## Choose your runtime
 
-Sunscreen prefers Surfpool if found on `$PATH`. Override:
+Sunscreen reads `runtime.engine` from `sunscreen.yml`. Override per-invocation with `--runtime`:
 
 ```bash
-sunscreen chain serve --validator test-validator
-sunscreen chain serve --validator surfpool
+sunscreen chain serve --runtime test-validator
+sunscreen chain serve --runtime surfpool
 ```
 
 If Surfpool is the default but missing, sunscreen falls back to `solana-test-validator` automatically and logs the fallback.

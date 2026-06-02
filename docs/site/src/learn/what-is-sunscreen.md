@@ -33,7 +33,7 @@ Anchor CLI gives you `anchor init`, `anchor build`, `anchor deploy`. Great primi
 
 | Task | Anchor CLI | Sunscreen |
 |------|-----------|-----------|
-| Create workspace | `anchor init` | `sunscreen chain new --framework anchor --frontend react` |
+| Create workspace | `anchor init` | `sunscreen chain new --framework anchor --frontend vite` |
 | Add instruction | hand-edit lib.rs | `sunscreen scaffold instruction Create --program app` |
 | Add CRUD slice | manual (~200 lines) | `sunscreen scaffold crud Post --program app` |
 | Watch + rebuild + regenerate clients | run 3 terminals | `sunscreen chain serve` |

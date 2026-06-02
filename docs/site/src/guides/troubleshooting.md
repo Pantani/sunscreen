@@ -18,7 +18,7 @@ Then `sunscreen doctor` to confirm.
 
 ## `toolchain_missing: solana`
 
-Needed for `deploy`, `wallet airdrop`, and `chain serve --validator test-validator`.
+Needed for `deploy`, `wallet airdrop`, and `chain serve --runtime test-validator`.
 
 **Fix:**
 
@@ -101,7 +101,7 @@ The public devnet faucet throttles aggressively.
 ## "I forgot to deploy after a code change"
 
 ```bash
-sunscreen chain build && sunscreen deploy --network devnet
+sunscreen chain build && sunscreen deploy devnet
 ```
 
 Sunscreen detects out-of-date `target/deploy/*.so` and rebuilds automatically before deploy.

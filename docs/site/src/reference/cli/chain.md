@@ -2,33 +2,34 @@
 
 Workspace lifecycle: create, build, serve, doctor.
 
+`sunscreen chain deploy` is a stub today (Phase 2+). For real deploys use the top-level [`sunscreen deploy`](./onboarding.md#deploy).
+
 ## `new`
 
 ```
 sunscreen chain new <NAME> [FLAGS]
 ```
 
-Create a new workspace at `./<NAME>/`.
+Create a new workspace at `./<NAME>/` (or at `--path` if provided).
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--framework <name>` | `anchor` | `anchor` or `pinocchio` |
-| `--frontend <name>` | `none` | `none`, `react`, `solid` |
-| `--programs <list>` | `<name>` | comma-separated list of program names |
-| `--license <spdx>` | `MIT OR Apache-2.0` | SPDX expression for generated `Cargo.toml` |
-| `--git/--no-git` | `--git` | init a git repo with first commit |
-| `--dry-run` | off | print planned files without writing |
-| `--json` | off | machine-readable summary |
+| `--frontend <name>` | `none` | `none`, `vite`, `next` |
+| `--path <DIR>` | `./<NAME>` | output directory |
+| `--dry-run` | off | print the planned file list without writing |
 
-**Exit codes:** `0` ok · `2` toolchain · `4` directory exists.
+Global flags (apply to every subcommand): `--json`, `--verbose`/`-v`, `--workdir <DIR>`, `--config <FILE>`.
+
+**Exit codes:** `0` ok · `2` toolchain missing · `4` directory exists / invalid argument.
 
 **Examples:**
 
 ```bash
 sunscreen chain new my-app
-sunscreen chain new my-app --framework anchor --frontend react
+sunscreen chain new my-app --framework anchor --frontend vite
 sunscreen chain new bare --framework pinocchio
-sunscreen chain new multi --programs "core,governance,treasury"
+sunscreen chain new my-app --frontend next --path packages/program
 ```
 
 ## `build`
@@ -37,29 +38,22 @@ sunscreen chain new multi --programs "core,governance,treasury"
 sunscreen chain build [FLAGS]
 ```
 
-Run the build pipeline: `anchor build` (or `cargo build-sbf` for Pinocchio), then Codama client regeneration (if frontend is configured).
+Run the build pipeline: `anchor build` (or `cargo build-sbf` for Pinocchio), then Codama client regeneration when the workspace has a frontend.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--no-codama` | off | skip Codama regeneration |
-| `--headless` | off | NDJSON events on stdout, no TUI |
-| `--release` | off | release profile build |
-| `--json` | off | one summary object at the end |
+| `--headless` | off | NDJSON events on stdout suitable for CI logs |
+| `--no-codama` | off | skip Codama regeneration after a successful build |
 
 **Exit codes:** `0` ok · `2` toolchain missing · `5` no workspace · build-tool exit codes preserved on failure.
 
-**NDJSON events:**
+**NDJSON events** (selection — full list in [NDJSON events](../events.md)):
 
 ```json
 {"event":"build_start","framework":"anchor","programs":["my_app"]}
 {"event":"build_progress","step":"anchor_build"}
 {"event":"build_ok","programs":["my_app"],"duration_ms":4200}
-{"event":"codama_start","frontend":"react"}
-{"event":"codama_ok","files_written":12}
-{"event":"frontend_notified","path":"app/.sunscreen/reload"}
 ```
-
-Full event list in [NDJSON events](../events.md).
 
 ## `serve`
 
@@ -71,32 +65,28 @@ Long-running supervised dev loop: validator + watcher + build pipeline + fronten
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--validator <name>` | auto | `surfpool`, `test-validator`, or omit for auto-detect with fallback |
-| `--no-codama` | off | skip Codama on rebuild |
 | `--headless` | off | NDJSON stream, no TUI |
-| `--rpc-port <n>` | `8899` | bind validator RPC port |
-| `--ws-port <n>` | `8900` | bind validator WS port |
-| `--quiet` | off | suppress validator stdout in TUI |
+| `--no-codama` | off | skip Codama on rebuild |
+| `--no-frontend` | off | skip frontend reload notifications |
+| `--runtime <name>` | from `sunscreen.yml` | `surfpool` or `test-validator`; defaults to the workspace's `runtime.engine`, falling back to `solana-test-validator` when Surfpool is requested but missing |
+| `--debounce-ms <N>` | `150` | watcher debounce window |
 
-**Exit codes:** `0` ok (Ctrl-C) · `2` toolchain · `5` no workspace · `1` unexpected.
+**Exit codes:** `0` ok (Ctrl-C) · `2` toolchain · `5` no workspace · `4` invalid arg (e.g. `--debounce-ms 0`).
 
-**Termination:** Ctrl-C sends SIGTERM to the validator's process group, waits up to 5s, then SIGKILL.
+**Termination:** Ctrl-C sends SIGTERM to the validator's process group, waits, then SIGKILL.
 
 ## `doctor`
 
 ```
-sunscreen chain doctor [FLAGS]
+sunscreen chain doctor [--fix-markers]
 ```
 
-Diagnose toolchain *and* workspace markers.
+Workspace-level diagnostic: marker integrity across scaffolded files.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--fix-markers` | off | reconstruct safe non-appendable markers (see [Marker protocol](../markers.md)) |
-| `--json` | off | flat array of `ToolReport` objects |
 
-Calls the same toolchain detectors as the top-level `sunscreen doctor`, plus marker integrity over your workspace.
+For toolchain diagnostics see the top-level [`doctor`](./doctor.md) command.
 
-**Exit codes:** `0` ok · `2` something critical missing · `4` non-fixable marker drift.
-
-See also: [`doctor`](./doctor.md) for the toolchain-only command.
+**Exit codes:** `0` ok · `4` non-fixable marker drift detected.

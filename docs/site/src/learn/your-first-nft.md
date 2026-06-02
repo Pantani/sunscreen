@@ -21,9 +21,9 @@ cd my-first-nft
 
 This single command:
 
-1. Created an Anchor workspace with a React frontend.
+1. Created an Anchor workspace with a Vite frontend.
 2. Scaffolded a Metaplex NFT recipe slice (mint, metadata, master edition).
-3. Added a sample frontend hook for minting.
+3. Added a sample frontend hook for minting (TanStack Query).
 
 You'll see a summary table at the end listing files created.
 
@@ -44,15 +44,16 @@ Successful build produces `target/idl/my_first_nft.json` and regenerates Codama 
 If you don't have a Solana keypair:
 
 ```bash
-sunscreen wallet new
+sunscreen wallet new dev
+sunscreen wallet set-default dev --cluster devnet
 ```
 
-This creates `~/.config/solana/id.json` and prints the public key. Save it somewhere.
+The first command creates a keypair under `.sunscreen/wallets/dev.json` and prints the public key. The second makes it sunscreen's default for devnet operations.
 
 Get devnet SOL:
 
 ```bash
-sunscreen wallet airdrop --network devnet --amount 2
+sunscreen wallet airdrop 2 --cluster devnet
 ```
 
 If the airdrop is throttled (common), the error tells you the next step (use `solana airdrop` directly or a public faucet).
@@ -60,22 +61,22 @@ If the airdrop is throttled (common), the error tells you the next step (use `so
 ## Step 4 — Deploy plan
 
 ```bash
-sunscreen deploy --network devnet --dry-run
+sunscreen deploy devnet --dry-run
 ```
 
-Sunscreen prints a deploy plan: how much SOL you need, which keys will be created, what's going to be uploaded. No on-chain action yet — it's a `--dry-run`.
+Sunscreen prints a deploy plan: how much SOL you need, what's going to be uploaded. No on-chain action yet — it's a `--dry-run`.
 
 When ready:
 
 ```bash
-sunscreen deploy --network devnet
+sunscreen deploy devnet
 ```
 
 You'll get a program ID. Save it.
 
 ## Step 5 — Mint
 
-The React frontend in `app/` is already wired with the Codama-generated client and the mint hook. Start it:
+The Vite frontend in `app/` is already wired with the Codama-generated client and the mint hook. Start it:
 
 ```bash
 cd app
@@ -83,18 +84,18 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://localhost:5173>. Connect your wallet (the same one you funded), click *Mint*, approve. After a few seconds you'll see the mint signature.
+Open <http://localhost:5173> (Vite's default). Connect your wallet (the same one you funded), click *Mint*, approve. After a few seconds you'll see the mint signature.
 
 You just minted an NFT through a program *you* wrote — even though sunscreen wrote most of it for you.
 
 ## What happened end-to-end
 
 ```text
-quickstart nft            → workspace + Metaplex recipe + frontend hooks
-chain build              → anchor build → IDL → Codama clients
-wallet new / airdrop     → fund a keypair on devnet
-deploy --network devnet  → upload program, register program ID
-frontend pnpm dev        → React app calls the generated client → mints
+quickstart nft           → workspace + Metaplex recipe + frontend hooks
+chain build             → anchor build → IDL → Codama clients
+wallet new / airdrop    → fund a keypair on devnet
+deploy devnet           → upload program, register program ID
+frontend pnpm dev       → Vite app calls the generated client → mints
 ```
 
 ## Next

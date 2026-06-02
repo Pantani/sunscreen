@@ -63,14 +63,14 @@ Three official networks plus your local validator:
 | `localnet` | `http://127.0.0.1:8899` | a validator on your laptop (sunscreen's `chain serve` launches one) |
 | `devnet` | `https://api.devnet.solana.com` | free SOL via faucet, public, test programs here first |
 | `testnet` | `https://api.testnet.solana.com` | validator testing, not for app dev |
-| `mainnet-beta` | `https://api.mainnet-beta.solana.com` | production |
+| `mainnet` | `https://api.mainnet-beta.solana.com` | production (Solana sometimes still calls this `mainnet-beta` in URLs) |
 
 ## The development flow you'll use
 
 1. Write the program (sunscreen scaffolds it).
 2. `chain serve` — runs against `localnet` with hot reload.
-3. `deploy --network devnet` — push to devnet, test with real fees + real wallets.
-4. `deploy --network mainnet-beta` — production.
+3. `sunscreen deploy devnet` — push to devnet, test with real fees + real wallets.
+4. `sunscreen deploy mainnet --yes-i-understand-cost` — production.
 
 ## Common pitfalls (the ones that bite everyone)
 

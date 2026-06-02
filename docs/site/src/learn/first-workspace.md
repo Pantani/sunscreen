@@ -18,11 +18,15 @@ Don't have everything? Run `sunscreen doctor` first — it tells you exactly wha
 sunscreen chain new my-app --framework anchor --frontend none
 ```
 
-You'll see NDJSON-style progress lines, then:
+You'll see progress output, then a summary similar to:
 
 ```
 ✓ workspace my-app/ created (anchor, no frontend)
 ```
+
+::: tip
+`--frontend` accepts `none`, `vite`, or `next`. Pick `vite` if you want React + Vite scaffolded under `app/`; pick `next` for a Next.js scaffold. `none` keeps the workspace lean.
+:::
 
 ## Step 2 — Look around
 

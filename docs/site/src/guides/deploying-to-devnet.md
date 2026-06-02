@@ -13,25 +13,23 @@
 If you don't have a keypair yet:
 
 ```bash
-sunscreen wallet new
+sunscreen wallet new dev
 ```
 
-This writes `~/.config/solana/id.json` and prints the public key. **Save the recovery words** if prompted.
+This writes a new keypair under `.sunscreen/wallets/dev.json` and prints the public key. **Save the recovery words** if prompted.
 
-If you already have a keypair, point to it:
+Make it the default for localnet/devnet so subsequent commands pick it up:
 
 ```bash
-export SUNSCREEN_WALLET=$HOME/.config/solana/id.json
+sunscreen wallet set-default dev --cluster devnet
 ```
-
-Or set `wallet:` in `sunscreen.yml`. The CLI defaults to the solana-cli default location.
 
 ## Step 2 — Airdrop devnet SOL
 
-You need ~2 SOL for a fresh deploy.
+You need ~2 SOL for a fresh deploy:
 
 ```bash
-sunscreen wallet airdrop --network devnet --amount 2
+sunscreen wallet airdrop 2 --cluster devnet
 ```
 
 If you see `Network: rate-limited`, the public faucet throttled you. Options:
@@ -40,44 +38,35 @@ If you see `Network: rate-limited`, the public faucet throttled you. Options:
 - Use a public web faucet: <https://faucet.solana.com/>.
 - Run `solana airdrop 2 --url devnet` directly.
 
+Check the balance:
+
+```bash
+sunscreen wallet balance --cluster devnet
+```
+
 ## Step 3 — Deploy plan (dry run)
 
 Always inspect the plan first:
 
 ```bash
-sunscreen deploy --network devnet --dry-run
+sunscreen deploy devnet --dry-run
 ```
 
-You'll see:
-
-```text
-plan
-─ network: devnet (https://api.devnet.solana.com)
-─ payer:   <your-pubkey> (balance: 2.0 SOL)
-─ programs:
-    my_app  → target/deploy/my_app.so (180 KB)
-─ estimated cost: ~1.6 SOL
-```
-
-If the estimated cost exceeds your balance, the dry run fails with `exit 4` and tells you to airdrop more.
+The dry run prints the planned Anchor invocation, the wallet that will pay, and the balance check.
 
 ## Step 4 — Deploy
 
 ```bash
-sunscreen deploy --network devnet
+sunscreen deploy devnet
 ```
 
-Under the hood, this runs `solana program deploy` for each program in your workspace and updates `Anchor.toml` + `sunscreen.yml` with the new program IDs.
+Or deploy only one program in a multi-program workspace:
 
-On success:
-
-```
-✓ deployed my_app at <program-id>
-✓ Anchor.toml updated
-✓ sunscreen.yml updated
+```bash
+sunscreen deploy devnet --program my_app
 ```
 
-Your IDL is also published if you pass `--with-idl`.
+On success Anchor updates `Anchor.toml` with the new program ID. Sunscreen surfaces the result and the program addresses.
 
 ## Step 5 — Sanity check
 
@@ -95,7 +84,7 @@ If you have a frontend:
 sunscreen generate clients
 ```
 
-This rewrites `app/src/clients/` against the now-deployed program ID. Restart your `pnpm dev` so it picks up the new clients.
+This rewrites `clients/<program>/` against the now-deployed program ID. Restart your `pnpm dev` so it picks up the new clients.
 
 ## Re-deploying after code changes
 
@@ -103,7 +92,7 @@ Each subsequent deploy is incremental:
 
 ```bash
 sunscreen chain build
-sunscreen deploy --network devnet
+sunscreen deploy devnet
 ```
 
 Solana's `solana program deploy` handles the upgrade in place, reusing the program ID.
@@ -113,7 +102,7 @@ Solana's `solana program deploy` handles the upgrade in place, reusing the progr
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `insufficient funds` | not enough SOL | airdrop or use the web faucet |
-| `program too large` | binary > buffer size | check `--max-len`, or upgrade in chunks |
+| `program too large` | binary > buffer size | check `--max-len` on `solana program deploy`, or upgrade in chunks |
 | `transaction simulation failed` | program-side check failed | run the test suite locally first |
 | `BlockhashNotFound` | RPC overloaded or clock skew | retry; consider a private RPC (Helius, Triton) |
 

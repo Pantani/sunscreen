@@ -28,8 +28,9 @@ sunscreen [GLOBAL_FLAGS] <COMMAND> [ARGS] [FLAGS]
 | Flag | What it does |
 |------|-------------|
 | `--json` | machine-readable output on stdout; human messages on stderr |
-| `--no-color` | disable ANSI colors |
 | `-v / -vv / -vvv` | verbosity (warn / info / debug) |
+| `--workdir <DIR>` | override working directory |
+| `--config <FILE>` | path to an alternative `sunscreen.yml` |
 | `--help` | per-command help |
 | `--version` | print sunscreen version |
 
@@ -49,13 +50,7 @@ Full list with `next_step` strings in [Errors & exit codes](../errors.md).
 
 ## Environment variables
 
-| Variable | Effect |
-|----------|--------|
-| `SUNSCREEN_CONFIG` | path to an alternative `sunscreen.yml` |
-| `SUNSCREEN_WALLET` | path to a Solana keypair JSON file |
-| `SUNSCREEN_NO_COLOR` | same as `--no-color` |
-| `SUNSCREEN_LOG` | log filter (e.g. `info`, `debug,sunscreen::runtime=trace`) |
-| `SUNSCREEN_FRAMEWORK` | override framework detection during command runs |
+Sunscreen prefers explicit flags over magic environment variables. Pass `--config <FILE>` and `--workdir <DIR>` as needed. Standard Rust env vars (`RUST_LOG`, `RUST_BACKTRACE`) apply to the binary as usual.
 
 ## `--json` contract
 

@@ -1,6 +1,6 @@
 # Deploying to mainnet
 
-⏱ 10 min · 🎯 you'll have: your program live on mainnet-beta, with the same shape as your devnet deploy.
+⏱ 10 min · 🎯 you'll have: your program live on mainnet, with the same shape as your devnet deploy.
 
 Mainnet is real money. Read this whole page before running anything.
 
@@ -13,50 +13,44 @@ Mainnet is real money. Read this whole page before running anything.
 - [ ] You're using a private RPC (Helius, Triton, QuickNode). Public mainnet RPCs throttle aggressively.
 - [ ] Your program's upgrade authority is your control (a multisig, ideally).
 
-## Step 1 — Configure the RPC
+## Step 1 — Configure your wallet and RPC
 
-Pass `--rpc-url`:
+Create or import a mainnet wallet and make it the default for `mainnet`:
 
 ```bash
-sunscreen deploy --network mainnet-beta --rpc-url https://your-rpc-endpoint.example.com
+sunscreen wallet new prod
+sunscreen wallet set-default prod --cluster mainnet
 ```
 
-Or set it in `sunscreen.yml`:
+Sunscreen passes through to the Solana CLI for RPC selection. Set a private endpoint in your shell or `solana config`:
 
-```yaml
-networks:
-  mainnet-beta:
-    rpc_url: https://your-rpc-endpoint.example.com
+```bash
+solana config set --url https://your-rpc-endpoint.example.com
 ```
 
 ## Step 2 — Dry run
 
 ```bash
-sunscreen deploy --network mainnet-beta --dry-run
+sunscreen deploy mainnet --yes-i-understand-cost --dry-run
 ```
+
+`--yes-i-understand-cost` is **required** for mainnet — sunscreen refuses to run without it. The `--dry-run` makes this safe: it prints the plan without sending transactions.
 
 Read the plan carefully:
 
 - Confirm the **payer** is your mainnet wallet, not your devnet one.
 - Confirm the **program count** matches what you intend.
-- Confirm the **estimated cost** is within your wallet balance.
+- Confirm your balance is enough.
 
 If anything looks off, stop and investigate. Mainnet deploys do not refund "I clicked too fast".
 
 ## Step 3 — Deploy
 
 ```bash
-sunscreen deploy --network mainnet-beta
+sunscreen deploy mainnet --yes-i-understand-cost
 ```
 
-The CLI will:
-
-1. Build (if `target/deploy/*.so` is missing or stale).
-2. Deploy each program via `solana program deploy`.
-3. Update `Anchor.toml` and `sunscreen.yml` with the mainnet program IDs.
-4. Optionally publish the IDL on chain if you pass `--with-idl`.
-
-A typical deploy takes 30–90 seconds per program, depending on RPC.
+The CLI builds (if `target/deploy/*.so` is missing or stale), then runs `anchor deploy --provider.cluster mainnet`. A typical deploy takes 30–90 seconds per program, depending on RPC.
 
 ## Step 4 — Verify
 
@@ -92,8 +86,8 @@ Commit the regenerated clients. Your frontend now points at mainnet program IDs.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `RPC error: 429 Too Many Requests` | public RPC throttled | use a private RPC |
-| `BlockhashNotFound` mid-deploy | RPC dropped you | retry; deploys are idempotent |
+| `RPC error: 429 Too Many Requests` | public RPC throttled | use a private RPC via `solana config set --url` |
+| `BlockhashNotFound` mid-deploy | RPC dropped you | retry; Anchor's deploy is resumable |
 | Wrong wallet used | environment variable leaked | inspect `solana config get` before deploying |
 | Forgot to update IDL | clients have stale shape | `sunscreen generate clients` and redeploy frontend |
 

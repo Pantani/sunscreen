@@ -176,11 +176,24 @@ fn workspace_root() -> Result<WorkspaceRoot, SunscreenError> {
     workspace::find_root(None).map_err(SunscreenError::from)
 }
 
-/// Re-serialize `cfg` and atomically replace `sunscreen.yml`.
-fn write_config(ws: &WorkspaceRoot, cfg: &crate::config::Config) -> Result<(), SunscreenError> {
-    cfg.validate()
+/// Atomically replace `plugins[]` in `sunscreen.yml` with `new_plugins`.
+///
+/// Re-reads the on-disk manifest **without** the `SUNSCREEN_<SECTION>__...`
+/// env overlay so transient overrides (e.g. `SUNSCREEN_PROJECT__NAME=ci-demo`
+/// used to run a one-shot command) are NOT persisted as a side effect of
+/// editing the plugin array. Only the `plugins[]` field is mutated; every
+/// other field is taken verbatim from disk.
+fn write_plugins(ws: &WorkspaceRoot, new_plugins: Vec<PluginCfg>) -> Result<(), SunscreenError> {
+    let raw = std::fs::read_to_string(&ws.config_path).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read {}: {e}", ws.config_path.display()))
+    })?;
+    let mut on_disk: crate::config::Config = serde_yaml::from_str(&raw)
+        .map_err(|e| SunscreenError::ConfigInvalid(format!("{}: {e}", ws.config_path.display())))?;
+    on_disk.plugins = new_plugins;
+    on_disk
+        .validate()
         .map_err(|e| SunscreenError::ConfigInvalid(e.to_string()))?;
-    let body = serde_yaml::to_string(cfg)
+    let body = serde_yaml::to_string(&on_disk)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("serialize sunscreen.yml: {e}")))?;
     let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
     tx.stage_replace(&ws.config_path, body.as_bytes())
@@ -310,7 +323,7 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
     }
 
     if !args.dry_run && changed {
-        write_config(&ws, &cfg)?;
+        write_plugins(&ws, cfg.plugins.clone())?;
     } else {
         cfg.validate()
             .map_err(|e| SunscreenError::ConfigInvalid(e.to_string()))?;
@@ -353,7 +366,7 @@ fn run_uninstall(args: &UninstallArgs, json_out: bool) -> Result<i32, SunscreenE
     let removed = cfg.plugins[idx].clone();
     if !args.dry_run {
         cfg.plugins.remove(idx);
-        write_config(&ws, &cfg)?;
+        write_plugins(&ws, cfg.plugins.clone())?;
     }
     let app = plugin_to_json(&removed);
     let config_rel = ws
@@ -396,7 +409,7 @@ fn run_update(args: &UpdateArgs, json_out: bool) -> Result<i32, SunscreenError> 
         cfg.plugins[idx].version = Some(version.clone());
     }
     if !args.dry_run && changed {
-        write_config(&ws, &cfg)?;
+        write_plugins(&ws, cfg.plugins.clone())?;
     } else {
         cfg.validate()
             .map_err(|e| SunscreenError::ConfigInvalid(e.to_string()))?;

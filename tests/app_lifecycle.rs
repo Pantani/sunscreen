@@ -286,6 +286,40 @@ plugins:
 }
 
 #[test]
+fn env_overlay_does_not_leak_into_persisted_manifest() {
+    // Regression: an `app install` invoked with a transient
+    // `SUNSCREEN_PROJECT__NAME=...` overlay must edit only `plugins[]` and
+    // leave every other field exactly as it was on disk. Without this
+    // guarantee, env-overlay values would silently rewrite the manifest.
+    let env = CliEnv::new();
+    let ws = seeded(&env, "ws-overlay-leak");
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.env("SUNSCREEN_PROJECT__NAME", "ci-demo-overlay");
+    cmd.args(["app", "install", "github.com/org/foo.git@1.2.3"]);
+    env.ok("install with overlay", &mut cmd);
+
+    let after = read_yml(&ws);
+    assert!(
+        after.contains("github.com/org/foo.git"),
+        "install did not record the plugin:\n{after}"
+    );
+    assert!(
+        !after.contains("ci-demo-overlay"),
+        "env overlay leaked into sunscreen.yml:\n{after}"
+    );
+    // Re-parse and assert the project name is still the on-disk value, not
+    // the overlay value — serde_yaml may normalize whitespace/indentation
+    // on round-trip, so we compare semantic fields rather than raw bytes.
+    let reparsed: serde_yaml::Value =
+        serde_yaml::from_str(&after).expect("post-install yml parses");
+    assert_eq!(
+        reparsed["project"]["name"].as_str(),
+        Some("demo"),
+        "env overlay overwrote project.name:\n{after}"
+    );
+}
+
+#[test]
 fn no_app_subcommand_executes_external_process() {
     // The fake-toolchain log captures every external tool invocation. None
     // of the `app` subcommands may shell out — they are pure declaration

@@ -1,42 +1,53 @@
-/* Sunscreen — Eclipse palette
- * Dark-first. Light variant inherits the same hue family,
- * lifted by ~88% to keep the brand âmbar warm against paper.
+/* Sunscreen — Ember palette
+ * Dark-first, warm monochrome with a single amber accent.
+ * Tuned for long reading sessions: deep neutrals, AA contrast,
+ * no neon, no gradients. Light variant mirrors the same hue family.
  */
 
 :root,
 .sunscreen-dark,
-.navy {
-  --bg: #0B0D12;
-  --bg-elevated: #13161D;
-  --bg-code: #13161D;
-  --bg-inline-code: #1A1E27;
-  --fg: #E8E6E1;
-  --fg-strong: #FFFFFF;
-  --fg-muted: #8A8B92;
-  --fg-faint: #5C5E66;
+.navy,
+.coal,
+.ayu {
+  /* Surfaces */
+  --bg: #0F1014;
+  --bg-elevated: #15171C;
+  --bg-sunken: #0A0B0E;
+  --bg-code: #14161B;
+  --bg-inline-code: #1A1D24;
 
-  --brand: #F4A340;
-  --brand-soft: #FBD38D;
-  --brand-strong: #E08B1A;
+  /* Text */
+  --fg: #D7D4CC;
+  --fg-strong: #F5F2EC;
+  --fg-muted: #8E8B83;
+  --fg-faint: #5A5852;
 
-  --accent: #7AB7FF;
-  --accent-soft: #A8D0FF;
+  /* Brand — warm amber, dialed down from neon orange */
+  --brand: #E8A057;
+  --brand-soft: #F2C28B;
+  --brand-strong: #C9802F;
+  --brand-tint: rgba(232, 160, 87, 0.10);
 
-  --border: #1F232C;
-  --border-strong: #2A2F3A;
+  /* Accent — cool blue, used sparingly (info, links in prose footer) */
+  --accent: #7FA8D6;
+  --accent-soft: #A6C2E0;
 
-  --success: #6FCF97;
-  --warning: #F4C462;
-  --danger: #F47272;
-  --info: #7AB7FF;
+  /* Borders / dividers */
+  --border: #22252D;
+  --border-strong: #2E323C;
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-2: 0 8px 24px rgba(0,0,0,0.45);
+  /* Status */
+  --success: #7FB88F;
+  --warning: #D9B26A;
+  --danger: #D87A7A;
+  --info: #7FA8D6;
 
-  /* mdBook variable bridge */
-  --bg: var(--bg);
-  --fg: var(--fg);
-  --sidebar-bg: var(--bg-elevated);
+  /* Elevation */
+  --shadow-1: 0 1px 0 rgba(0,0,0,0.4);
+  --shadow-2: 0 12px 32px rgba(0,0,0,0.5);
+
+  /* mdBook bridge */
+  --sidebar-bg: var(--bg-sunken);
   --sidebar-fg: var(--fg);
   --sidebar-non-existant: var(--fg-faint);
   --sidebar-active: var(--brand);
@@ -65,31 +76,40 @@
   --search-mark-bg: var(--brand-soft);
 }
 
-/* Light fallback — kept on-brand, used if user toggles to "light" */
+/* Light fallback — warm paper, same hue family. */
 .light,
-.rust,
-.ayu,
-.coal {
-  --bg: #FAF8F4;
-  --bg-elevated: #F2EFE8;
-  --bg-code: #1A1E27;
-  --bg-inline-code: #EEEAE0;
-  --fg: #1A1C22;
-  --fg-strong: #0B0D12;
-  --fg-muted: #6B6D75;
-  --fg-faint: #A8AAB0;
+.rust {
+  --bg: #FAF7F1;
+  --bg-elevated: #F1EDE4;
+  --bg-sunken: #EDE8DD;
+  --bg-code: #F4F0E6;
+  --bg-inline-code: #ECE6D8;
 
-  --brand: #B8761E;
-  --brand-soft: #D89A3A;
-  --brand-strong: #8B5A14;
+  --fg: #1F1E1A;
+  --fg-strong: #0B0A08;
+  --fg-muted: #6A6760;
+  --fg-faint: #A6A29A;
 
-  --accent: #2E6FBF;
-  --accent-soft: #5A92D8;
+  --brand: #B2691E;
+  --brand-soft: #D08A3A;
+  --brand-strong: #8A4F12;
+  --brand-tint: rgba(178, 105, 30, 0.08);
 
-  --border: #E2DDD2;
-  --border-strong: #C9C3B5;
+  --accent: #355F94;
+  --accent-soft: #5982B5;
 
-  --sidebar-bg: var(--bg-elevated);
+  --border: #E2DCCD;
+  --border-strong: #C8C0AD;
+
+  --success: #4F8C66;
+  --warning: #B3892E;
+  --danger: #B14C4C;
+  --info: #355F94;
+
+  --shadow-1: 0 1px 0 rgba(20,15,5,0.06);
+  --shadow-2: 0 12px 32px rgba(20,15,5,0.10);
+
+  --sidebar-bg: var(--bg-sunken);
   --sidebar-fg: var(--fg);
   --sidebar-active: var(--brand);
   --links: var(--brand);

@@ -180,7 +180,7 @@ body {
   padding: 0.7rem 1rem;
   color: var(--fg-strong);
   border-bottom: 1px solid var(--border-strong);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -194,24 +194,24 @@ body {
 
 /* Sidebar — quiet, sunken, editorial */
 .sidebar {
-  font-size: 17px;
+  font-size: 16px;
   border-right: 1px solid var(--border);
   width: var(--sidebar-width);
   background: var(--sidebar-bg);
 }
 .sidebar .sidebar-scrollbox {
   padding: 1.4rem 0.9rem 2rem;
-  font-size: 17px;
+  font-size: 16px;
 }
 .sidebar .chapter li.chapter-item {
   padding: 0;
   margin: 0.1rem 0;
   line-height: 1.5;
-  font-size: 17px;
+  font-size: 16px;
 }
 .sidebar .chapter li.chapter-item a {
   color: var(--fg-muted);
-  font-size: 17px;
+  font-size: 16px;
   padding: 0.48rem 0.85rem;
   border-radius: var(--radius-sm);
   transition: background 90ms ease, color 90ms ease;
@@ -233,10 +233,10 @@ body {
 .sidebar .part-title {
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  font-size: 0.82rem;
+  font-size: 14px;
   color: var(--fg-faint);
-  font-weight: 600;
-  padding: 1.4rem 0.7rem 0.5rem;
+  font-weight: 700;
+  padding: 1.6rem 0.85rem 0.6rem;
 }
 
 /* Top menu */
@@ -282,7 +282,7 @@ body {
   color: #14110B;
   font-weight: 600;
   border-bottom: none;
-  font-size: 0.95rem;
+  font-size: 1rem;
   transition: transform 100ms ease, background 100ms ease;
 }
 .hero-cta a:hover {
@@ -322,18 +322,18 @@ body {
 .card h3 {
   margin-top: 0 !important;
   margin-bottom: 0.5rem !important;
-  font-size: 1.05rem !important;
+  font-size: 1.15rem !important;
 }
 .card p {
   color: var(--fg-muted);
-  font-size: 0.93rem;
+  font-size: 1rem;
   margin-bottom: 0.8rem;
 }
 .card a {
   color: var(--brand);
   font-weight: 500;
   border-bottom: none;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 .card a:hover {
   color: var(--brand-soft);
@@ -381,5 +381,5 @@ input:focus-visible {
   .content h1 { font-size: 2.2rem; }
   .content h2 { font-size: 1.55rem; }
   .content main { padding-top: 2rem; }
-  .sidebar { font-size: 1.05rem; }
+  .sidebar { font-size: 16px; }
 }

@@ -227,11 +227,19 @@ cd my-first-nft
 <li>Added a sample frontend hook for minting (TanStack Query).</li>
 </ol>
 <p>You'll see a summary table at the end listing files created.</p>
-<p>```admonish tip<code>quickstart</code> is a composition of more granular commands: <code>chain new</code>, <code>scaffold metaplex-nft</code>, <code>generate frontend-hooks</code>. You can run them individually for more control — quickstart is the beginner-friendly shortcut.</p>
-<pre><code>## Step 2 — Build
-
-```bash
-sunscreen chain build
+<div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
+<div class="admonition-title">
+<div id="admonition-tip-title">
+<p>Tip</p>
+</div>
+<a class="admonition-anchor-link" href="#admonition-tip"></a>
+</div>
+<div>
+<p><code>quickstart</code> is a composition of more granular commands: <code>chain new</code>, <code>scaffold metaplex-nft</code>, <code>generate frontend-hooks</code>. You can run them individually for more control — quickstart is the beginner-friendly shortcut.</p>
+</div>
+</div>
+## Step 2 — Build
+<pre><code class="language-bash">sunscreen chain build
 </code></pre>
 <p>Successful build produces <code>target/idl/my_first_nft.json</code> and regenerates Codama clients into <code>app/src/clients/</code> (auto-wired because we picked the React frontend).</p>
 <h2 id="step-3--configure-a-devnet-wallet"><a class="header" href="#step-3--configure-a-devnet-wallet">Step 3 — Configure a devnet wallet</a></h2>

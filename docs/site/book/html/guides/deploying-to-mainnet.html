@@ -256,11 +256,19 @@ sunscreen wallet set-default prod --cluster mainnet
 <p>By default, the deploying keypair becomes the upgrade authority. For production, transfer it to a multisig (e.g. <a href="https://squads.so/">Squads</a>) or, if you don't want anyone to upgrade, set it to <code>None</code>:</p>
 <pre><code class="language-bash">solana program set-upgrade-authority &lt;program-id&gt; --final
 </code></pre>
-<p>```admonish warning<code>--final</code> is irreversible. The program can never be upgraded again. Only do this for programs that you've audited and tested exhaustively.</p>
-<pre><code>## Step 6 — Update clients
-
-```bash
-sunscreen generate clients
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
+<div class="admonition-title">
+<div id="admonition-warning-title">
+<p>Warning</p>
+</div>
+<a class="admonition-anchor-link" href="#admonition-warning"></a>
+</div>
+<div>
+<p><code>--final</code> is irreversible. The program can never be upgraded again. Only do this for programs that you've audited and tested exhaustively.</p>
+</div>
+</div>
+## Step 6 — Update clients
+<pre><code class="language-bash">sunscreen generate clients
 </code></pre>
 <p>Commit the regenerated clients. Your frontend now points at mainnet program IDs.</p>
 <h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common pitfalls</a></h2>

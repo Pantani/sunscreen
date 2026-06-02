@@ -243,50 +243,29 @@ flowchart LR
 <p>Avoid screenshots. Mermaid renders cleanly in dark and light, scales, and stays editable.</p>
 <h2 id="admonitions"><a class="header" href="#admonitions">Admonitions</a></h2>
 <p>Use sparingly. They draw attention; over-use teaches readers to skip them.</p>
-<pre><code>```admonish tipFor when there's a non-obvious helpful shortcut.
+<pre><code>```admonish tip
+For when there's a non-obvious helpful shortcut.
 </code></pre>
-<div id="admonition-error-rendering-admonishment" class="admonition admonish-bug" role="note" aria-labelledby="admonition-error-rendering-admonishment-title">
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
 <div class="admonition-title">
-<div id="admonition-error-rendering-admonishment-title">
-<p>Error rendering admonishment</p>
+<div id="admonition-warning-title">
+<p>Warning</p>
 </div>
-<a class="admonition-anchor-link" href="#admonition-error-rendering-admonishment"></a>
+<a class="admonition-anchor-link" href="#admonition-warning"></a>
 </div>
 <div>
-<p>Failed with:</p>
-<pre><code class="language-log">TOML parsing error: TOML parse error at line 1, column 17
-  |
-1 | config = { when something can damage state or burn money. }
-  |                 ^
-expected `.`, `=`
-
-</code></pre>
-<p>Original markdown input:</p>
-<pre><code class="language-markdown">```admonish warningFor when something can damage state or burn money.
-```
-</code></pre>
+<p>For when something can damage state or burn money.</p>
 </div>
 </div>
-<div id="admonition-error-rendering-admonishment-1" class="admonition admonish-bug" role="note" aria-labelledby="admonition-error-rendering-admonishment-1-title">
+<div id="admonition-danger" class="admonition admonish-danger" role="note" aria-labelledby="admonition-danger-title">
 <div class="admonition-title">
-<div id="admonition-error-rendering-admonishment-1-title">
-<p>Error rendering admonishment</p>
+<div id="admonition-danger-title">
+<p>Danger</p>
 </div>
-<a class="admonition-anchor-link" href="#admonition-error-rendering-admonishment-1"></a>
+<a class="admonition-anchor-link" href="#admonition-danger"></a>
 </div>
 <div>
-<p>Failed with:</p>
-<pre><code class="language-log">TOML parsing error: TOML parse error at line 1, column 25
-  |
-1 | config = { irreversible operations. }
-  |                         ^
-expected `.`, `=`
-
-</code></pre>
-<p>Original markdown input:</p>
-<pre><code class="language-markdown">```admonish dangerFor irreversible operations.
-``````
-</code></pre>
+<p>For irreversible operations.</p>
 </div>
 </div>
 <h2 id="links"><a class="header" href="#links">Links</a></h2>

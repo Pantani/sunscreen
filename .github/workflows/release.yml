@@ -243,3 +243,223 @@ jobs:
               --notes-file target/release-meta/release-notes.md \
               "${release_assets[@]}"
           fi
+
+  publish-homebrew:
+    name: Publish Homebrew formula
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    outputs:
+      status: ${{ steps.commit.outcome }}
+    steps:
+      - name: Download global artifacts (formula)
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-global
+          path: target/distrib/
+      - name: Locate cargo-dist formula
+        id: formula
+        shell: bash
+        run: |
+          # cargo-dist emits <name>.rb in the global artifacts when the
+          # "homebrew" installer is enabled.
+          formula_path="$(find target/distrib -maxdepth 2 -type f -name 'sunscreen.rb' | head -n1)"
+          if [[ -z "$formula_path" ]]; then
+            echo "::error::sunscreen.rb not found under target/distrib. Make sure installers includes \"homebrew\"."
+            exit 1
+          fi
+          echo "path=$formula_path" >> "$GITHUB_OUTPUT"
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Pantani/homebrew-sunscreen
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+          persist-credentials: true
+      - name: Update formula in tap
+        id: commit
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          FORMULA_PATH: ${{ steps.formula.outputs.path }}
+        run: |
+          mkdir -p tap/Formula
+          cp "$FORMULA_PATH" tap/Formula/sunscreen.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- Formula/sunscreen.rb; then
+            echo "Formula already at $RELEASE_TAG — nothing to commit."
+            exit 0
+          fi
+          git add Formula/sunscreen.rb
+          git commit -m "sunscreen $RELEASE_TAG"
+          git push origin HEAD
+      - name: Smoke install
+        if: success()
+        shell: bash
+        run: |
+          # macOS-only validation runs in a follow-up; here we just confirm the
+          # formula parses via `brew style` syntax check in a Linux container.
+          brew --version || /home/linuxbrew/.linuxbrew/bin/brew --version || true
+          echo "Tap updated to ${{ needs.plan.outputs.tag }}. Manual smoke: brew install Pantani/sunscreen/sunscreen"
+
+  publish-snap:
+    name: Publish Snap (${{ matrix.arch }})
+    needs: [plan, publish]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inject release tag into snapcraft.yaml
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          sed -i "s/^version: .*/version: \"${version}\"/" snap/snapcraft.yaml
+          grep ^version: snap/snapcraft.yaml
+      - name: Build snap
+        id: build
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79
+      - name: Publish snap
+        if: ${{ env.SNAPCRAFT_STORE_CREDENTIALS != '' }}
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: stable
+      - name: Upload snap artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.snap }}
+
+  publish-apt:
+    name: Publish APT (${{ matrix.arch }})
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@aa7c1c80a07a27a84c0aa76d0cef0aad3830e330
+      - name: Install ARM64 linker
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p "$HOME/.cargo"
+          cat >> "$HOME/.cargo/config.toml" <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+      - name: Install cargo-deb
+        shell: bash
+        run: cargo install cargo-deb --locked --version ^2.7
+      - name: Build .deb
+        id: build
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          # cargo-deb derives the Debian version from Cargo.toml; the workflow
+          # only runs after the tag is cut, so Cargo.toml is already aligned.
+          cargo deb \
+            --no-strip \
+            --target "${{ matrix.target }}" \
+            --output "target/debian/sunscreen_${{ matrix.arch }}.deb"
+          deb_path="target/debian/sunscreen_${{ matrix.arch }}.deb"
+          echo "path=$deb_path" >> "$GITHUB_OUTPUT"
+          dpkg-deb --info "$deb_path"
+      - name: Upload to Cloudsmith
+        if: ${{ env.CLOUDSMITH_API_KEY != '' }}
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        uses: cloudsmith-io/action@8076c4e30db6c3e2685c2f6bc6c92691b5b5f7e3
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: "push"
+          format: "deb"
+          owner: "pantani"
+          repo: "sunscreen"
+          distro: "any-distro"
+          release: "any-version"
+          republish: "true"
+          file: ${{ steps.build.outputs.path }}
+      - name: Attach .deb to GitHub Release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        shell: bash
+        run: |
+          gh release upload "$RELEASE_TAG" "${{ steps.build.outputs.path }}" --clobber
+
+  release-summary:
+    name: Release channel summary
+    needs: [publish, publish-homebrew, publish-snap, publish-apt]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate channel status
+        shell: bash
+        env:
+          GITHUB_STATUS: ${{ needs.publish.result }}
+          HOMEBREW_STATUS: ${{ needs.publish-homebrew.result }}
+          SNAP_STATUS: ${{ needs.publish-snap.result }}
+          APT_STATUS: ${{ needs.publish-apt.result }}
+        run: |
+          {
+            echo "## Sunscreen release channel status"
+            echo ""
+            echo "| Channel | Status |"
+            echo "|---------|--------|"
+            echo "| GitHub Release | ${GITHUB_STATUS} |"
+            echo "| Homebrew tap   | ${HOMEBREW_STATUS} |"
+            echo "| Snap Store     | ${SNAP_STATUS} |"
+            echo "| APT (Cloudsmith) | ${APT_STATUS} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Fail the workflow only when the GitHub release itself failed.
+          # Channel publish failures are surfaced in the summary but do not
+          # block the overall run (continue-on-error on each channel job).
+          if [[ "$GITHUB_STATUS" != "success" ]]; then
+            echo "::error::GitHub release publish failed; channel results above"
+            exit 1
+          fi

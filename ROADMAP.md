@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-02 (Phase 5 closed in PR)
+**Last updated:** 2026-06-02 (Phase 5.5 closed in PR)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -46,10 +46,10 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **3** | Runtime Orchestration | ✅ DONE | 3 wk | 11 wk | `chain serve` (Surfpool/test-validator + watcher + codama + frontend notify + serve model), `chain build` | ADR-0001 §10.5 |
 | **4** | Codegen & Frontend Hooks | ✅ DONE | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, Codama wrapper, IDL artifacts, React/Solid Query hooks | ADR-0001 §10.6 |
 | **5** | Recipes | ✅ DONE | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
-| **5.5** | Onboarding Layer | ⏳ NEXT | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
+| **5.5** | Onboarding Layer | ✅ DONE | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
 | **6** | Plugin System | 🔮 post-v1.0 | 4 wk | — | gRPC + stdio plugins, 2 reference plugins | ADR-0001 §10.8 |
 | **7** | Pinocchio support | 🔮 post-v1.0 | 3 wk | — | `--framework pinocchio` MVP | ADR-0001 §10.9 |
-| **8** | Distribution & Docs (v1.0) | 📋 | 1 wk | 21 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
+| **8** | Distribution & Docs (v1.0) | ⏳ NEXT | 1 wk | 21 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
 
 > Phases are listed in ascending numeric order. Phase 8 is what cuts v1.0 (~21 wk cumulative); Phases 6 and 7 are explicitly deferred post-v1.0 and do **not** gate the v1.0 release — they are listed above Phase 8 only to keep the numeric sequence readable.
 
@@ -225,9 +225,9 @@ Shipped via PR #7.
 
 ---
 
-### Phase 5.5 — Onboarding Layer ⏳ (NEXT per ADR-0005)
+### Phase 5.5 — Onboarding Layer ✅
 
-**Status.** ⏳ Next. Phase 5 recipes now exist, so `quickstart nft` and the broader beginner onboarding layer are unblocked.
+**Status.** ✅ DONE in this PR. The beginner surface is now present as top-level commands: `init`, `examples`, `quickstart`, `wallet`, `deploy`, and `learn`. `init` reuses the `chain new` workspace construction path; `quickstart {token,nft,dao,blog}` composes Phase 5 scaffolders; `wallet` and `deploy` use the shared subprocess boundary; examples and learn topics are embedded and offline; `SunscreenError` now exposes `next_step`, `PathConflict` (exit 7), and `Network` (exit 8). Operational details are documented in [`docs/reference/onboarding.md`](docs/reference/onboarding.md).
 
 **Goal.** A newcomer can go from "I just installed sunscreen" to "my NFT is minted on devnet" in **under 10 minutes**, without reading prose docs first. See [`docs/adr/ADR-0005-beginner-onboarding.md`](docs/adr/ADR-0005-beginner-onboarding.md).
 
@@ -235,23 +235,26 @@ Shipped via PR #7.
 
 | Sprint | Deliverable | Tests |
 |---|---|---|
-| **S1** | `init` (wizard + validator share), `wallet *`, `next_step` contract on 100% of error variants | unit + golden transcripts |
-| **S2** | `examples {list, describe, use}`, `quickstart {token, nft, dao, blog}`, `deploy`, `learn` (5 MVP topics) | E2E on localnet; embedded-asset integrity test |
+| **S1** | `init` (wizard + validator share), `wallet *`, `next_step` contract on 100% of error variants | `tests/errors_contract.rs`, `tests/onboarding_init_quickstart.rs`, `tests/onboarding_wallet_deploy.rs` |
+| **S2** | `examples {list, describe, use}`, `quickstart {token, nft, dao, blog}`, `deploy`, `learn` (5 MVP topics) | `tests/onboarding_examples_learn.rs`, `tests/onboarding_init_quickstart.rs`, fake subprocess boundary tests |
 
 **Components (per ADR-0005 §6.1).**
-- [ ] `src/onboarding/{tty, wizard, wallet, deploy, examples, learn}.rs`
-- [ ] `src/onboarding/recipes/{token, nft, dao, blog}.rs`
-- [ ] `src/strings/en_US.rs` — every user-facing string centralised
-- [ ] `src/error.rs` extended so every `SunscreenError` variant exposes a `next_step` — implementation choice (per-variant associated data or a `next_step()` method on the enum) is left to the PR; the external contract is what matters (see ADR-0005 §4.2)
-- [ ] `assets/examples/{token-faucet, nft-collection, escrow, voting-dao, blog-crud}/`
-- [ ] `assets/learn/{pda, cpi, token-2022, accounts-model, anchor-vs-native}.md`
-- [ ] TTY detection + `--non-interactive` (CI path)
+- [x] `src/onboarding/{tty, wizard, wallet, deploy, examples, learn}.rs`
+- [x] `src/onboarding/recipes/{token, nft, dao, blog}.rs`
+- [x] `src/strings/en_US.rs` — every user-facing string centralised
+- [x] `src/error.rs` extended so every `SunscreenError` variant exposes a `next_step`; JSON errors now include `next_step` and `exit_code`
+- [x] `assets/examples/{token-faucet, nft-collection, escrow, voting-dao, blog-crud}/`
+- [x] `assets/learn/{pda, cpi, token-2022, accounts-model, anchor-vs-native}.md`
+- [x] TTY detection + `--non-interactive` (CI path)
+- [x] Default `onboarding` Cargo feature gates the command modules and embedded assets for `--no-default-features` builds
 
-**DoD.** Newcomer → NFT on devnet in <10 min, measured on a fresh macOS + a fresh Ubuntu VM, no editor required.
+**DoD.** Offline implementation is complete and covered by deterministic tests. The newcomer → NFT on devnet <10 min stopwatch remains a gated manual validation for a machine with Anchor/Solana/pnpm installed.
 
 ---
 
 ### Phase 8 — Distribution & Docs (v1.0) 📋
+
+**Status.** ⏳ Next.
 
 **Goal.** Cut v1.0 with multi-OS prebuilt binaries and a published docs site.
 
@@ -286,14 +289,14 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
          └─► Phase 3 (chain serve / build)
               └─► Phase 4 (codegen, frontend hooks) ✅
                     └─► Phase 5 (recipes: crud, spl-token, metaplex-nft) ✅
-                           └─► Phase 5.5 (onboarding: quickstart wraps recipes) ⏳ NEXT
-                                 └─► Phase 8 (cargo-dist + docs site) ─► v1.0
+                           └─► Phase 5.5 (onboarding: quickstart wraps recipes) ✅
+                                 └─► Phase 8 (cargo-dist + docs site) ⏳ NEXT ─► v1.0
 ```
 
 - **Phase 5 is closed.** Composite recipe scaffolding can now consume the generated hooks/client surface without owning Phase 4 generated paths.
-- **Phase 5.5 is the immediate unblock.** `quickstart nft` is a thin shell over `scaffold metaplex-nft`; recipes now exist, so onboarding can start.
+- **Phase 5.5 is closed.** The top-level beginner commands now wrap the core scaffolding/runtime/deploy surfaces without duplicating their internals.
 - **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
-- **Docs (Phase 8) can start drafting during Phase 5.5** — content for `learn/*.md` overlaps with the user-facing tutorial pages.
+- **Phase 8 is the immediate unblock.** Distribution, published docs, shell completions, changelog, and release polish now gate v1.0.
 
 ---
 

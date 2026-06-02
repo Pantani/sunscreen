@@ -202,7 +202,26 @@ pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
     }
 }
 
+#[cfg(feature = "onboarding")]
+pub(crate) fn run_crud_quiet(args: &CrudArgs) -> Result<i32, SunscreenError> {
+    run_crud_impl(args, false, true)
+}
+
+#[cfg(feature = "onboarding")]
+pub(crate) fn run_spl_token_quiet(args: &BuiltinRecipeArgs) -> Result<i32, SunscreenError> {
+    run_spl_token_impl(args, false, true)
+}
+
+#[cfg(feature = "onboarding")]
+pub(crate) fn run_metaplex_nft_quiet(args: &BuiltinRecipeArgs) -> Result<i32, SunscreenError> {
+    run_metaplex_nft_impl(args, false, true)
+}
+
 fn run_crud(args: &CrudArgs, json: bool) -> Result<i32, SunscreenError> {
+    run_crud_impl(args, json, false)
+}
+
+fn run_crud_impl(args: &CrudArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "resource name")?;
     let _ = parse_fields(&args.fields)?;
     let ws = workspace::find_root(None).map_err(map_ws_err)?;
@@ -227,27 +246,67 @@ fn run_crud(args: &CrudArgs, json: bool) -> Result<i32, SunscreenError> {
         include_frontend: !args.no_frontend,
         frontend_root,
     });
-    execute_recipe(&ws.root, program, &args.program, plan, args.dry_run, json)
+    execute_recipe(
+        &ws.root,
+        program,
+        &args.program,
+        plan,
+        args.dry_run,
+        json,
+        quiet,
+    )
 }
 
 fn run_spl_token(args: &BuiltinRecipeArgs, json: bool) -> Result<i32, SunscreenError> {
+    run_spl_token_impl(args, json, false)
+}
+
+fn run_spl_token_impl(
+    args: &BuiltinRecipeArgs,
+    json: bool,
+    quiet: bool,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "recipe name")?;
     let ws = workspace::find_root(None).map_err(map_ws_err)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let plan = build_spl_token_recipe(SplTokenRecipeOptions {
         name: args.name.clone(),
     });
-    execute_recipe(&ws.root, program, &args.program, plan, args.dry_run, json)
+    execute_recipe(
+        &ws.root,
+        program,
+        &args.program,
+        plan,
+        args.dry_run,
+        json,
+        quiet,
+    )
 }
 
 fn run_metaplex_nft(args: &BuiltinRecipeArgs, json: bool) -> Result<i32, SunscreenError> {
+    run_metaplex_nft_impl(args, json, false)
+}
+
+fn run_metaplex_nft_impl(
+    args: &BuiltinRecipeArgs,
+    json: bool,
+    quiet: bool,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "recipe name")?;
     let ws = workspace::find_root(None).map_err(map_ws_err)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let plan = build_metaplex_nft_recipe(MetaplexNftRecipeOptions {
         name: args.name.clone(),
     });
-    execute_recipe(&ws.root, program, &args.program, plan, args.dry_run, json)
+    execute_recipe(
+        &ws.root,
+        program,
+        &args.program,
+        plan,
+        args.dry_run,
+        json,
+        quiet,
+    )
 }
 
 fn execute_recipe(
@@ -257,6 +316,7 @@ fn execute_recipe(
     plan: RecipePlan,
     dry_run: bool,
     json: bool,
+    quiet: bool,
 ) -> Result<i32, SunscreenError> {
     let program_dir_name = program
         .root
@@ -290,18 +350,20 @@ fn execute_recipe(
     };
     let unchanged = !dry_run && changed_files.is_empty();
 
-    emit_recipe_result(
-        json,
-        &RecipeResult {
-            recipe: plan.kind.as_str(),
-            resource: &plan.resource,
-            program: program_arg,
-            dry_run,
-            unchanged,
-            files: &changed_files,
-            steps: plan.steps.len(),
-        },
-    );
+    if !quiet {
+        emit_recipe_result(
+            json,
+            &RecipeResult {
+                recipe: plan.kind.as_str(),
+                resource: &plan.resource,
+                program: program_arg,
+                dry_run,
+                unchanged,
+                files: &changed_files,
+                steps: plan.steps.len(),
+            },
+        );
+    }
     Ok(0)
 }
 

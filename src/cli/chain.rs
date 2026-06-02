@@ -486,7 +486,17 @@ fn map_pipeline_err(err: PipelineError, command: &str) -> SunscreenError {
     }
 }
 
-fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {
+/// Result of materializing a workspace through the shared `chain new` path.
+#[derive(Debug, Clone)]
+pub(crate) struct NewWorkspaceReport {
+    pub project: String,
+    pub path: PathBuf,
+    pub dry_run: bool,
+    pub files: Vec<String>,
+    pub written: usize,
+}
+
+pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, SunscreenError> {
     validate_name(&args.name)?;
 
     // The on-disk config requires kebab-case names; user input is
@@ -590,54 +600,68 @@ fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {
     let plan: Vec<String> = tx.plan().iter().map(|p| p.path.clone()).collect();
 
     if dry_run {
-        emit_dry_run(&dest, &plan, json);
         // tx Drop cleans the throwaway staging dir.
-        return Ok(0);
+        return Ok(NewWorkspaceReport {
+            project: args.name.clone(),
+            path: dest,
+            dry_run: true,
+            written: 0,
+            files: plan,
+        });
     }
 
     let written = tx.commit().map_err(map_tx_err)?;
 
+    Ok(NewWorkspaceReport {
+        project: args.name.clone(),
+        path: dest,
+        dry_run: false,
+        written: written.len(),
+        files: plan,
+    })
+}
+
+fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {
+    let report = create_workspace(args)?;
+
     if json {
         let payload = serde_json::json!({
             "ok": true,
-            "project": args.name,
-            "path": dest.display().to_string(),
-            "files": written.len(),
+            "project": report.project,
+            "path": report.path.display().to_string(),
+            "files": if report.dry_run {
+                serde_json::Value::Array(report.files.iter().cloned().map(serde_json::Value::String).collect())
+            } else {
+                serde_json::json!(report.written)
+            },
+            "dry_run": report.dry_run,
         });
         println!("{payload}");
+    } else if report.dry_run {
+        emit_dry_run(&report.path, &report.files);
     } else {
         println!(
             "created workspace `{}` at {} ({} files)",
-            args.name,
-            dest.display(),
-            written.len()
+            report.project,
+            report.path.display(),
+            report.written
         );
         println!("\nnext steps:");
-        println!("  cd {}", dest.display());
+        println!("  cd {}", report.path.display());
         println!("  anchor build");
         println!("  anchor test");
     }
     Ok(0)
 }
 
-fn emit_dry_run(dest: &Path, plan: &[String], json: bool) {
-    if json {
-        let payload = serde_json::json!({
-            "ok": true,
-            "dry_run": true,
-            "path": dest.display().to_string(),
-            "files": plan,
-        });
-        println!("{payload}");
-    } else {
-        println!(
-            "dry-run: would create {} files under {}",
-            plan.len(),
-            dest.display()
-        );
-        for path in plan {
-            println!("  {path}");
-        }
+fn emit_dry_run(dest: &Path, plan: &[String]) {
+    println!(
+        "dry-run: would create {} files under {}",
+        plan.len(),
+        dest.display()
+    );
+    for path in plan {
+        println!("  {path}");
     }
 }
 

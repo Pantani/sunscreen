@@ -7,9 +7,13 @@ pub mod codegen;
 pub mod config;
 pub mod error;
 pub mod fsutil;
+#[cfg(feature = "onboarding")]
+pub mod onboarding;
 pub mod runtime;
 pub mod rustpatch;
 pub mod scaffold;
+#[cfg(feature = "onboarding")]
+pub mod strings;
 pub mod templates;
 pub mod toolchain;
 pub mod tui;

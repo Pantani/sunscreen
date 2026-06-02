@@ -1,52 +1,85 @@
 name: Release
 
-# Driven by cargo-dist. Generated baseline; can be regenerated via:
-#   cargo dist init
-#   cargo dist generate
-#
-# Triggered by pushing a tag matching v*.*.*
+# Tag-driven cargo-dist release pipeline for GitHub Release binaries.
+# Builds Linux/macOS archives and the shell installer, then publishes them
+# to the release for the pushed tag.
 
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, for example v0.1.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_DIST_VERSION: "0.22.1"
 
 jobs:
   plan:
+    name: Plan release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
-      val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ github.ref_name }}
+      manifest: ${{ steps.plan.outputs.manifest }}
+      tag: ${{ steps.release-tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag must look like vMAJOR.MINOR.PATCH, got '$tag'"
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Install cargo-dist
+        shell: bash
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.22.1/cargo-dist-installer.sh \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" \
             | sh
-      - name: Plan release
+      - name: Plan cargo-dist artifacts
         id: plan
+        shell: bash
         run: |
-          cargo dist plan --tag ${{ github.ref_name }} --output-format=json > plan.json
-          echo "manifest<<EOF" >> $GITHUB_OUTPUT
-          cat plan.json >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      - uses: actions/upload-artifact@v4
+          cargo dist plan --tag "${{ steps.release-tag.outputs.tag }}" --output-format=json > dist-plan.json
+          jq -c . dist-plan.json
+          echo "manifest=$(jq -c . dist-plan.json)" >> "$GITHUB_OUTPUT"
+      - name: Upload release plan
+        uses: actions/upload-artifact@v4
         with:
-          name: artifacts-plan
-          path: plan.json
+          name: cargo-dist-plan
+          path: dist-plan.json
 
-  build:
+  build-local:
+    name: Build ${{ matrix.target }}
     needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -59,58 +92,135 @@ jobs:
             os: macos-latest
           - target: aarch64-apple-darwin
             os: macos-latest
-    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-      - name: Install cross deps (aarch64 linux)
+      - uses: Swatinem/rust-cache@aa7c1c80a07a27a84c0aa76d0cef0aad3830e330
+      - name: Install Linux ARM64 linker
         if: matrix.target == 'aarch64-unknown-linux-gnu'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
-          echo '[target.aarch64-unknown-linux-gnu]' >> $HOME/.cargo/config.toml
-          echo 'linker = "aarch64-linux-gnu-gcc"' >> $HOME/.cargo/config.toml
+          mkdir -p "$HOME/.cargo"
+          cat >> "$HOME/.cargo/config.toml" <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
       - name: Install cargo-dist
         shell: bash
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.22.1/cargo-dist-installer.sh \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" \
             | sh
-      - name: Build artifacts
-        run: cargo dist build --tag ${{ github.ref_name }} --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - name: Build target archive
+        shell: bash
+        run: |
+          cargo dist build \
+            --artifacts=local \
+            --tag "${{ needs.plan.outputs.tag }}" \
+            --target "${{ matrix.target }}" \
+            --output-format=json
+      - name: Upload target archive
+        uses: actions/upload-artifact@v4
         with:
-          name: artifacts-${{ matrix.target }}
+          name: dist-local-${{ matrix.target }}
           path: target/distrib/*
 
-  publish:
-    needs: [plan, build]
+  build-global:
+    name: Build global installers
+    needs: [plan, build-local]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - name: Download local artifacts
+        uses: actions/download-artifact@v4
         with:
-          pattern: artifacts-*
+          pattern: dist-local-*
           path: target/distrib/
           merge-multiple: true
       - name: Install cargo-dist
+        shell: bash
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.22.1/cargo-dist-installer.sh \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" \
             | sh
-      - name: Create GitHub release
+      - name: Build shell installer and checksums
+        shell: bash
+        run: |
+          cargo dist build \
+            --artifacts=global \
+            --tag "${{ needs.plan.outputs.tag }}" \
+            --output-format=json
+      - name: Upload global artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-global
+          path: target/distrib/*
+
+  publish:
+    name: Publish GitHub release
+    needs: [plan, build-local, build-global]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: target/distrib/
+          merge-multiple: true
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-dist-plan
+          path: target/release-meta/
+      - name: Prepare release notes
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        shell: bash
+        run: |
+          generated_notes="$(mktemp)"
+          jq -r '.announcement_github_body' target/release-meta/dist-plan.json > "$generated_notes"
+
+          notes_file=".github/releases/${RELEASE_TAG}.md"
+          if [[ -f "$notes_file" ]]; then
+            cat "$notes_file" > target/release-meta/release-notes.md
+            printf '\n---\n\n' >> target/release-meta/release-notes.md
+            awk '/^## Install sunscreen/{ emit = 1 } emit { print }' "$generated_notes" \
+              >> target/release-meta/release-notes.md
+          else
+            cp "$generated_notes" target/release-meta/release-notes.md
+          fi
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        shell: bash
         run: |
-          gh release create ${{ github.ref_name }} \
-            --title "${{ github.ref_name }}" \
-            --notes "Release ${{ github.ref_name }} (built by cargo-dist)" \
-            --draft \
-            target/distrib/*
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file target/release-meta/release-notes.md
+            gh release upload "$RELEASE_TAG" target/distrib/* --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes-file target/release-meta/release-notes.md \
+              target/distrib/*
+          fi

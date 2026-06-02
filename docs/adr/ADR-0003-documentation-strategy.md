@@ -208,8 +208,8 @@ language = "en"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/sunscreen-cli/sunscreen"
-edit-url-template = "https://github.com/sunscreen-cli/sunscreen/edit/main/docs/{path}"
+git-repository-url = "https://github.com/Pantani/sunscreen"
+edit-url-template = "https://github.com/Pantani/sunscreen/edit/main/docs/{path}"
 
 [output.html.search]
 enable = true

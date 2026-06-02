@@ -1,11 +1,11 @@
 [package]
 name = "sunscreen"
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2021"
 description = "Solana CLI scaffolding & orchestration tool"
 license = "Apache-2.0"
-repository = "https://github.com/sunscreen-cli/sunscreen"
-homepage = "https://github.com/sunscreen-cli/sunscreen"
+repository = "https://github.com/Pantani/sunscreen"
+homepage = "https://github.com/Pantani/sunscreen"
 readme = "README.md"
 keywords = ["solana", "cli", "scaffolding"]
 categories = ["command-line-utilities", "development-tools"]
@@ -115,7 +115,7 @@ lto = "thin"
 [workspace.metadata.dist]
 cargo-dist-version = "0.22.1"
 ci = ["github"]
-installers = ["shell", "powershell"]
+installers = ["shell"]
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",

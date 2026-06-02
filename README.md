@@ -4,7 +4,7 @@
 
 `sunscreen` helps Solana developers move from an empty folder to a working Anchor or Pinocchio project without hand-stitching `anchor`, `solana`, `cargo`, `codama`, `surfpool`, and frontend tooling. It focuses on deterministic project generation, marker-based incremental edits, plugins, and a supervised local development loop.
 
-**Current status:** Phase 7 Pinocchio support is complete; Phase 8 distribution and docs are next for v1.0. `sunscreen` is not published to crates.io yet; install from source for now. The live project tracker is [`ROADMAP.md`](ROADMAP.md).
+**Current status:** `v0.1.0` is the first preview release, with GitHub Release binaries for Linux and macOS. Phase 8 distribution/docs work continues toward v1.0. `sunscreen` is not published to crates.io yet. The live project tracker is [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -23,7 +23,7 @@ Today, `sunscreen` can:
 - Manage local plugins, run plugin commands/hooks, list the reference marketplace, and route plugin-backed `scaffold <noun>` commands.
 - Bootstrap Pinocchio programs with `chain new --framework pinocchio` and build them through `cargo build-sbf`.
 
-Remaining v1.0 work is distribution and published docs. Remote plugin artifact download and richer Pinocchio-native scaffold/codegen flows remain follow-up work.
+Remaining v1.0 work is published docs, shell completions, Windows/Homebrew distribution, and release-channel polish. Remote plugin artifact download and richer Pinocchio-native scaffold/codegen flows remain follow-up work.
 
 The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md). CLI conventions, marker protocol, recipes, codegen, plugins, Pinocchio, and the beginner-onboarding surface live in [`docs/adr/`](docs/adr/) and [`docs/reference/`](docs/reference/).
 
@@ -31,7 +31,15 @@ The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/A
 
 ## Install
 
-Install from source:
+Install the latest preview release:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/Pantani/sunscreen/releases/download/v0.1.0/sunscreen-installer.sh \
+  | sh
+```
+
+Or install from source:
 
 ```bash
 git clone https://github.com/Pantani/sunscreen
@@ -225,9 +233,9 @@ Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total pl
 - **Phase 5.5** — Onboarding layer (`init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, actionable errors) — see [ADR-0005](docs/adr/ADR-0005-beginner-onboarding.md). ✅
 - **Phase 6** — Plugin system: lifecycle, manifest/runtime, stdio/gRPC transport contract, sandbox, marketplace/reference plugins. ✅
 - **Phase 7** — Pinocchio support (`chain new --framework pinocchio`, Cargo/Solana toolchain config, `cargo build-sbf` pipeline, Anchor-only guards). ✅
-- **Phase 8** — Distribution & docs (cuts v1.0 after plugin and Pinocchio closure). ⏳ next
+- **Phase 8** — Distribution & docs (preview release pipeline active; v1.0 docs/completions/installers remain). 🚧
 
-Phase 6 and Phase 7 are now closed in the v1.0 line. Phase 8 cuts v1.0.
+Phase 6 and Phase 7 are now closed in the v1.0 line. Phase 8 is in progress and starts with the `v0.1.0` preview release.
 
 ---
 

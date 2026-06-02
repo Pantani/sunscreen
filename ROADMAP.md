@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-02 (Phase 7 Pinocchio support closed + review hardening)
+**Last updated:** 2026-06-02 (v0.1.0 preview release pipeline)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -49,7 +49,7 @@ Total to **v1.0**: ~28 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **5.5** | Onboarding Layer | ✅ DONE | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
 | **6** | Plugin System | ✅ DONE | 4 wk | 24 wk | runtime manager, gRPC proto contract + stdio plugins, sandbox/trust model, marketplace/local plugins, 2 reference plugins | ADR-0001 §10.8 |
 | **7** | Pinocchio support | ✅ DONE | 3 wk | 27 wk | `--framework pinocchio` MVP, Pinocchio template, Cargo/Solana toolchain config, `cargo build-sbf` pipeline, Anchor-only guards | ADR-0006 |
-| **8** | Distribution & Docs (v1.0) | ⏳ NEXT | 1 wk | 28 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
+| **8** | Distribution & Docs (v1.0) | 🚧 IN PROGRESS | 1 wk | 28 wk | cargo-dist preview release, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
 
 > Phases are listed in ascending numeric order. Phase 6 and Phase 7 are now closed in the v1.0 line; Phase 8 cuts v1.0 after plugin and Pinocchio bootstrap closure.
 
@@ -299,9 +299,9 @@ Operational details are documented in [`docs/reference/pinocchio.md`](docs/refer
 
 ---
 
-### Phase 8 — Distribution & Docs (v1.0) 📋
+### Phase 8 — Distribution & Docs (v1.0) 🚧
 
-**Status.** ⏳ Next; resumes after Phase 7 closure.
+**Status.** 🚧 In progress. The `v0.1.0` preview release is the first distribution slice: GitHub Actions builds and publishes Linux/macOS `cargo-dist` artifacts, `CHANGELOG.md` now carries SemVer/release notes, and the remaining v1.0 work stays focused on docs/completions/additional distribution channels.
 
 **Goal.** Cut v1.0 with multi-OS prebuilt binaries and a published docs site.
 
@@ -309,11 +309,12 @@ Operational details are documented in [`docs/reference/pinocchio.md`](docs/refer
 - [x] Ignite-style Rust CLI integration harness — builds/uses the real `sunscreen` binary, isolates HOME/PATH, provides fake Solana/Anchor/Codama toolchain scripts, and runs command-group smoke suites for `chain`, `scaffold`, `generate`, onboarding commands, plugin runtime, and Pinocchio guardrails.
 - [x] CI hardening for v1.0 QA — explicit command-group integration smoke job, locked Cargo commands, no-default-features build check, workflow concurrency, permissions, and timeouts.
 - [x] `cargo-dist` baseline for Linux/macOS — `Cargo.toml` metadata + release workflow cover linux/amd64, linux/arm64, darwin/amd64, darwin/arm64.
-- [ ] Complete distribution matrix — add/validate windows/amd64, release-plan CI (`cargo dist plan`), and final v1.0 artifact publishing flow.
+- [x] `v0.1.0` preview release pipeline — tag-driven `cargo dist plan`, per-target Linux/macOS archives, global shell installer/checksum artifacts, and GitHub Release publishing from versioned notes.
+- [x] `CHANGELOG.md` populated with a preview-line SemVer policy and `v0.1.0` release notes.
+- [ ] Complete distribution matrix — add/validate windows/amd64 and final v1.0 artifact publishing polish.
 - [ ] Homebrew tap, optional `cargo binstall` path
 - [ ] Docs site (mdBook or Starlight per ADR-0003)
 - [ ] Shell completions (bash / zsh / fish / pwsh) emitted by `sunscreen completions`
-- [ ] `CHANGELOG.md` populated; SemVer policy published
 
 **DoD.** Published `v1.0.0` GitHub release; `sunscreen --help` reachable from a one-line install on all four primary platforms.
 
@@ -330,7 +331,7 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
                            └─► Phase 5.5 (onboarding: quickstart wraps recipes) ✅
                                  └─► Phase 6 (plugin runtime + reference plugins) ✅
                                        └─► Phase 7 (Pinocchio bootstrap) ✅
-                                             └─► Phase 8 (cargo-dist + docs site) ⏳ NEXT ─► v1.0
+                                             └─► Phase 8 (cargo-dist + docs site) 🚧 ─► v1.0
 ```
 
 - **Phase 5 is closed.** Composite recipe scaffolding can now consume the generated hooks/client surface without owning Phase 4 generated paths.
@@ -339,7 +340,7 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
 - **CI now runs that smoke layer explicitly.** The main pipeline also enforces lockfile use and keeps the optional onboarding feature boundary building via a no-default-features target check.
 - **Phase 6 (plugins) is closed.** The declarative `app` MVP now has local manifest discovery, stdio execution, gRPC proto contract, sandbox/runtime failure handling, reference marketplace entries, dynamic scaffold routing, and lifecycle hook execution.
 - **Phase 7 (Pinocchio) is closed.** The CLI can now bootstrap Pinocchio workspaces, route builds through `cargo build-sbf`, and guard Anchor-only scaffold/codegen paths before mutation.
-- **Phase 8 is the immediate unblock.** Distribution, published docs, shell completions, changelog, and release polish now gate v1.0.
+- **Phase 8 is in progress.** The `v0.1.0` preview release covers Linux/macOS binary distribution and release notes; published docs, shell completions, Windows/Homebrew channels, and release polish still gate v1.0.
 
 ---
 

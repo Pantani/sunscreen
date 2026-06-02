@@ -53,6 +53,18 @@ impl CliEnv {
         cmd
     }
 
+    pub fn sunscreen_fake_only(&self) -> Command {
+        let mut cmd = self.sunscreen();
+        cmd.env("PATH", self.fake_only_path());
+        cmd
+    }
+
+    pub fn sunscreen_fake_only_in(&self, cwd: &Path) -> Command {
+        let mut cmd = self.sunscreen_fake_only();
+        cmd.current_dir(cwd);
+        cmd
+    }
+
     pub fn ok(&self, label: &str, cmd: &mut Command) -> Output {
         let out = cmd.output().unwrap_or_else(|err| panic!("{label}: {err}"));
         assert!(
@@ -95,7 +107,7 @@ impl CliEnv {
     pub fn ndjson_ok(&self, label: &str, cmd: &mut Command) -> Vec<serde_json::Value> {
         let out = self.ok(label, cmd);
         let stdout = String::from_utf8_lossy(&out.stdout);
-        stdout
+        let events = stdout
             .lines()
             .enumerate()
             .map(|(index, line)| {
@@ -103,7 +115,9 @@ impl CliEnv {
                     panic!("{label}: invalid NDJSON line {index}: {err}\nline={line}")
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        assert!(!events.is_empty(), "{label}: expected NDJSON events");
+        events
     }
 
     pub fn chain_new(&self, name: &str, frontend: &str) -> PathBuf {
@@ -222,12 +236,29 @@ exit /b 0
         std::fs::read_to_string(&self.fake_log).unwrap_or_default()
     }
 
+    pub fn fake_log_lines(&self) -> Vec<String> {
+        self.fake_log()
+            .lines()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    }
+
     fn path_with_fake_bin(&self) -> OsString {
         let mut paths = vec![self.fake_bin.clone()];
         if let Some(existing) = std::env::var_os("PATH") {
             paths.extend(std::env::split_paths(&existing));
         }
         std::env::join_paths(paths).expect("join PATH")
+    }
+
+    fn fake_only_path(&self) -> OsString {
+        let mut paths = vec![self.fake_bin.clone()];
+        #[cfg(unix)]
+        {
+            paths.push(PathBuf::from("/bin"));
+            paths.push(PathBuf::from("/usr/bin"));
+        }
+        std::env::join_paths(paths).expect("join fake-only PATH")
     }
 
     fn write_fake_command(&self, name: &str, unix: &str, windows: &str) -> PathBuf {

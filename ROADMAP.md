@@ -261,7 +261,8 @@ Shipped via PR #7.
 **Deliverables.**
 - [x] Ignite-style Rust CLI integration harness — builds/uses the real `sunscreen` binary, isolates HOME/PATH, provides fake Solana/Anchor/Codama toolchain scripts, and runs command-group smoke suites for `chain`, `scaffold`, `generate`, and onboarding commands.
 - [x] CI hardening for v1.0 QA — explicit command-group integration smoke job, locked Cargo commands, no-default-features build check, workflow concurrency, read-only permissions, and job timeouts.
-- [ ] `cargo-dist` config — linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
+- [x] `cargo-dist` baseline for Linux/macOS — `Cargo.toml` metadata + release workflow cover linux/amd64, linux/arm64, darwin/amd64, darwin/arm64.
+- [ ] Complete distribution matrix — add/validate windows/amd64, release-plan CI (`cargo dist plan`), and final v1.0 artifact publishing flow.
 - [ ] Homebrew tap, optional `cargo binstall` path
 - [ ] Docs site (mdBook or Starlight per ADR-0003)
 - [ ] Shell completions (bash / zsh / fish / pwsh) emitted by `sunscreen completions`

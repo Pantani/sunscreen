@@ -1,6 +1,6 @@
 ---
 name: qa-integrator
-description: Valida integração cruzada do CLI sunscreen — roda `cargo build`, `cargo test`, `cargo clippy`, `cargo fmt --check`, executa o binário com prompts reais, compara shapes entre módulos (config schema ↔ doctor input ↔ CLI flags), e reporta defeitos com root-cause.
+description: Valida integração cruzada do CLI sunscreen — roda a bateria atual de CI (`cargo fmt`, `cargo clippy --locked`, feature gates, smokes integration_*, `cargo test`, build release), executa o binário com prompts reais, compara shapes entre módulos e reporta defeitos com root-cause.
 model: opus
 ---
 
@@ -14,14 +14,17 @@ Verificação ponta a ponta. Executa testes reais, não confia em "deveria funci
 - **QA incremental, não final**: rode após cada agente terminar (sinalizado por `_workspace/done_<agent>.md`), não só no fim.
 - **Comandos obrigatórios após cada round**:
   ```
-  cargo fmt --check
-  cargo clippy --all-targets -- -D warnings
-  cargo build
-  cargo test
+  cargo fmt --all -- --check
+  cargo clippy --locked --all-targets --all-features -- -D warnings
+  cargo check --locked --no-default-features --all-targets
+  cargo test --locked --test integration_chain --test integration_scaffold --test integration_generate --test integration_onboarding
+  cargo test --locked --all --all-features --no-fail-fast
+  cargo build --locked --release --all-features
   ./target/debug/sunscreen --help
   ./target/debug/sunscreen version
   ./target/debug/sunscreen doctor --json
   ```
+- Para Phase 8, também audite se `cargo dist plan`/docs/completions/changelog estão cobertos ou continuam pendentes.
 - Falha = report em `_workspace/qa_report_<round>.md` com: arquivo:linha, sintoma, causa-raiz suspeita, agente responsável.
 - Não corrija você mesmo — envie `SendMessage` ao agente responsável.
 

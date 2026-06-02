@@ -1,0 +1,17 @@
+---
+source: tests/codegen_codama.rs
+assertion_line: 31
+expression: content
+---
+{
+  "idl": "target/idl/demo_app.json",
+  "before": [],
+  "scripts": {
+    "js": {
+      "from": "@codama/renderers-js",
+      "args": [
+        "clients/js/src/generated"
+      ]
+    }
+  }
+}

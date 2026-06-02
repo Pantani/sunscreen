@@ -141,7 +141,7 @@ The conventions below are **normative**. Any subcommand violating them is a bug.
   - `sunscreen scaffold program <name>` ✅
   - `sunscreen scaffold-program <name>` ❌
 - **Nesting depth ≤ 3.** `sunscreen chain serve` is fine; `sunscreen chain validator local start` is not — collapse to `sunscreen chain serve --local`.
-- **Stub commands declare themselves as such** in their `about` until implemented (see `Scaffold`, `Chain`, `Generate`, `App` in `src/cli/root.rs::Command` which currently print `"<verb>: TODO"`).
+- **Stub commands declare themselves as such** in their `about` until implemented. As of Phase 4, `Generate` is implemented; `App` remains a stub in `src/cli/root.rs::Command`.
 
 ### 4.3 Exit codes
 

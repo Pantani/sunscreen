@@ -89,7 +89,10 @@ fn debouncer_notify_event_does_not_flush_due_batch() {
 fn watch_build_loop_runs_pipeline_when_debounced_batch_is_due() {
     let start = Instant::now();
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
-    let root = PathBuf::from("/tmp/sunscreen-workspace");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("sunscreen-workspace");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let mut loop_ = WatchBuildLoop::new(&root, Duration::from_millis(25), no_frontend_notify());
     let event =
         Event::new(EventKind::Any).add_path(root.join("programs/demo/src/instructions/deposit.rs"));
@@ -113,7 +116,18 @@ fn watch_build_loop_runs_pipeline_when_debounced_batch_is_due() {
     let calls = runner.calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].display_argv(), ["anchor", "build"]);
-    assert_eq!(calls[1].display_argv(), ["pnpm", "exec", "codama", "run"]);
+    assert_eq!(
+        calls[1].display_argv(),
+        [
+            "pnpm",
+            "exec",
+            "codama",
+            "run",
+            "--all",
+            "--config",
+            "codama.json"
+        ]
+    );
     assert_eq!(calls[0].cwd.as_deref(), Some(root.as_path()));
     assert_eq!(calls[1].cwd.as_deref(), Some(root.as_path()));
 

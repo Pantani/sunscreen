@@ -2,6 +2,7 @@
 
 pub mod chain;
 pub mod doctor;
+pub mod generate;
 pub mod root;
 pub mod scaffold;
 pub mod version;

@@ -4,7 +4,7 @@
 
 `sunscreen` helps Solana developers move from an empty folder to a working Anchor project without hand-stitching `anchor`, `solana`, `cargo`, `codama`, `surfpool`, and frontend tooling. It focuses on deterministic project generation, marker-based incremental edits, and a supervised local development loop.
 
-**Current status:** Phase 3 runtime orchestration is complete; Phase 4 codegen and frontend hooks are next. `sunscreen` is not published to crates.io yet; install from source for now. The live project tracker is [`ROADMAP.md`](ROADMAP.md).
+**Current status:** Phase 4 codegen and frontend hooks are complete; Phase 5 recipes are next. `sunscreen` is not published to crates.io yet; install from source for now. The live project tracker is [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -17,8 +17,9 @@ Today, `sunscreen` can:
 - Add programs, instructions, accounts, events, and errors to an existing workspace.
 - Repair generated marker regions when safe with `chain doctor --fix-markers`.
 - Run a supervised local build/serve loop with Surfpool or `solana-test-validator`, file watching, Anchor builds, optional Codama regeneration, frontend notification, and headless JSON events.
+- Generate deterministic IDL artifacts, Codama JavaScript clients, and React/Solid Query frontend hooks from Anchor IDLs.
 
-Planned work adds first-class codegen commands, frontend hooks, recipes, onboarding flows, distribution, and eventually plugins.
+Planned work adds composite recipes, onboarding flows, distribution, and eventually plugins.
 
 The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md). CLI conventions, marker protocol, and the beginner-onboarding surface live in [`docs/adr/`](docs/adr/).
 
@@ -76,6 +77,14 @@ sunscreen chain build --headless
 sunscreen chain serve --headless
 ```
 
+Generate IDL/client/frontend artifacts after a build:
+
+```bash
+sunscreen generate idl
+sunscreen generate clients
+sunscreen generate frontend-hooks
+```
+
 ### Global flags
 
 | Flag | Description |
@@ -105,7 +114,9 @@ Most scaffold commands also support `--dry-run` and `--json`, so you can preview
 | `scaffold event` | ✅ | Add an event |
 | `scaffold error` | ✅ | Add an error variant |
 | `chain serve` | ✅ | Full supervised dev loop (Surfpool/test-validator + watcher + TUI) |
-| `generate` | 🚧 stub | Code generation (clients, IDL, frontend hooks) — Phase 4 |
+| `generate idl` | ✅ | Export built Anchor IDLs into `clients/idl` |
+| `generate clients` | ✅ | Write `codama.json` and run Codama client generation |
+| `generate frontend-hooks` | ✅ | Generate IDL/core TypeScript plus React/Solid Query hooks |
 | `app` | 🚧 stub | Application lifecycle commands |
 
 ---
@@ -122,7 +133,7 @@ See [`src/config/`](src/config/) for the schema implementation and [`docs/adr/AD
 
 Incremental scaffolding is marker-based. Generated regions are wrapped in stable comments so `sunscreen` can make future edits without owning the whole file. You can edit normal Rust code around those regions; if a generated region drifts, `sunscreen chain doctor --fix-markers` repairs only the cases it can prove are safe.
 
-The marker contract is documented in [`docs/reference/markers.md`](docs/reference/markers.md).
+The marker contract is documented in [`docs/reference/markers.md`](docs/reference/markers.md). Codegen ownership and generated frontend artifacts are documented in [`docs/reference/codegen.md`](docs/reference/codegen.md).
 
 ---
 
@@ -141,6 +152,7 @@ Project layout:
 ```
 src/
   cli/         # clap command surface (root, version, doctor, ...)
+  codegen/     # Codama config, IDL export, frontend hook generation
   config/      # sunscreen.yml schema, loader, migrations
   toolchain/   # external tool detection (anchor, solana, ...)
   templates/   # embedded minijinja templates + render engine
@@ -160,8 +172,8 @@ Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total pl
 - **Phase 1** — Workspace bootstrap (`chain new` + Anchor + frontend variants). ✅
 - **Phase 2** — Incremental scaffolding (program/instruction/account/event/error + `chain doctor --fix-markers`). ✅
 - **Phase 3** — Runtime orchestration (`chain build`, `chain serve`, Surfpool/test-validator, watcher, Codama, ratatui TUI). ✅
-- **Phase 4** — Codegen & frontend hooks. ⏳ next
-- **Phase 5** — Recipes (CRUD, SPL token, Metaplex NFT). 📋
+- **Phase 4** — Codegen & frontend hooks. ✅
+- **Phase 5** — Recipes (CRUD, SPL token, Metaplex NFT). ⏳ next
 - **Phase 5.5** — Onboarding layer (`init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, actionable errors) — see [ADR-0005](docs/adr/ADR-0005-beginner-onboarding.md). 📋
 - **Phase 8** — Distribution & docs (cuts v1.0). 📋
 - **Phase 6** — Plugin system. 🔮 post-v1.0

@@ -1,0 +1,6 @@
+---
+source: tests/codegen_codama.rs
+assertion_line: 45
+expression: rendered
+---
+I/O error at <workspace>/codama.json: workspace directory does not exist

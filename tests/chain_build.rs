@@ -175,8 +175,9 @@ fn chain_build_headless_runs_anchor_then_codama_in_workspace_root_and_emits_ndjs
     );
     assert_eq!(
         std::fs::read_to_string(&pnpm_args_file).unwrap().trim(),
-        "exec codama run"
+        "exec codama run --all --config codama.json"
     );
+    assert!(ws.join("codama.json").exists());
 
     let events = parse_ndjson(&out.stdout);
     let names: Vec<_> = events

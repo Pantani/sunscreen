@@ -28,11 +28,19 @@ fn generate_group_exports_idl_hooks_and_clients_command_by_command() {
     let exported_idl_json: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&exported_idl).unwrap())
             .expect("exported idl json");
-    assert_eq!(exported_idl_json["metadata"]["name"], "generate_walk");
-    assert_eq!(
-        exported_idl_json["instructions"][0]["name"],
-        "initializeVault"
+    assert!(
+        exported_idl_json["metadata"]["name"].is_string(),
+        "exported IDL should include metadata.name: {exported_idl_json:#?}"
     );
+    assert_eq!(exported_idl_json["metadata"]["name"], "generate_walk");
+    let instructions = exported_idl_json["instructions"]
+        .as_array()
+        .expect("exported IDL instructions should be an array");
+    assert!(
+        !instructions.is_empty(),
+        "exported IDL instructions should not be empty"
+    );
+    assert_eq!(instructions[0]["name"], "initializeVault");
 
     let mut hooks = env.sunscreen_in(&workspace);
     hooks.args(["--json", "generate", "frontend-hooks"]);

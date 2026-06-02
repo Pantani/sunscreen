@@ -43,7 +43,7 @@ impl CliEnv {
             .env("SUNSCREEN_FAKE_LOG", &self.fake_log)
             .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
             .env("NO_COLOR", "1")
-            .env("PATH", self.path_with_fake_bin());
+            .env("PATH", self.fake_only_path());
         cmd
     }
 
@@ -53,10 +53,14 @@ impl CliEnv {
         cmd
     }
 
-    pub fn sunscreen_fake_only(&self) -> Command {
+    pub fn sunscreen_with_host_path(&self) -> Command {
         let mut cmd = self.sunscreen();
-        cmd.env("PATH", self.fake_only_path());
+        cmd.env("PATH", self.path_with_fake_bin());
         cmd
+    }
+
+    pub fn sunscreen_fake_only(&self) -> Command {
+        self.sunscreen()
     }
 
     pub fn sunscreen_fake_only_in(&self, cwd: &Path) -> Command {

@@ -243,18 +243,52 @@ flowchart LR
 <p>Avoid screenshots. Mermaid renders cleanly in dark and light, scales, and stays editable.</p>
 <h2 id="admonitions"><a class="header" href="#admonitions">Admonitions</a></h2>
 <p>Use sparingly. They draw attention; over-use teaches readers to skip them.</p>
-<pre><code>::: tip
-For when there's a non-obvious helpful shortcut.
-:::
-
-::: warning
-For when something can damage state or burn money.
-:::
-
-::: danger
-For irreversible operations.
-:::
+<pre><code>```admonish tipFor when there's a non-obvious helpful shortcut.
 </code></pre>
+<div id="admonition-error-rendering-admonishment" class="admonition admonish-bug" role="note" aria-labelledby="admonition-error-rendering-admonishment-title">
+<div class="admonition-title">
+<div id="admonition-error-rendering-admonishment-title">
+<p>Error rendering admonishment</p>
+</div>
+<a class="admonition-anchor-link" href="#admonition-error-rendering-admonishment"></a>
+</div>
+<div>
+<p>Failed with:</p>
+<pre><code class="language-log">TOML parsing error: TOML parse error at line 1, column 17
+  |
+1 | config = { when something can damage state or burn money. }
+  |                 ^
+expected `.`, `=`
+
+</code></pre>
+<p>Original markdown input:</p>
+<pre><code class="language-markdown">```admonish warningFor when something can damage state or burn money.
+```
+</code></pre>
+</div>
+</div>
+<div id="admonition-error-rendering-admonishment-1" class="admonition admonish-bug" role="note" aria-labelledby="admonition-error-rendering-admonishment-1-title">
+<div class="admonition-title">
+<div id="admonition-error-rendering-admonishment-1-title">
+<p>Error rendering admonishment</p>
+</div>
+<a class="admonition-anchor-link" href="#admonition-error-rendering-admonishment-1"></a>
+</div>
+<div>
+<p>Failed with:</p>
+<pre><code class="language-log">TOML parsing error: TOML parse error at line 1, column 25
+  |
+1 | config = { irreversible operations. }
+  |                         ^
+expected `.`, `=`
+
+</code></pre>
+<p>Original markdown input:</p>
+<pre><code class="language-markdown">```admonish dangerFor irreversible operations.
+``````
+</code></pre>
+</div>
+</div>
 <h2 id="links"><a class="header" href="#links">Links</a></h2>
 <ul>
 <li>Link to other docs on first mention of a concept: <code>[Marker protocol](../reference/markers.md)</code>.</li>

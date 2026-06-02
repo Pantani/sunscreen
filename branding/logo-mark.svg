@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- sunscreen mark: sun rising over horizon -->
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FBD38D"/>
+      <stop offset="100%" stop-color="#F4A340"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="14" fill="url(#sun)"/>
+  <path d="M6 46 H58" stroke="#F4A340" stroke-width="3.5" stroke-linecap="round"/>
+  <g stroke="#FBD38D" stroke-width="2.6" stroke-linecap="round">
+    <path d="M32 6 V12"/>
+    <path d="M11 14 L15 18"/>
+    <path d="M53 14 L49 18"/>
+    <path d="M2 32 H8"/>
+    <path d="M56 32 H62"/>
+  </g>
+</svg>

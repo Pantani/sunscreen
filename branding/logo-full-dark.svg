@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" fill="none">
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FBD38D"/>
+      <stop offset="100%" stop-color="#F4A340"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(12,12)">
+    <circle cx="28" cy="28" r="12" fill="url(#sun)"/>
+    <path d="M4 42 H52" stroke="#F4A340" stroke-width="3" stroke-linecap="round"/>
+    <g stroke="#FBD38D" stroke-width="2.2" stroke-linecap="round">
+      <path d="M28 4 V10"/>
+      <path d="M10 12 L14 16"/>
+      <path d="M46 12 L42 16"/>
+      <path d="M0 28 H6"/>
+      <path d="M50 28 H56"/>
+    </g>
+  </g>
+  <text x="88" y="52" font-family="Inter, -apple-system, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#E8E6E1" letter-spacing="-1.1">sunscreen</text>
+</svg>

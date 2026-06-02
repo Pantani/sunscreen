@@ -5,9 +5,14 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use owo_colors::OwoColorize;
 
 use crate::cli::chain::{self, ChainCmd};
 use crate::cli::generate::{self, GenerateCmd};
+#[cfg(feature = "onboarding")]
+use crate::cli::onboarding::{
+    self, DeployArgs, ExamplesCmd, InitArgs, LearnArgs, QuickstartArgs, WalletCmd,
+};
 use crate::cli::scaffold::{self, ScaffoldCmd};
 use crate::cli::{doctor, version};
 use crate::error::SunscreenError;
@@ -67,6 +72,30 @@ pub enum Command {
         #[command(subcommand)]
         cmd: GenerateCmd,
     },
+    #[cfg(feature = "onboarding")]
+    /// Beginner-friendly workspace wizard.
+    Init(InitArgs),
+    #[cfg(feature = "onboarding")]
+    /// Browse and copy embedded starter examples.
+    Examples {
+        #[command(subcommand)]
+        cmd: ExamplesCmd,
+    },
+    #[cfg(feature = "onboarding")]
+    /// Create a complete starter dApp from a recipe.
+    Quickstart(QuickstartArgs),
+    #[cfg(feature = "onboarding")]
+    /// Manage local Solana wallets.
+    Wallet {
+        #[command(subcommand)]
+        cmd: WalletCmd,
+    },
+    #[cfg(feature = "onboarding")]
+    /// Deploy programs to a Solana cluster.
+    Deploy(DeployArgs),
+    #[cfg(feature = "onboarding")]
+    /// Read embedded Solana/Anchor learning topics.
+    Learn(LearnArgs),
     /// Application lifecycle commands (stub).
     App,
 }
@@ -81,10 +110,17 @@ pub fn execute() -> i32 {
                 let payload = serde_json::json!({
                     "error": err.to_string(),
                     "kind": err.kind_str(),
+                    "next_step": err.next_step(),
+                    "exit_code": err.exit_code(),
                 });
                 eprintln!("{payload}");
             } else {
                 eprintln!("error: {err}");
+                if let Some(next_step) = err.next_step().filter(|value| !value.is_empty()) {
+                    if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+                        eprintln!("{} {next_step}", "try:".cyan());
+                    }
+                }
             }
             err.exit_code()
         }
@@ -104,6 +140,18 @@ fn dispatch(cli: &Cli) -> Result<i32, SunscreenError> {
         Command::Scaffold { cmd } => scaffold::run(cmd, cli.json),
         Command::Chain { cmd } => chain::run(cmd, cli.json),
         Command::Generate { cmd } => generate::run(cmd, cli.json),
+        #[cfg(feature = "onboarding")]
+        Command::Init(args) => onboarding::run_init(args, cli.json),
+        #[cfg(feature = "onboarding")]
+        Command::Examples { cmd } => onboarding::run_examples(cmd, cli.json),
+        #[cfg(feature = "onboarding")]
+        Command::Quickstart(args) => onboarding::run_quickstart(args, cli.json),
+        #[cfg(feature = "onboarding")]
+        Command::Wallet { cmd } => onboarding::run_wallet(cmd, cli.json),
+        #[cfg(feature = "onboarding")]
+        Command::Deploy(args) => onboarding::run_deploy(args, cli.json),
+        #[cfg(feature = "onboarding")]
+        Command::Learn(args) => onboarding::run_learn(args, cli.json),
         Command::App => {
             eprintln!("app: TODO");
             Ok(0)

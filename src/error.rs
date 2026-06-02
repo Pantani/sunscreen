@@ -21,6 +21,14 @@ pub enum SunscreenError {
     #[error("workspace not found: {0}")]
     WorkspaceMissing(String),
 
+    /// A target path already exists and sunscreen cannot safely overwrite it.
+    #[error("path conflict: {0}")]
+    PathConflict(String),
+
+    /// Network or RPC operation failed after the user explicitly requested it.
+    #[error("network operation failed: {0}")]
+    Network(String),
+
     /// An existing instruction file has no recognizable auto-generated markers,
     /// so sunscreen cannot safely re-apply the scaffold (the file may have been
     /// hand-written or its markers removed/corrupted).
@@ -44,6 +52,10 @@ impl SunscreenError {
     /// - `2` toolchain/precondition missing
     /// - `3` config invalid
     /// - `4` user input invalid
+    /// - `5` workspace missing
+    /// - `6` instruction drift
+    /// - `7` path conflict
+    /// - `8` network / RPC failure
     #[must_use]
     pub fn exit_code(&self) -> i32 {
         match self {
@@ -53,6 +65,8 @@ impl SunscreenError {
             SunscreenError::UserInput(_) => 4,
             SunscreenError::WorkspaceMissing(_) => 5,
             SunscreenError::InstructionDrift { .. } => 6,
+            SunscreenError::PathConflict(_) => 7,
+            SunscreenError::Network(_) => 8,
         }
     }
 
@@ -65,7 +79,32 @@ impl SunscreenError {
             SunscreenError::UserInput(_) => "user_input",
             SunscreenError::WorkspaceMissing(_) => "workspace_missing",
             SunscreenError::InstructionDrift { .. } => "instruction_drift",
+            SunscreenError::PathConflict(_) => "path_conflict",
+            SunscreenError::Network(_) => "network",
             SunscreenError::Other(_) => "other",
         }
+    }
+
+    /// Human- and agent-readable remediation hint.
+    #[must_use]
+    pub fn next_step(&self) -> Option<&'static str> {
+        Some(match self {
+            SunscreenError::ConfigInvalid(_) => {
+                "open sunscreen.yml, fix the reported field, then run `sunscreen doctor --json`"
+            }
+            SunscreenError::ToolchainMissing(_) => "run `sunscreen doctor` to see install hints",
+            SunscreenError::UserInput(_) => "run the same command with `--help`",
+            SunscreenError::WorkspaceMissing(_) => {
+                "run `sunscreen init <name>` or change into a sunscreen workspace"
+            }
+            SunscreenError::PathConflict(_) => {
+                "choose a different output path or remove the existing file/directory"
+            }
+            SunscreenError::Network(_) => {
+                "check your RPC URL, wallet balance, and network connectivity, then retry"
+            }
+            SunscreenError::InstructionDrift { .. } => "run `sunscreen chain doctor --fix-markers`",
+            SunscreenError::Other(_) => "rerun with `-v` and inspect the error context",
+        })
     }
 }

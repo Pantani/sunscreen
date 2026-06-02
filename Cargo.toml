@@ -18,6 +18,10 @@ path = "src/main.rs"
 name = "sunscreen"
 path = "src/lib.rs"
 
+[features]
+default = ["onboarding"]
+onboarding = []
+
 [[test]]
 name = "render_basic"
 path = "tests/golden/render_basic.rs"

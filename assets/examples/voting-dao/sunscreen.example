@@ -1,0 +1,3 @@
+kind: example
+name: voting-dao
+recipe: dao

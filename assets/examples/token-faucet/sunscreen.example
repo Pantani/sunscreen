@@ -1,0 +1,3 @@
+kind: example
+name: token-faucet
+recipe: token

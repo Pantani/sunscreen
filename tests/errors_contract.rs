@@ -46,6 +46,7 @@ fn expected_contract(err: &SunscreenError) -> (i32, &'static str) {
     }
 }
 
+#[cfg(feature = "onboarding")]
 #[test]
 fn json_error_schema_preserves_legacy_fields_and_adds_next_step() {
     let out = Command::new(sunscreen_bin())

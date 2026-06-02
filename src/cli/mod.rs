@@ -1,5 +1,6 @@
 //! Command-line interface surface for sunscreen.
 
+pub mod app;
 pub mod chain;
 pub mod doctor;
 pub mod generate;

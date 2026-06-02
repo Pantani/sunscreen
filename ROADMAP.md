@@ -276,6 +276,8 @@ Shipped via PR #7.
 
 Deferred to preserve a tight v1.0. Design intent unchanged from ADR-0001 §10.8: gRPC (tonic) and stdio transports, reference plugins for spl-token-2022 and a Yellowstone indexer. Will be revisited once the v1.0 surface stabilises.
 
+**Pre-Phase-6 lifecycle MVP shipped.** `sunscreen app {install,uninstall,list,describe,update}` now manages declarative plugin entries in `plugins[]` of `sunscreen.yml`, with idempotent install, `--dry-run`, basename normalization (`github.com/org/foo.git` → `foo`), semver validation, and stable `status: "declared"` JSON output (see [`docs/reference/app.md`](docs/reference/app.md)). The plugin **runtime** itself — gRPC/stdio transports, marketplace, mandatory remote download, sandboxing, dynamic command registration — remains explicitly post-v1.0 and out of scope of this MVP.
+
 ---
 
 ### Phase 7 — Pinocchio Support 🔮 (post-v1.0)

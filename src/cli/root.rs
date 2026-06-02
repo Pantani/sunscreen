@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use owo_colors::OwoColorize;
 
+use crate::cli::app::{self, AppCmd};
 use crate::cli::chain::{self, ChainCmd};
 use crate::cli::generate::{self, GenerateCmd};
 #[cfg(feature = "onboarding")]
@@ -96,8 +97,11 @@ pub enum Command {
     #[cfg(feature = "onboarding")]
     /// Read embedded Solana/Anchor learning topics.
     Learn(LearnArgs),
-    /// Application lifecycle commands (stub).
-    App,
+    /// Declarative lifecycle for application plugins in `sunscreen.yml`.
+    App {
+        #[command(subcommand)]
+        cmd: AppCmd,
+    },
 }
 
 /// Entry point invoked from `main`. Returns a process exit code.
@@ -152,9 +156,6 @@ fn dispatch(cli: &Cli) -> Result<i32, SunscreenError> {
         Command::Deploy(args) => onboarding::run_deploy(args, cli.json),
         #[cfg(feature = "onboarding")]
         Command::Learn(args) => onboarding::run_learn(args, cli.json),
-        Command::App => {
-            eprintln!("app: TODO");
-            Ok(0)
-        }
+        Command::App { cmd } => app::run(cmd, cli.json),
     }
 }

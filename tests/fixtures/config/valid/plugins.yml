@@ -1,0 +1,13 @@
+version: 1
+project:
+  name: with-plugins
+  framework: anchor
+programs:
+  - name: with-plugins
+    path: programs/with-plugins
+plugins:
+  - source: github.com/org/foo.git
+    version: 1.2.3
+  - source: github.com/org/bar.git
+    version: v0.1.0
+  - source: local/baz

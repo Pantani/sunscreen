@@ -1,3 +1,5 @@
+#![cfg(feature = "onboarding")]
+
 mod support;
 
 use support::CliEnv;

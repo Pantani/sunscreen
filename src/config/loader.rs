@@ -472,6 +472,48 @@ mod tests {
     }
 
     #[test]
+    fn parse_valid_plugins_fixture() {
+        let cfg = parse_file("valid/plugins.yml").expect("plugins parses");
+        cfg.validate()
+            .expect("plugins fixture is semantically valid");
+        assert_eq!(cfg.plugins.len(), 3);
+        assert_eq!(cfg.plugins[0].source, "github.com/org/foo.git");
+        assert_eq!(cfg.plugins[0].version.as_deref(), Some("1.2.3"));
+        assert_eq!(cfg.plugins[1].version.as_deref(), Some("v0.1.0"));
+        assert!(cfg.plugins[2].version.is_none());
+    }
+
+    #[test]
+    fn invalid_plugin_empty_source_is_rejected() {
+        let cfg = parse_file("invalid/plugin_empty_source.yml")
+            .expect("structurally parses (validate is separate)");
+        match cfg.validate() {
+            Err(crate::config::schema::ValidationError::EmptyPluginSource) => {}
+            other => panic!("expected EmptyPluginSource, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_plugin_bad_version_is_rejected() {
+        let cfg = parse_file("invalid/plugin_bad_version.yml")
+            .expect("structurally parses (validate is separate)");
+        match cfg.validate() {
+            Err(crate::config::schema::ValidationError::InvalidPluginVersion { .. }) => {}
+            other => panic!("expected InvalidPluginVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_plugin_duplicate_source_is_rejected() {
+        let cfg = parse_file("invalid/plugin_duplicate_source.yml")
+            .expect("structurally parses (validate is separate)");
+        match cfg.validate() {
+            Err(crate::config::schema::ValidationError::DuplicatePluginSource { .. }) => {}
+            other => panic!("expected DuplicatePluginSource, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn toolchain_required_is_btreemap() {
         // Compile-time guard for downstream consumers (toolchain-detector).
         let cfg = parse_file("valid/full.yml").expect("full parses");

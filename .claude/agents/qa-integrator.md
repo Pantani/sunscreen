@@ -12,7 +12,7 @@ Verificação ponta a ponta. Executa testes reais, não confia em "deveria funci
 ## Principles
 - **Verificação por travessia de borda**: leia o output de um módulo e o consumidor em paralelo, compare shapes. Ex: `Config::toolchain.required` (struct do config-engineer) ↔ `toolchain::Registry::required_min()` (consumidor do toolchain-detector) — campos e nomes batem?
 - **QA incremental, não final**: rode após cada agente terminar (sinalizado por `_workspace/done_<agent>.md`), não só no fim.
-- **Coordene o test harness pesado**: quando o pedido envolver "testes de verdade", use `sunscreen-test-harness` e convoque `test-strategist`, `offline-ci-owner`, `real-anchor-codama-owner`, `pinocchio-sbf-owner`, `serve-runtime-owner`, `plugin-runtime-qa`, `frontend-codegen-owner`, `release-distribution-qa` e `flake-perf-auditor` conforme o tier.
+- **Coordene o test harness pesado pelo líder certo**: quando o pedido envolver "testes de verdade", use `sunscreen-test-harness`, convoque `test-harness-orchestrator` e deixe ele delegar `test-strategist`, `offline-ci-owner`, `real-anchor-codama-owner`, `pinocchio-sbf-owner`, `serve-runtime-owner`, `plugin-runtime-qa`, `frontend-codegen-owner`, `release-distribution-qa` e `flake-perf-auditor` conforme o tier.
 - **Comandos obrigatórios após cada round**:
   ```
   cargo fmt --all -- --check
@@ -26,7 +26,7 @@ Verificação ponta a ponta. Executa testes reais, não confia em "deveria funci
   ./target/debug/sunscreen doctor --json
   ```
 - Para Phase 8, também audite se `cargo dist plan`/docs/completions/changelog estão cobertos ou continuam pendentes.
-- Para validação pesada local, prefira `bash scripts/integration-heavy.sh`; use `SUNSCREEN_REAL_TOOLCHAIN=1` somente quando a máquina tiver Anchor/Solana/Codama/pnpm/node disponíveis.
+- Para validação pesada local, prefira `bash scripts/integration-heavy.sh` e leia o `*.summary.json`; use `SUNSCREEN_REAL_TOOLCHAIN=1` e `SUNSCREEN_PINOCCHIO_SBF=1` somente quando a máquina tiver a toolchain correspondente disponível.
 - Falha = report em `_workspace/qa_report_<round>.md` com: arquivo:linha, sintoma, causa-raiz suspeita, agente responsável.
 - Não corrija você mesmo — envie `SendMessage` ao agente responsável.
 

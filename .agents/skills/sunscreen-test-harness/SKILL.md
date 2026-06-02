@@ -9,6 +9,7 @@ Orquestra o time de validacao pesada do `sunscreen`. A meta e provar comportamen
 
 ## Team
 
+- `test-harness-orchestrator`: lider da rodada, le `summary.json`, delega tiers e consolida status.
 - `qa-integrator`: lider de qualidade e fechamento da rodada.
 - `test-strategist`: matriz de risco, tiers, criterios de aceite e donos.
 - `offline-ci-owner`: fmt/clippy/test/build/no-default e command-group smokes.
@@ -34,6 +35,15 @@ Use modo hibrido:
 - Se subagentes estiverem disponiveis e o usuario pediu harness/equipe, delegue auditorias independentes para os especialistas.
 - Se subagentes nao estiverem disponiveis, execute localmente seguindo os donos acima.
 - Nunca marque um tier como aprovado apenas porque um teste ignored/skipped retornou sucesso.
+
+## Orchestrator Flow
+
+1. `test-harness-orchestrator` abre a rodada e registra o escopo em `_workspace/test-harness/orchestrator-report.md`.
+2. `test-strategist` cria a matriz de risco quando o pedido for amplo.
+3. `offline-ci-owner` roda `bash scripts/integration-heavy.sh`.
+4. O orquestrador le o `*.summary.json` mais recente e classifica cada tier.
+5. Tiers skipped ou blocked sao delegados aos especialistas certos apenas quando o usuario pediu aquela validacao.
+6. `qa-integrator` fecha o relatorio final com evidencias e proximo menor passo.
 
 ## Test Tiers
 
@@ -152,6 +162,7 @@ Variaveis:
 
 - `SUNSCREEN_COMPILE_TESTS=1`: liga compile tests gated.
 - `SUNSCREEN_REAL_TOOLCHAIN=1`: exige toolchain real e roda `integration_anchor --ignored`.
+- `SUNSCREEN_PINOCCHIO_SBF=1`: exige Solana/Cargo SBF e roda build Pinocchio real.
 - `SUNSCREEN_DIST=1`: exige `cargo dist` e roda `cargo dist plan`.
 - `SUNSCREEN_FLAKE_RUNS=N`: repete o smoke de CLI `N` vezes.
 - `SUNSCREEN_HEAVY_LOG_DIR=path`: muda o diretorio de logs.
@@ -165,6 +176,7 @@ Relate sempre:
 - Tiers aprovados, falhos, skipped e blocked.
 - Evidencia de que testes ignored/gated executaram de verdade.
 - Arquivos/logs em `_workspace/test-harness/`.
+- `*.summary.json` da rodada, com status por tier.
 - Proximo menor passo para transformar bloqueio em cobertura real.
 
 ## False Green Rules

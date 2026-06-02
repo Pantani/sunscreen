@@ -9,7 +9,7 @@ This project uses a tiered validation model so fast CI stays deterministic while
 | Offline deterministic | fmt, clippy, feature gates, full Rust tests, binary smoke | `bash scripts/integration-heavy.sh` |
 | Generated workspace compile | Cargo-check generated workspaces and scaffolded programs | `SUNSCREEN_COMPILE_TESTS=1 bash scripts/integration-heavy.sh` |
 | Real Anchor/Codama | Anchor/Solana/Codama/pnpm/node against ignored integration tests | `SUNSCREEN_REAL_TOOLCHAIN=1 bash scripts/integration-heavy.sh` |
-| Pinocchio SBF | Real Solana SBF build for Pinocchio workspaces | manual tier in `.claude/skills/sunscreen-test-harness/SKILL.md` |
+| Pinocchio SBF | Real Solana SBF build for Pinocchio workspaces | `SUNSCREEN_PINOCCHIO_SBF=1 bash scripts/integration-heavy.sh` |
 | Serve runtime | Surfpool or `solana-test-validator`, watcher, NDJSON events, teardown | manual tier in `.claude/skills/sunscreen-test-harness/SKILL.md` |
 | Plugin runtime | Lifecycle, sandbox, stdio JSON-RPC, gRPC contract, marketplace | `cargo test --locked --test app_lifecycle -- --nocapture` |
 | Release distribution | Release binary and `cargo dist plan` | `SUNSCREEN_DIST=1 bash scripts/integration-heavy.sh` |
@@ -21,11 +21,21 @@ Ignored or gated tests do not count as real coverage when they skip because a to
 
 The fake-toolchain integration tests remain valuable: they prove CLI contracts, JSON/NDJSON shapes, sandbox behavior, plugin runtime boundaries, and command-group flows without depending on external network or local Solana installs. They do not replace the real toolchain gate.
 
+## Orchestrator Output
+
+Every `scripts/integration-heavy.sh` run writes:
+
+- `heavy-<timestamp>.log` with the full command stream.
+- `heavy-<timestamp>.summary.json` with top-level status, exit code, log path, and per-tier statuses.
+
+The `test-harness-orchestrator` must read the newest summary before reporting. This keeps the team honest about which tiers passed, skipped, failed, or were blocked by missing tools.
+
 ## Harness Team
 
 The durable harness lives in:
 
 - `.claude/agents/test-strategist.md`
+- `.claude/agents/test-harness-orchestrator.md`
 - `.claude/agents/offline-ci-owner.md`
 - `.claude/agents/real-anchor-codama-owner.md`
 - `.claude/agents/pinocchio-sbf-owner.md`

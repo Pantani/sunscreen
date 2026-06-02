@@ -308,6 +308,7 @@ Operational details are documented in [`docs/reference/pinocchio.md`](docs/refer
 **Deliverables.**
 - [x] Ignite-style Rust CLI integration harness — builds/uses the real `sunscreen` binary, isolates HOME/PATH, provides fake Solana/Anchor/Codama toolchain scripts, and runs command-group smoke suites for `chain`, `scaffold`, `generate`, onboarding commands, plugin runtime, and Pinocchio guardrails.
 - [x] CI hardening for v1.0 QA — explicit command-group integration smoke job, locked Cargo commands, no-default-features build check, workflow concurrency, permissions, and timeouts.
+- [x] Heavy integration test harness team — `sunscreen-test-harness` plus an explicit `test-harness-orchestrator`, specialist agents for offline CI, real Anchor/Codama, real Pinocchio SBF, serve runtime, plugin runtime, frontend typecheck, release distribution, and flake/perf validation, and a runner that emits per-tier summary JSON.
 - [x] `cargo-dist` baseline for Linux/macOS — `Cargo.toml` metadata + release workflow cover linux/amd64, linux/arm64, darwin/amd64, darwin/arm64.
 - [x] `v0.1.0` preview release pipeline — tag-driven `cargo dist plan`, per-target Linux/macOS archives, global shell installer/checksum artifacts, and GitHub Release publishing from versioned notes.
 - [x] `CHANGELOG.md` populated with a preview-line SemVer policy and `v0.1.0` release notes.

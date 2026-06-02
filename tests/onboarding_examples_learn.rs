@@ -1,3 +1,5 @@
+#![cfg(feature = "onboarding")]
+
 use std::process::Command;
 
 fn sunscreen_bin() -> &'static str {

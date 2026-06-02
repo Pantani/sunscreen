@@ -1,3 +1,5 @@
+#![cfg(feature = "onboarding")]
+
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
 #[cfg(unix)]

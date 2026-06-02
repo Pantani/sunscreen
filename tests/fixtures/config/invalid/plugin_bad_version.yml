@@ -1,0 +1,10 @@
+version: 1
+project:
+  name: bad
+  framework: anchor
+programs:
+  - name: bad
+    path: programs/bad
+plugins:
+  - source: github.com/org/foo.git
+    version: latest

@@ -1,0 +1,12 @@
+version: 1
+project:
+  name: bad
+  framework: anchor
+programs:
+  - name: bad
+    path: programs/bad
+plugins:
+  - source: github.com/org/foo.git
+    version: 1.0.0
+  - source: github.com/org/foo.git
+    version: 2.0.0

@@ -143,7 +143,7 @@ Most scaffold commands also support `--dry-run` and `--json`, so you can preview
 | `wallet {new,list,airdrop,balance,set-default}` | ✅ | Manage local Solana wallets and devnet balances |
 | `deploy <cluster>` | ✅ | Plan or run Anchor deploys with safety gates |
 | `learn [topic]` | ✅ | Render embedded learning topics offline |
-| `app` | 🚧 stub | Application lifecycle commands |
+| `app {install,uninstall,list,describe,update}` | ✅ | Declarative plugin lifecycle in `sunscreen.yml` (MVP — Phase 6 runtime still deferred) |
 
 ---
 

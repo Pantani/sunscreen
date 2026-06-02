@@ -166,6 +166,36 @@ impl Config {
                 });
             }
         }
+        // Plugin semantic validation. Schema v1 only persists `source` +
+        // optional `version`; everything else (runtime, transport, sandbox)
+        // is deferred to Phase 6 and intentionally absent here.
+        let mut seen_sources: std::collections::BTreeSet<String> =
+            std::collections::BTreeSet::new();
+        for plugin in &self.plugins {
+            let trimmed = plugin.source.trim();
+            if trimmed.is_empty() {
+                return Err(ValidationError::EmptyPluginSource);
+            }
+            if let Some(ref v) = plugin.version {
+                let stripped = v.strip_prefix('v').unwrap_or(v);
+                if semver::Version::parse(stripped).is_err() {
+                    return Err(ValidationError::InvalidPluginVersion {
+                        plugin: plugin.source.clone(),
+                        value: v.clone(),
+                    });
+                }
+            }
+            // Duplicate detection uses the trimmed source. We deliberately
+            // do NOT case-fold here: local filesystem paths on Linux and
+            // some case-sensitive Git hosts treat `local/Foo` and
+            // `local/foo` as distinct, and dropping that distinction would
+            // reject legitimate configs.
+            if !seen_sources.insert(trimmed.to_string()) {
+                return Err(ValidationError::DuplicatePluginSource {
+                    plugin: plugin.source.clone(),
+                });
+            }
+        }
         Ok(())
     }
 }
@@ -183,6 +213,12 @@ pub enum ValidationError {
     EmptyProgramName,
     #[error("program {program:?} has empty `path`")]
     EmptyProgramPath { program: String },
+    #[error("plugin entry has empty `source`")]
+    EmptyPluginSource,
+    #[error("plugin {plugin:?} has invalid `version`: {value:?} (expected semver, optionally prefixed with `v`)")]
+    InvalidPluginVersion { plugin: String, value: String },
+    #[error("duplicate plugin source {plugin:?}")]
+    DuplicatePluginSource { plugin: String },
 }
 
 fn is_kebab_case(s: &str) -> bool {
@@ -432,6 +468,69 @@ mod tests {
                 assert_eq!(field, "project.name");
             }
             other => panic!("expected NotKebabCase, got {other:?}"),
+        }
+    }
+
+    fn workspace_skeleton() -> Config {
+        Config::new_for_workspace("ok-name", Framework::Anchor, Frontend::None)
+    }
+
+    #[test]
+    fn validate_accepts_plugin_with_v_prefix() {
+        let mut cfg = workspace_skeleton();
+        cfg.plugins.push(PluginCfg {
+            source: "github.com/org/foo.git".into(),
+            version: Some("v1.2.3".into()),
+        });
+        cfg.plugins.push(PluginCfg {
+            source: "local/bar".into(),
+            version: None,
+        });
+        cfg.validate().expect("valid plugins");
+    }
+
+    #[test]
+    fn validate_rejects_empty_plugin_source() {
+        let mut cfg = workspace_skeleton();
+        cfg.plugins.push(PluginCfg {
+            source: "   ".into(),
+            version: None,
+        });
+        assert_eq!(cfg.validate(), Err(ValidationError::EmptyPluginSource));
+    }
+
+    #[test]
+    fn validate_rejects_invalid_plugin_version() {
+        let mut cfg = workspace_skeleton();
+        cfg.plugins.push(PluginCfg {
+            source: "foo".into(),
+            version: Some("latest".into()),
+        });
+        match cfg.validate() {
+            Err(ValidationError::InvalidPluginVersion { plugin, value }) => {
+                assert_eq!(plugin, "foo");
+                assert_eq!(value, "latest");
+            }
+            other => panic!("expected InvalidPluginVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_plugin_sources() {
+        let mut cfg = workspace_skeleton();
+        cfg.plugins.push(PluginCfg {
+            source: "github.com/org/foo.git".into(),
+            version: None,
+        });
+        cfg.plugins.push(PluginCfg {
+            source: "github.com/org/foo.git".into(),
+            version: Some("1.0.0".into()),
+        });
+        match cfg.validate() {
+            Err(ValidationError::DuplicatePluginSource { plugin }) => {
+                assert_eq!(plugin, "github.com/org/foo.git");
+            }
+            other => panic!("expected DuplicatePluginSource, got {other:?}"),
         }
     }
 

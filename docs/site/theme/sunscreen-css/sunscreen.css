@@ -4,8 +4,8 @@
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --content-max-width: 760px;
-  --sidebar-width: 300px;
+  --content-max-width: 820px;
+  --sidebar-width: 320px;
 
   --radius-sm: 5px;
   --radius-md: 8px;
@@ -15,8 +15,8 @@
 html, body {
   font-family: var(--font-sans);
   font-feature-settings: "ss01", "cv11";
-  font-size: 16.5px;
-  line-height: 1.7;
+  font-size: 18px;
+  line-height: 1.72;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -46,7 +46,7 @@ body {
 }
 
 .content h1 {
-  font-size: 2.6rem;
+  font-size: 2.8rem;
   line-height: 1.12;
   letter-spacing: -0.025em;
   font-weight: 700;
@@ -55,7 +55,7 @@ body {
 }
 
 .content h2 {
-  font-size: 1.7rem;
+  font-size: 1.85rem;
   line-height: 1.25;
   letter-spacing: -0.018em;
   margin-top: 3.5rem;
@@ -65,7 +65,7 @@ body {
 }
 
 .content h3 {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   line-height: 1.35;
   letter-spacing: -0.01em;
   margin-top: 2.4rem;
@@ -73,7 +73,7 @@ body {
 }
 
 .content h4 {
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -146,7 +146,7 @@ body {
   background: transparent;
   border: none;
   padding: 0;
-  font-size: 0.86rem;
+  font-size: 0.92rem;
   line-height: 1.65;
   color: var(--fg);
 }
@@ -168,7 +168,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   margin: 1.6rem 0;
-  font-size: 0.93rem;
+  font-size: 0.98rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -194,22 +194,22 @@ body {
 
 /* Sidebar — quiet, sunken, editorial */
 .sidebar {
-  font-size: 0.91rem;
+  font-size: 1rem;
   border-right: 1px solid var(--border);
   width: var(--sidebar-width);
   background: var(--sidebar-bg);
 }
 .sidebar .sidebar-scrollbox {
-  padding: 1.2rem 0.8rem 2rem;
+  padding: 1.4rem 0.9rem 2rem;
 }
 .sidebar .chapter li.chapter-item {
   padding: 0;
-  margin: 0.05rem 0;
-  line-height: 1.45;
+  margin: 0.08rem 0;
+  line-height: 1.5;
 }
 .sidebar .chapter li.chapter-item a {
   color: var(--fg-muted);
-  padding: 0.32rem 0.7rem;
+  padding: 0.42rem 0.8rem;
   border-radius: var(--radius-sm);
   transition: background 90ms ease, color 90ms ease;
   border-bottom: none;
@@ -230,7 +230,7 @@ body {
 .sidebar .part-title {
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   color: var(--fg-faint);
   font-weight: 600;
   padding: 1.4rem 0.7rem 0.5rem;
@@ -374,8 +374,9 @@ input:focus-visible {
 
 /* Narrow viewport tweaks */
 @media (max-width: 768px) {
-  html, body { font-size: 16px; }
-  .content h1 { font-size: 2.1rem; }
-  .content h2 { font-size: 1.45rem; }
+  html, body { font-size: 17px; }
+  .content h1 { font-size: 2.2rem; }
+  .content h2 { font-size: 1.55rem; }
   .content main { padding-top: 2rem; }
+  .sidebar { font-size: 0.98rem; }
 }

@@ -23,9 +23,25 @@ Today, `sunscreen` can:
 - Manage local plugins, run plugin commands/hooks, list the reference marketplace, and route plugin-backed `scaffold <noun>` commands.
 - Bootstrap Pinocchio programs with `chain new --framework pinocchio` and build them through `cargo build-sbf`.
 
-Remaining v1.0 work is published docs, shell completions, Windows/Homebrew distribution, and release-channel polish. Remote plugin artifact download and richer Pinocchio-native scaffold/codegen flows remain follow-up work.
+Remaining v1.0 work is docs publication polish, shell completions, Windows/Homebrew distribution, and release-channel polish. Remote plugin artifact download and richer Pinocchio-native scaffold/codegen flows remain follow-up work.
 
-The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md). CLI conventions, marker protocol, recipes, codegen, plugins, Pinocchio, and the beginner-onboarding surface live in [`docs/adr/`](docs/adr/) and [`docs/reference/`](docs/reference/).
+The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md). For the available user and contributor docs, start with the documentation map below.
+
+---
+
+## Documentation
+
+The docs site source lives in [`docs/site/`](docs/site/) and is published from `main` to [Pantani.github.io/sunscreen](https://Pantani.github.io/sunscreen/) by [`.github/workflows/docs.yml`](.github/workflows/docs.yml). Use this README as the project overview; use the docs site for guided learning, task walkthroughs, and searchable reference.
+
+| Track | Start here | Use it for |
+|-------|------------|------------|
+| Learn | [`What is sunscreen?`](docs/site/src/learn/what-is-sunscreen.md), [`Installing`](docs/site/src/learn/installing.md), [`Your first workspace`](docs/site/src/learn/first-workspace.md), [`Your first NFT`](docs/site/src/learn/your-first-nft.md) | First-time setup and beginner-friendly Solana/Rust context |
+| Guides | [`Scaffolding a CRUD resource`](docs/site/src/guides/scaffolding-crud.md), [`The dev loop with chain serve`](docs/site/src/guides/dev-loop.md), [`Working with plugins`](docs/site/src/guides/plugins.md), [`Troubleshooting`](docs/site/src/guides/troubleshooting.md) | Task-oriented walkthroughs with concrete outcomes |
+| Reference | [`CLI overview`](docs/site/src/reference/cli/index.md), [`sunscreen.yml` schema](docs/site/src/reference/config/schema.md), [`Recipes`](docs/site/src/reference/recipes/index.md), [`Plugin protocol`](docs/site/src/reference/plugin-protocol/index.md), [`Errors & exit codes`](docs/site/src/reference/errors.md) | Command syntax, flags, events, config, recipes, and machine-readable contracts |
+| Concepts | [`Architecture`](docs/site/src/concepts/architecture.md), [`Workspace model`](docs/site/src/concepts/workspace-model.md), [`Build pipeline`](docs/site/src/concepts/build-pipeline.md), [`Plugin runtime`](docs/site/src/concepts/plugin-runtime.md), [`Anchor vs Pinocchio`](docs/site/src/concepts/framework-pinocchio-vs-anchor.md) | The mental model behind the CLI |
+| Contributing | [`Roadmap`](docs/site/src/contributing/roadmap.md), [`Architecture decisions`](docs/site/src/contributing/adrs.md), [`Developer setup`](docs/site/src/contributing/dev-setup.md), [`Documentation style`](docs/site/src/contributing/docs-style.md) | Project status, ADRs, local development, and docs conventions |
+
+Operational repo references are also kept in [`docs/reference/`](docs/reference/): [`markers`](docs/reference/markers.md), [`codegen`](docs/reference/codegen.md), [`recipes`](docs/reference/recipes.md), [`onboarding`](docs/reference/onboarding.md), [`app/plugins`](docs/reference/app.md), [`Pinocchio`](docs/reference/pinocchio.md), [`testing`](docs/reference/testing.md), and [`distribution`](docs/reference/distribution.md).
 
 ---
 
@@ -207,9 +223,13 @@ cargo test               # run unit + golden tests
 cargo clippy -- -D warnings
 cargo fmt --check
 cargo bench --bench cold_start
+mdbook build docs/site
+mdbook serve docs/site --open
 bash scripts/integration-heavy.sh
 SUNSCREEN_REAL_TOOLCHAIN=1 bash scripts/integration-heavy.sh
 ```
+
+See [`docs/site/README.md`](docs/site/README.md) for the one-time mdBook toolchain setup.
 
 Project layout:
 
@@ -232,6 +252,7 @@ tests/golden/  # insta snapshot tests for template output
 docs/adr/      # architecture decision records
 proto/         # plugin gRPC contract
 docs/reference/ # operational command/reference docs
+docs/site/     # mdBook documentation site
 ```
 
 ---

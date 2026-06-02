@@ -1,6 +1,6 @@
 ---
 name: sunscreen-orchestrator
-description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, validar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 6", "plugins", "app", "marketplace", "stdio", "gRPC", "Phase 7", "Pinocchio", "Phase 8", "CI", "integration", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
+description: Orquestra o time de implementação e validação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, validar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "testes de verdade", "test harness", "integração pesada", "real toolchain", "Anchor real", "Codama real", "Pinocchio SBF", "serve runtime", "plugin runtime", "release QA", "próxima fase", "pendências", "Phase 6", "plugins", "app", "marketplace", "stdio", "gRPC", "Phase 7", "Pinocchio", "Phase 8", "CI", "integration", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer, qa-integrator e o time sunscreen-test-harness. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
 ---
 
 # Sunscreen Orchestrator
@@ -29,6 +29,7 @@ Antes de qualquer ação:
 - Phase 8 (Distribution & Docs / v1.0) é a próxima fase: cargo-dist multi-OS completo, docs site, shell completions, changelog/SemVer e release polish.
 - A camada Ignite-style de integração CLI já existe e roda no CI: `tests/integration_{chain,scaffold,generate,onboarding}.rs` com `tests/support/mod.rs`.
 - O CI principal já tem smoke explícito de integração, `--locked`, check `--no-default-features`, permissões read-only, concorrência e timeouts.
+- O `sunscreen-test-harness` existe para validação pesada: offline deterministic gate, generated workspace compile, Anchor/Codama real, Pinocchio SBF real, serve runtime, plugin runtime, frontend typecheck, release QA e flake/perf.
 
 ## Execução
 
@@ -42,6 +43,16 @@ Antes de qualquer ação:
 - `template-engineer`: `src/templates/**`, `templates/**`, golden tests e marker templates.
 - `docs-writer`: ADRs, `ROADMAP.md`, docs de referência.
 - `qa-integrator`: verificação cruzada, fmt/clippy/build/test e comandos do binário.
+- `test-harness-orchestrator`: lidera rodadas `sunscreen-test-harness`, le `summary.json` e consolida status por tier.
+- `test-strategist`: matriz de risco, tiers e handoff do test harness.
+- `offline-ci-owner`: gates deterministas e fake-toolchain smokes.
+- `real-anchor-codama-owner`: Anchor/Solana/Codama/pnpm/node reais.
+- `pinocchio-sbf-owner`: Pinocchio com `cargo build-sbf` real.
+- `serve-runtime-owner`: Surfpool/test-validator, watcher e teardown.
+- `plugin-runtime-qa`: plugins, stdio/gRPC, sandbox e marketplace.
+- `frontend-codegen-owner`: hooks/clientes frontend e typecheck.
+- `release-distribution-qa`: cargo-dist, release binary, installers, docs e completions.
+- `flake-perf-auditor`: repetição, timeouts, cold-start e flakes.
 
 ## Checklists
 
@@ -108,6 +119,8 @@ Antes de qualquer ação:
 - CI deve rodar `cargo fmt --all -- --check`, `cargo clippy --locked --all-targets --all-features -- -D warnings`, `cargo test --locked --all --all-features --no-fail-fast`, `cargo build --locked --release --all-features` e `cargo check --locked --no-default-features --all-targets`.
 - O smoke Ignite-style deve rodar explicitamente os quatro grupos `integration_chain`, `integration_scaffold`, `integration_generate` e `integration_onboarding`, além de `app_lifecycle` para o runtime de plugins.
 - Testes reais de Anchor/Codama em `tests/integration_anchor.rs` continuam gated/ignored por padrão; quando executados, reporte se validaram de verdade ou apenas pularam por toolchain ausente.
+- Para pedidos de "testes de verdade", acione `sunscreen-test-harness` e rode `bash scripts/integration-heavy.sh`; use `SUNSCREEN_REAL_TOOLCHAIN=1`, `SUNSCREEN_COMPILE_TESTS=1`, `SUNSCREEN_PINOCCHIO_SBF=1`, `SUNSCREEN_DIST=1` e `SUNSCREEN_FLAKE_RUNS=N` somente quando o tier for explicitamente desejado.
+- Falso verde proibido: fake toolchain, `#[ignore]` skipped, `compile_generated` sem env var e gRPC stub nao contam como validação real do ecossistema.
 - Phase 8 ainda tem lacunas: docs site no CI, completions, changelog/SemVer, Windows/cargo-dist completo, Homebrew/binstall e validação `cargo dist plan`.
 
 ## Relatório

@@ -17,7 +17,9 @@ use crate::config::schema::{
 };
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
-use crate::runtime::pipeline::{BuildPipeline, PipelineError, PipelineOptions, PipelineStep};
+use crate::runtime::pipeline::{
+    BuildKind, BuildPipeline, PipelineError, PipelineOptions, PipelineStep,
+};
 use crate::runtime::serve::{HeadlessServeLoop, NotifyWatchSource, ServeLoopInput};
 use crate::runtime::subprocess::{ProcessSpawner, SubprocessRunner};
 use crate::runtime::supervisor::{RuntimeStartReport, RuntimeSupervisor, RuntimeSupervisorError};
@@ -29,8 +31,10 @@ use crate::toolchain::preflight::{self, PreflightError};
 use crate::tui::serve_model::ServeModel;
 
 const ANCHOR_VERSION: &str = "0.30.1";
+const PINOCCHIO_VERSION: &str = "0.11.1";
 const SOLANA_VERSION: &str = "1.18.18";
 const RUST_EDITION: &str = "2021";
+const PINOCCHIO_MIN_RUST_VERSION: &str = "1.89.0";
 
 /// Subcommands grouped under `sunscreen chain`.
 #[derive(Debug, Subcommand)]
@@ -59,8 +63,33 @@ pub struct DoctorArgs {
 /// Framework selector for `chain new`.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Framework {
-    /// Anchor 0.30+ (default; only option supported in this phase).
+    /// Anchor 0.30+ (default).
     Anchor,
+    /// Pinocchio no_std Solana program scaffold.
+    Pinocchio,
+}
+
+impl Framework {
+    fn to_config(self) -> CfgFramework {
+        match self {
+            Self::Anchor => CfgFramework::Anchor,
+            Self::Pinocchio => CfgFramework::Pinocchio,
+        }
+    }
+
+    fn workspace_template(self) -> &'static str {
+        match self {
+            Self::Anchor => "anchor-multiple",
+            Self::Pinocchio => "pinocchio-minimal",
+        }
+    }
+
+    fn next_build_command(self) -> &'static str {
+        match self {
+            Self::Anchor => "anchor build",
+            Self::Pinocchio => "cargo build-sbf",
+        }
+    }
 }
 
 /// Frontend selector for `chain new`.
@@ -189,6 +218,8 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
     }
 
     let ws = workspace::find_root(None)?;
+    let build_kind = build_kind_for_config(ws.config.project.framework);
+    let run_codama = build_kind == BuildKind::Anchor && !args.no_codama;
     let debounce = Duration::from_millis(args.debounce_ms);
     let runtime_choice = args
         .runtime
@@ -217,7 +248,8 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
             "runtime": runtime_report.runtime,
             "rpc_endpoint": runtime_report.rpc_endpoint,
             "ws_endpoint": runtime_report.ws_endpoint,
-            "codama": !args.no_codama,
+            "framework": framework_str(ws.config.project.framework),
+            "codama": run_codama,
             "frontend": !args.no_frontend,
             "debounce_ms": args.debounce_ms,
         }));
@@ -244,7 +276,8 @@ fn run_serve(args: &ServeArgs, json: bool) -> Result<i32, SunscreenError> {
         &ws.root,
         debounce,
         PipelineOptions {
-            run_codama: !args.no_codama,
+            build_kind,
+            run_codama,
             notify_frontend: !args.no_frontend,
             frontend_path: ws.config.workspace.frontend_path.clone().map(PathBuf::from),
         },
@@ -298,13 +331,16 @@ fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
         .iter()
         .map(|program| program.name.clone())
         .collect();
+    let build_kind = build_kind_for_config(ws.config.project.framework);
+    let run_codama = build_kind == BuildKind::Anchor && !args.no_codama;
 
     if structured {
         emit_build_event(serde_json::json!({
             "event": "chain_build_started",
             "workspace": ws.root.display().to_string(),
+            "framework": framework_str(ws.config.project.framework),
             "programs": programs,
-            "codama": !args.no_codama,
+            "codama": run_codama,
         }));
     } else {
         println!(
@@ -317,7 +353,8 @@ fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
         .run(
             &SubprocessRunner,
             PipelineOptions {
-                run_codama: !args.no_codama,
+                build_kind,
+                run_codama,
                 notify_frontend: true,
                 frontend_path: ws.config.workspace.frontend_path.clone().map(PathBuf::from),
             },
@@ -470,6 +507,10 @@ fn map_pipeline_err(err: PipelineError, command: &str) -> SunscreenError {
     if err.source.is_not_found() {
         let (tool, install_hint) = match err.step {
             PipelineStep::AnchorBuild => ("anchor", "install Anchor"),
+            PipelineStep::PinocchioBuild => (
+                "cargo",
+                "install the Solana CLI toolchain with cargo-build-sbf",
+            ),
             PipelineStep::CodamaRun => ("pnpm", "install pnpm before running Codama"),
             PipelineStep::FrontendNotify => {
                 return SunscreenError::Other(anyhow::anyhow!(
@@ -514,9 +555,7 @@ pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, Sun
     // surfaces with a stable exit code (3) before we touch disk.
     let cfg = Config::new_for_workspace(
         &cfg_name,
-        match args.framework {
-            Framework::Anchor => CfgFramework::Anchor,
-        },
+        args.framework.to_config(),
         args.frontend.to_config(),
     );
     cfg.validate()
@@ -548,7 +587,7 @@ pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, Sun
         .clone()
         .unwrap_or_else(|| PathBuf::from(&args.name));
 
-    let ctx = build_context(&args.name, args.frontend);
+    let ctx = build_context(&args.name, args.framework, args.frontend);
 
     // Stage everything into a temporary location. For dry-run we use a
     // throwaway tempdir so nothing inside `dest` is ever touched.
@@ -569,9 +608,10 @@ pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, Sun
 
     let mut tx = Transaction::new(&staging_root).map_err(map_tx_err)?;
 
-    // Render the Anchor workspace into the staging dir.
-    render_workspace("anchor-multiple", &ctx, tx.staging())
-        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render anchor-multiple: {e}")))?;
+    // Render the selected program workspace into the staging dir.
+    let template = args.framework.workspace_template();
+    render_workspace(template, &ctx, tx.staging())
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render {template}: {e}")))?;
 
     // Render frontend scaffold (if requested) into staging/app/.
     match args.frontend {
@@ -645,8 +685,10 @@ fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {
         );
         println!("\nnext steps:");
         println!("  cd {}", report.path.display());
-        println!("  anchor build");
-        println!("  anchor test");
+        println!("  {}", args.framework.next_build_command());
+        if matches!(args.framework, Framework::Anchor) {
+            println!("  anchor test");
+        }
     }
     Ok(0)
 }
@@ -662,22 +704,43 @@ fn emit_dry_run(dest: &Path, plan: &[String]) {
     }
 }
 
-fn build_context(name: &str, frontend: Frontend) -> serde_json::Value {
+fn build_context(name: &str, framework: Framework, frontend: Frontend) -> serde_json::Value {
     use heck::ToSnakeCase;
     let frontend_str = match frontend {
         Frontend::Next => "next",
         Frontend::Vite => "vite",
         Frontend::None => "none",
     };
+    let rust_edition = match framework {
+        Framework::Anchor | Framework::Pinocchio => RUST_EDITION,
+    };
     serde_json::json!({
         "project_name": name,
         "program_name": name.to_snake_case(),
         "anchor_version": ANCHOR_VERSION,
+        "pinocchio_version": PINOCCHIO_VERSION,
         "solana_version": SOLANA_VERSION,
-        "rust_edition": RUST_EDITION,
+        "rust_edition": rust_edition,
+        "pinocchio_min_rust_version": PINOCCHIO_MIN_RUST_VERSION,
         "frontend": frontend_str,
         "cluster": "localnet",
     })
+}
+
+fn build_kind_for_config(framework: CfgFramework) -> BuildKind {
+    match framework {
+        CfgFramework::Anchor => BuildKind::Anchor,
+        CfgFramework::Pinocchio => BuildKind::Pinocchio,
+        CfgFramework::Shank => BuildKind::Anchor,
+    }
+}
+
+fn framework_str(framework: CfgFramework) -> &'static str {
+    match framework {
+        CfgFramework::Anchor => "anchor",
+        CfgFramework::Pinocchio => "pinocchio",
+        CfgFramework::Shank => "shank",
+    }
 }
 
 fn validate_name(name: &str) -> Result<(), SunscreenError> {

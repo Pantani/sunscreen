@@ -12,7 +12,10 @@ use crate::codegen::idl::{export_idls, IdlExportOptions};
 use crate::codegen::{relative_path, CodegenError};
 use crate::error::SunscreenError;
 use crate::runtime::subprocess::SubprocessRunner;
-use crate::{config::schema::Frontend as ConfigFrontend, workspace};
+use crate::{
+    config::schema::{Framework as ConfigFramework, Frontend as ConfigFrontend},
+    workspace,
+};
 
 /// Subcommands grouped under `sunscreen generate`.
 #[derive(Debug, Subcommand)]
@@ -91,6 +94,7 @@ pub fn run(cmd: &GenerateCmd, json: bool) -> Result<i32, SunscreenError> {
 
 fn run_clients(args: &GenerateClientsArgs, json: bool) -> Result<i32, SunscreenError> {
     let ws = workspace::find_root(None)?;
+    ensure_anchor_codegen(&ws)?;
     let report = codama::run_clients(&ws.root, &SubprocessRunner, args.program.as_deref())
         .map_err(|err| map_codegen_err(err, "sunscreen generate clients"))?;
     let success = report.output.success();
@@ -132,6 +136,7 @@ fn run_clients(args: &GenerateClientsArgs, json: bool) -> Result<i32, SunscreenE
 
 fn run_idl(args: &GenerateIdlArgs, json: bool) -> Result<i32, SunscreenError> {
     let ws = workspace::find_root(None)?;
+    ensure_anchor_codegen(&ws)?;
     let report = export_idls(
         &ws.root,
         &IdlExportOptions {
@@ -170,6 +175,7 @@ fn run_idl(args: &GenerateIdlArgs, json: bool) -> Result<i32, SunscreenError> {
 
 fn run_frontend_hooks(args: &GenerateFrontendHooksArgs, json: bool) -> Result<i32, SunscreenError> {
     let ws = workspace::find_root(None)?;
+    ensure_anchor_codegen(&ws)?;
     let report = generate_frontend_hooks(
         &ws.root,
         &FrontendHooksOptions {
@@ -209,6 +215,25 @@ fn default_hook_target(frontend: ConfigFrontend) -> HookTarget {
     match frontend {
         ConfigFrontend::Next | ConfigFrontend::Vite => HookTarget::React,
         ConfigFrontend::None => HookTarget::All,
+    }
+}
+
+fn ensure_anchor_codegen(ws: &workspace::WorkspaceRoot) -> Result<(), SunscreenError> {
+    if matches!(ws.config.project.framework, ConfigFramework::Anchor) {
+        return Ok(());
+    }
+    Err(SunscreenError::UserInput(format!(
+        "`sunscreen generate` currently consumes Anchor IDLs; workspace framework is `{}`. \
+         Build Pinocchio programs with `sunscreen chain build --headless` and add an IDL/Shank plugin when needed.",
+        framework_name(ws.config.project.framework)
+    )))
+}
+
+fn framework_name(framework: ConfigFramework) -> &'static str {
+    match framework {
+        ConfigFramework::Anchor => "anchor",
+        ConfigFramework::Pinocchio => "pinocchio",
+        ConfigFramework::Shank => "shank",
     }
 }
 

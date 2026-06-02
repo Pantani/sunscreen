@@ -308,7 +308,8 @@ impl Default for ProjectCfg {
     }
 }
 
-/// Program framework. MVP scopes `anchor`; others are post-MVP placeholders.
+/// Program framework. Anchor and Pinocchio are scaffoldable; Shank is reserved
+/// for future IDL-first native program flows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Framework {
@@ -671,6 +672,15 @@ mod tests {
         let yaml = serde_yaml::to_string(&cfg).expect("serialize");
         let parsed: Config = serde_yaml::from_str(&yaml).expect("re-parse");
         assert_eq!(cfg, parsed);
+    }
+
+    #[test]
+    fn workspace_bootstrap_accepts_pinocchio_framework() {
+        let cfg = Config::new_for_workspace("pinocchio-app", Framework::Pinocchio, Frontend::None);
+        cfg.validate().expect("pinocchio workspace config is valid");
+        assert_eq!(cfg.project.framework, Framework::Pinocchio);
+        let yaml = serde_yaml::to_string(&cfg).expect("serialize");
+        assert!(yaml.contains("framework: pinocchio"));
     }
 }
 

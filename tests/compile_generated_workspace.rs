@@ -56,6 +56,26 @@ fn new_workspace(tmp: &Path, name: &str, frontend: &str) -> (PathBuf, String) {
     (ws, program)
 }
 
+fn new_pinocchio_workspace(tmp: &Path, name: &str) -> (PathBuf, String) {
+    let ws = tmp.join(name);
+    run_sunscreen(
+        None,
+        &[
+            "chain",
+            "new",
+            name,
+            "--framework",
+            "pinocchio",
+            "--frontend",
+            "none",
+            "--path",
+            ws.to_str().unwrap(),
+        ],
+    );
+    let program = discover_program(&ws);
+    (ws, program)
+}
+
 fn write_anchor_shim(root: &Path) -> PathBuf {
     let shim_root = root.join("anchor-shim");
     let macros = shim_root.join("anchor-lang-macros");
@@ -209,6 +229,36 @@ pub struct Program<'info, T> {
     anchor
 }
 
+fn write_pinocchio_shim(root: &Path) -> PathBuf {
+    let pinocchio = root.join("pinocchio-shim");
+    std::fs::create_dir_all(pinocchio.join("src")).unwrap();
+    std::fs::write(
+        pinocchio.join("Cargo.toml"),
+        r#"[package]
+name = "pinocchio"
+version = "0.11.1"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        pinocchio.join("src/lib.rs"),
+        r#"pub struct AccountView;
+pub struct Address;
+
+#[derive(Debug, Clone, Copy)]
+pub struct ProgramError;
+
+pub type ProgramResult = Result<(), ProgramError>;
+"#,
+    )
+    .unwrap();
+    pinocchio
+}
+
 fn write_anchor_spl_shim(root: &Path) -> PathBuf {
     let anchor_spl = root.join("anchor-shim").join("anchor-spl");
     std::fs::create_dir_all(anchor_spl.join("src")).unwrap();
@@ -248,6 +298,16 @@ fn patch_anchor_deps(ws: &Path, anchor_shim: &Path, anchor_spl_shim: &Path) {
     std::fs::write(cargo_toml, contents).unwrap();
 }
 
+fn patch_pinocchio_dep(ws: &Path, pinocchio_shim: &Path) {
+    let cargo_toml = ws.join("Cargo.toml");
+    let mut contents = std::fs::read_to_string(&cargo_toml).unwrap();
+    contents.push_str(&format!(
+        "\n[patch.crates-io]\npinocchio = {{ path = {:?} }}\n",
+        pinocchio_shim
+    ));
+    std::fs::write(cargo_toml, contents).unwrap();
+}
+
 fn cargo_check_workspace(ws: &Path) {
     let out = Command::new("cargo")
         .current_dir(ws)
@@ -268,6 +328,17 @@ fn patch_and_check(tmp: &Path, ws: &Path) {
     let anchor_spl_shim = write_anchor_spl_shim(tmp);
     patch_anchor_deps(ws, &anchor_shim, &anchor_spl_shim);
     cargo_check_workspace(ws);
+}
+
+#[test]
+fn generated_pinocchio_workspace_cargo_checks_offline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (ws, program) = new_pinocchio_workspace(tmp.path(), "pinocchio_compile_app");
+    assert_eq!(program, "pinocchio_compile_app");
+    assert!(!ws.join("Anchor.toml").exists());
+    let pinocchio_shim = write_pinocchio_shim(tmp.path());
+    patch_pinocchio_dep(&ws, &pinocchio_shim);
+    cargo_check_workspace(&ws);
 }
 
 #[test]

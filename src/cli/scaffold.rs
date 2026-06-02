@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 use heck::{ToPascalCase, ToSnakeCase};
 
-use crate::config::schema::Frontend;
+use crate::config::schema::{Framework as ConfigFramework, Frontend};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
 use crate::plugin::manager::{self, PluginManager};
@@ -273,6 +273,7 @@ fn run_crud_impl(
     validate_ident(&args.name, "resource name")?;
     let _ = parse_fields(&args.fields)?;
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let frontend_root = if args.no_frontend || ws.config.workspace.frontend == Frontend::None {
         None
@@ -317,6 +318,7 @@ fn run_spl_token_impl(
 ) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "recipe name")?;
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let plan = build_spl_token_recipe(SplTokenRecipeOptions {
         name: args.name.clone(),
@@ -344,6 +346,7 @@ fn run_metaplex_nft_impl(
 ) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "recipe name")?;
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let plan = build_metaplex_nft_recipe(MetaplexNftRecipeOptions {
         name: args.name.clone(),
@@ -688,6 +691,7 @@ fn run_instruction_in_workspace(
 
     // 1. Locate workspace.
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let emit_fields = if let Some(emit) = &args.emit {
         event_fields_for_emit(program, emit)?
@@ -1438,6 +1442,25 @@ fn map_ws_err(e: WorkspaceError) -> SunscreenError {
     }
 }
 
+fn ensure_anchor_scaffolding(ws: &workspace::WorkspaceRoot) -> Result<(), SunscreenError> {
+    if matches!(ws.config.project.framework, ConfigFramework::Anchor) {
+        return Ok(());
+    }
+    Err(SunscreenError::UserInput(format!(
+        "built-in scaffolders currently target Anchor workspaces; workspace framework is `{}`. \
+         Use `sunscreen chain new --framework pinocchio` for the base program and route Pinocchio-specific scaffolding through a plugin.",
+        framework_name(ws.config.project.framework)
+    )))
+}
+
+fn framework_name(framework: ConfigFramework) -> &'static str {
+    match framework {
+        ConfigFramework::Anchor => "anchor",
+        ConfigFramework::Pinocchio => "pinocchio",
+        ConfigFramework::Shank => "shank",
+    }
+}
+
 fn map_tx_err(e: TxError) -> SunscreenError {
     match e {
         TxError::PathEscape(p) => SunscreenError::UserInput(format!("invalid path: {p}")),
@@ -1517,6 +1540,7 @@ fn run_account_in_workspace(
     let program_snake = args.program.to_snake_case();
 
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
 
     let state_dir = program.src_dir.join("state");
@@ -1787,6 +1811,7 @@ fn run_event_in_workspace(
     let program_snake = args.program.to_snake_case();
 
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
 
     let events_abs = program.src_dir.join("events.rs");
@@ -2106,6 +2131,7 @@ fn run_error_in_workspace(
     let enum_name = format!("{}_error", program_snake).to_pascal_case();
 
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
 
     let errors_abs = program.src_dir.join("errors.rs");
@@ -2405,6 +2431,7 @@ fn run_program(args: &ProgramArgs, json: bool, quiet: bool) -> Result<i32, Sunsc
     validate_program_id(program_id)?;
 
     let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    ensure_anchor_scaffolding(&ws)?;
     let workspace_root = ws.root.clone();
     let project_name = ws.config.project.name.clone();
     let anchor_version = ws

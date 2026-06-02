@@ -97,6 +97,55 @@ fn chain_group_build_no_codama_skips_pnpm() {
 }
 
 #[test]
+fn chain_group_pinocchio_bootstrap_and_anchor_only_guards() {
+    let env = CliEnv::new();
+    let workspace = env.path("pinocchio_walk");
+
+    let mut new_cmd = env.sunscreen();
+    new_cmd.args([
+        "chain",
+        "new",
+        "pinocchio_walk",
+        "--framework",
+        "pinocchio",
+        "--frontend",
+        "none",
+        "--path",
+    ]);
+    new_cmd.arg(&workspace);
+    env.ok("chain new pinocchio", &mut new_cmd);
+
+    let cfg = std::fs::read_to_string(workspace.join("sunscreen.yml")).unwrap();
+    assert!(cfg.contains("framework: pinocchio"));
+    assert!(!workspace.join("Anchor.toml").exists());
+
+    let mut scaffold = env.sunscreen_in(&workspace);
+    scaffold.args([
+        "--json",
+        "scaffold",
+        "instruction",
+        "deposit",
+        "--program",
+        "pinocchio-walk",
+    ]);
+    let payload = env.json_err("pinocchio scaffold guard", &mut scaffold, 4);
+    assert_eq!(payload["kind"], "user_input");
+    assert!(payload["error"]
+        .as_str()
+        .unwrap()
+        .contains("built-in scaffolders currently target Anchor"));
+
+    let mut generate = env.sunscreen_in(&workspace);
+    generate.args(["--json", "generate", "idl"]);
+    let payload = env.json_err("pinocchio generate guard", &mut generate, 4);
+    assert_eq!(payload["kind"], "user_input");
+    assert!(payload["error"]
+        .as_str()
+        .unwrap()
+        .contains("currently consumes Anchor IDLs"));
+}
+
+#[test]
 fn chain_group_reports_missing_workspace_as_json_error() {
     let env = CliEnv::new();
     let empty = env.path("empty");

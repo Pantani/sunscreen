@@ -1,0 +1,108 @@
+---
+source: tests/golden/render_workspace.rs
+expression: corpus(tmp.path())
+---
+=== .gitignore ===
+.DS_Store
+target
+**/*.rs.bk
+node_modules
+.sunscreen
+.idea
+.vscode
+*.log
+=== .keep ===
+# No frontend selected. This file is intentionally empty.
+=== Cargo.toml ===
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
+=== README.md ===
+# MyDapp
+
+Pinocchio workspace scaffolded by **sunscreen**.
+
+- **Program:** `my_dapp`
+- **Pinocchio:** `0.11.1`
+- **Solana:** `1.18.18`
+- **Minimum Rust:** `1.89.0`
+- **Cluster:** `localnet`
+- **Frontend:** `none`
+
+## Quickstart
+
+```bash
+cargo build-sbf
+```
+
+## Layout
+
+- `programs/my_dapp/` — no_std Solana program (Rust + Pinocchio)
+- `sunscreen.yml` — sunscreen workspace config
+=== programs/my_dapp/Cargo.toml ===
+[package]
+name = "my_dapp"
+version = "0.1.0"
+description = "Pinocchio program for MyDapp"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "my_dapp"
+
+[features]
+default = []
+no-entrypoint = []
+
+[dependencies]
+pinocchio = { version = "0.11.1", default-features = false }
+=== programs/my_dapp/src/lib.rs ===
+#![cfg_attr(target_arch = "bpf", no_std)]
+
+#[cfg(all(not(feature = "no-entrypoint"), target_arch = "bpf"))]
+pinocchio::program_entrypoint!(process_instruction);
+#[cfg(all(not(feature = "no-entrypoint"), target_arch = "bpf"))]
+pinocchio::nostd_panic_handler!();
+#[cfg(all(not(feature = "no-entrypoint"), target_arch = "bpf"))]
+pinocchio::no_allocator!();
+
+use pinocchio::{AccountView, Address, ProgramResult};
+
+#[inline(never)]
+pub fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let _ = (program_id, accounts, instruction_data);
+    Ok(())
+}
+=== sunscreen.yml ===
+version: 1
+project:
+  name: my-dapp
+  description: "MyDapp — Pinocchio workspace scaffolded by sunscreen"
+  framework: pinocchio
+  solana_version: "1.18.18"
+  rust_edition: "2021"
+toolchain:
+  required:
+    solana: "1.18.18"
+    rustc: "1.89.0"
+scaffolding:
+  default_template: workspace/pinocchio-minimal
+programs:
+  - name: my-dapp
+    path: programs/my_dapp
+workspace:
+  frontend: none

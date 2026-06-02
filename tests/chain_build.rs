@@ -23,6 +23,31 @@ fn run_chain_new(out_path: &Path, name: &str) {
     );
 }
 
+fn run_chain_new_pinocchio(out_path: &Path, name: &str) {
+    let out = Command::new(sunscreen_bin())
+        .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
+        .args([
+            "chain",
+            "new",
+            name,
+            "--framework",
+            "pinocchio",
+            "--frontend",
+            "none",
+            "--path",
+        ])
+        .arg(out_path)
+        .output()
+        .expect("invoke sunscreen chain new");
+    assert!(
+        out.status.success(),
+        "chain new failed: code={:?}\nstdout={}\nstderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 fn parse_ndjson(stdout: &[u8]) -> Vec<serde_json::Value> {
     String::from_utf8_lossy(stdout)
         .lines()
@@ -89,6 +114,29 @@ exit {exit_code}
     path
 }
 
+#[cfg(unix)]
+fn write_fake_cargo(bin_dir: &Path, exit_code: i32) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = bin_dir.join("cargo");
+    std::fs::write(
+        &path,
+        format!(
+            r#"#!/bin/sh
+printf '%s\n' "$PWD" > "$CARGO_CWD_FILE"
+printf '%s\n' "$*" > "$CARGO_ARGS_FILE"
+echo "fake cargo $*"
+exit {exit_code}
+"#
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&path, perms).unwrap();
+    path
+}
+
 #[cfg(windows)]
 fn write_fake_anchor(bin_dir: &Path, exit_code: i32) -> PathBuf {
     let path = bin_dir.join("anchor.bat");
@@ -120,6 +168,24 @@ fn write_fake_pnpm(bin_dir: &Path, exit_code: i32) -> PathBuf {
 cd > "%PNPM_CWD_FILE%"
 echo %* > "%PNPM_ARGS_FILE%"
 echo fake pnpm %*
+exit /b {exit_code}
+"#
+        ),
+    )
+    .unwrap();
+    path
+}
+
+#[cfg(windows)]
+fn write_fake_cargo(bin_dir: &Path, exit_code: i32) -> PathBuf {
+    let path = bin_dir.join("cargo.bat");
+    std::fs::write(
+        &path,
+        format!(
+            r#"@echo off
+cd > "%CARGO_CWD_FILE%"
+echo %* > "%CARGO_ARGS_FILE%"
+echo fake cargo %*
 exit /b {exit_code}
 "#
         ),
@@ -210,6 +276,58 @@ fn chain_build_headless_runs_anchor_then_codama_in_workspace_root_and_emits_ndjs
             .get("status")
             .and_then(|v| v.as_str()),
         Some("ok")
+    );
+}
+
+#[test]
+fn chain_build_pinocchio_runs_cargo_build_sbf_and_skips_codama() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("pinocchio_build_app");
+    run_chain_new_pinocchio(&ws, "pinocchio_build_app");
+
+    let fake_bin = tmp.path().join("bin");
+    std::fs::create_dir_all(&fake_bin).unwrap();
+    write_fake_cargo(&fake_bin, 0);
+    let cargo_cwd_file = tmp.path().join("cargo.cwd");
+    let cargo_args_file = tmp.path().join("cargo.args");
+
+    let out = Command::new(sunscreen_bin())
+        .current_dir(&ws)
+        .env("PATH", prepend_path(&fake_bin))
+        .env("CARGO_CWD_FILE", &cargo_cwd_file)
+        .env("CARGO_ARGS_FILE", &cargo_args_file)
+        .args(["--json", "chain", "build", "--headless"])
+        .output()
+        .expect("invoke sunscreen chain build");
+
+    assert!(
+        out.status.success(),
+        "chain build failed: code={:?}\nstdout={}\nstderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let recorded_cwd = PathBuf::from(std::fs::read_to_string(&cargo_cwd_file).unwrap().trim());
+    assert_eq!(
+        recorded_cwd.canonicalize().unwrap(),
+        ws.canonicalize().unwrap()
+    );
+    assert_eq!(
+        std::fs::read_to_string(&cargo_args_file).unwrap().trim(),
+        "build-sbf"
+    );
+
+    let events = parse_ndjson(&out.stdout);
+    assert_eq!(events[0]["framework"], "pinocchio");
+    assert_eq!(events[0]["codama"], false);
+    let steps: Vec<_> = events
+        .iter()
+        .filter_map(|event| event.get("step").and_then(|v| v.as_str()))
+        .collect();
+    assert_eq!(steps, ["pinocchio_build", "pinocchio_build"]);
+    assert!(
+        !ws.join("codama.json").exists(),
+        "Pinocchio build should not write Codama config"
     );
 }
 

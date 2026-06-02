@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use sunscreen::runtime::pipeline::{BuildPipeline, PipelineOptions, PipelineStep};
+use sunscreen::runtime::pipeline::{BuildKind, BuildPipeline, PipelineOptions, PipelineStep};
 use sunscreen::runtime::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
 #[derive(Default)]
@@ -144,6 +144,35 @@ fn build_pipeline_can_skip_codama() {
     let calls = runner.calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].display_argv(), ["anchor", "build"]);
+}
+
+#[test]
+fn build_pipeline_runs_pinocchio_build_sbf_without_codama() {
+    let runner = FakeRunner::with_outputs(vec![output(0, "pinocchio ok")]);
+    let root = PathBuf::from("/tmp/sunscreen-pinocchio-workspace");
+
+    let report = BuildPipeline::new(&root)
+        .run(
+            &runner,
+            PipelineOptions {
+                build_kind: BuildKind::Pinocchio,
+                run_codama: true,
+                ..no_frontend_notify()
+            },
+        )
+        .expect("pipeline run");
+
+    assert!(report.success());
+    let calls = runner.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].display_argv(), ["cargo", "build-sbf"]);
+    let steps: Vec<_> = report
+        .events
+        .iter()
+        .filter(|event| event.event == "command_finished")
+        .map(|event| event.step)
+        .collect();
+    assert_eq!(steps, [PipelineStep::PinocchioBuild]);
 }
 
 #[test]

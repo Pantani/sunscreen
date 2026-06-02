@@ -1,0 +1,21 @@
+# {{ project_name | pascal_case }}
+
+Pinocchio workspace scaffolded by **sunscreen**.
+
+- **Program:** `{{ program_name | snake_case }}`
+- **Pinocchio:** `{{ pinocchio_version }}`
+- **Solana:** `{{ solana_version }}`
+- **Minimum Rust:** `{{ pinocchio_min_rust_version }}`
+- **Cluster:** `{{ cluster }}`
+- **Frontend:** `{{ frontend }}`
+
+## Quickstart
+
+```bash
+cargo build-sbf
+```
+
+## Layout
+
+- `programs/{{ program_name | snake_case }}/` — no_std Solana program (Rust + Pinocchio)
+- `sunscreen.yml` — sunscreen workspace config

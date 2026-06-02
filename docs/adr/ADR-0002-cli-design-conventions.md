@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Implemented |
 | **Date** | 2026-05-31 |
 | **Authors** | Danilo Lacombe |
 | **Tags** | cli, ux, conventions, clap, ergonomics |
@@ -21,11 +21,11 @@ The chosen stack — already wired in `src/cli/root.rs` and `src/error.rs` — i
 - **`clap` v4 derive** for argument parsing.
 - **`thiserror`** for the public `SunscreenError` boundary; **`anyhow`** for internal propagation.
 - **`comfy-table`** for tables and **`owo-colors`** for color, both with TTY auto-detection and `--no-color`/`NO_COLOR` respect.
-- **Exit codes** `0`–`8` matching `SunscreenError::exit_code` in `src/error.rs`.
+- **Exit codes** `0`–`9` matching `SunscreenError::exit_code` in `src/error.rs`.
 - **`--json`** as a global boolean toggle that switches both successful structured output (where supported) and error output into a stable `{ error, kind, next_step, exit_code }` schema (see `src/cli/root.rs::execute`).
 - **Configuration precedence** flag > env (`SUNSCREEN_*`) > `sunscreen.yml` > built-in defaults.
 
-These conventions apply to every subcommand currently stubbed in `src/cli/root.rs::Command` (`version`, `doctor`, `scaffold`, `chain`, `generate`, `app`) and any future surface.
+These conventions apply to every subcommand in `src/cli/root.rs::Command` (`version`, `doctor`, `scaffold`, `chain`, `generate`, `app`) and any future surface.
 
 ---
 
@@ -141,7 +141,7 @@ The conventions below are **normative**. Any subcommand violating them is a bug.
   - `sunscreen scaffold program <name>` ✅
   - `sunscreen scaffold-program <name>` ❌
 - **Nesting depth ≤ 3.** `sunscreen chain serve` is fine; `sunscreen chain validator local start` is not — collapse to `sunscreen chain serve --local`.
-- **Stub commands declare themselves as such** in their `about` until implemented. As of Phase 4, `Generate` is implemented; `App` remains a stub in `src/cli/root.rs::Command`.
+- **Stub commands declare themselves as such** in their `about` until implemented. As of Phase 7, `Generate` and `App` are implemented surfaces; only genuinely unimplemented future leaves should use stub wording.
 
 ### 4.3 Exit codes
 
@@ -158,6 +158,7 @@ The mapping is fixed by `SunscreenError::exit_code` in `src/error.rs`:
 | `6` | Marker or generated instruction drift | `SunscreenError::InstructionDrift { .. }` |
 | `7` | Path conflict (target exists and cannot be overwritten safely) | `SunscreenError::PathConflict(_)` |
 | `8` | Network / RPC failure | `SunscreenError::Network(_)` |
+| `9` | Plugin runtime/sandbox/transport failure | `SunscreenError::PluginRuntime(_)` |
 
 **Compatibility rule:** an exit code's meaning is part of the public API. Once a command emits exit code `N` for situation `S`, it must continue to do so in every subsequent minor and patch release of the same major version.
 
@@ -179,7 +180,7 @@ The `"error: "` prefix is mandatory and lowercase, matching `cargo` and `rustc`.
 {"error":"invalid configuration: missing required field `program.name`","kind":"config_invalid","next_step":"open sunscreen.yml, fix the reported field, then run `sunscreen doctor --json`","exit_code":3}
 ```
 
-The `kind` field comes from `SunscreenError::kind_str` and is one of: `config_invalid`, `toolchain_missing`, `user_input`, `workspace_missing`, `instruction_drift`, `path_conflict`, `network`, `other`. **This vocabulary is stable**; new variants append new kinds rather than rename existing ones. `next_step` is a remediation hint and `exit_code` mirrors the process exit code.
+The `kind` field comes from `SunscreenError::kind_str` and is one of: `config_invalid`, `toolchain_missing`, `user_input`, `workspace_missing`, `instruction_drift`, `path_conflict`, `network`, `plugin_runtime`, `other`. **This vocabulary is stable**; new variants append new kinds rather than rename existing ones. `next_step` is a remediation hint and `exit_code` mirrors the process exit code.
 
 Errors are written to **stderr** in both modes; stdout is reserved for successful structured output so users can pipe `command --json | jq` without contamination.
 

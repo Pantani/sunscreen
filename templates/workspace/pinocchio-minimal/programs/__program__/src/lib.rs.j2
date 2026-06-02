@@ -1,0 +1,20 @@
+#![cfg_attr(target_arch = "bpf", no_std)]
+
+#[cfg(all(not(feature = "no-entrypoint"), target_arch = "bpf"))]
+pinocchio::program_entrypoint!(process_instruction);
+#[cfg(all(not(feature = "no-entrypoint"), target_arch = "bpf"))]
+pinocchio::nostd_panic_handler!();
+#[cfg(all(not(feature = "no-entrypoint"), target_arch = "bpf"))]
+pinocchio::no_allocator!();
+
+use pinocchio::{AccountView, Address, ProgramResult};
+
+#[inline(never)]
+pub fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let _ = (program_id, accounts, instruction_data);
+    Ok(())
+}

@@ -1,0 +1,5 @@
+---
+source: tests/scaffold_recipes.rs
+expression: contents
+---
+error: invalid input: invalid --fields entry `noType` (expected `name:type`)

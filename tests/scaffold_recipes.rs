@@ -41,6 +41,28 @@ fn discover_program(ws: &Path) -> String {
     entries[0].file_name().to_string_lossy().into_owned()
 }
 
+fn generated_corpus(root: &Path, paths: &[&str]) -> String {
+    let mut out = String::new();
+    for rel in paths {
+        let contents = std::fs::read_to_string(root.join(rel))
+            .unwrap_or_else(|err| panic!("read generated file {rel}: {err}"));
+        out.push_str("=== ");
+        out.push_str(rel);
+        out.push_str(" ===\n");
+        out.push_str(&contents);
+        if !contents.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn assert_recipe_snapshot(name: &str, contents: String) {
+    insta::with_settings!({ snapshot_path => "golden/snapshots" }, {
+        insta::assert_snapshot!(name, contents);
+    });
+}
+
 #[test]
 fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
     let tmp = tempfile::tempdir().unwrap();
@@ -108,6 +130,23 @@ fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
     let recipe_test_contents = std::fs::read_to_string(&recipe_test).unwrap();
     assert!(recipe_test_contents.contains("createPost"));
     assert!(recipe_test_contents.contains("deletePost"));
+    assert_recipe_snapshot(
+        "scaffold_recipes_crud_full_slice",
+        generated_corpus(
+            &ws,
+            &[
+                "programs/blog_app/src/state/post.rs",
+                "programs/blog_app/src/instructions/create_post.rs",
+                "programs/blog_app/src/instructions/read_post.rs",
+                "programs/blog_app/src/instructions/update_post.rs",
+                "programs/blog_app/src/instructions/delete_post.rs",
+                "programs/blog_app/src/events.rs",
+                "programs/blog_app/src/errors.rs",
+                "programs/blog_app/src/lib.rs",
+                "tests/blog_app/post.test.ts",
+            ],
+        ),
+    );
 
     let again = run_scaffold(
         &ws,
@@ -180,6 +219,21 @@ fn scaffold_crud_writes_frontend_hook_and_honors_feature_flags() {
     assert!(hook_contents.contains("useCreatePost"));
     assert!(hook_contents.contains("useUpdatePost"));
     assert!(!hook_contents.contains("useDeletePost"));
+    assert_recipe_snapshot(
+        "scaffold_recipes_crud_frontend_no_delete_no_events",
+        generated_corpus(
+            &ws,
+            &[
+                "programs/blog_frontend_app/src/state/post.rs",
+                "programs/blog_frontend_app/src/instructions/create_post.rs",
+                "programs/blog_frontend_app/src/instructions/read_post.rs",
+                "programs/blog_frontend_app/src/instructions/update_post.rs",
+                "programs/blog_frontend_app/src/errors.rs",
+                "programs/blog_frontend_app/src/lib.rs",
+                "app/src/hooks/use-post.ts",
+            ],
+        ),
+    );
 }
 
 #[test]
@@ -264,6 +318,25 @@ fn scaffold_spl_token_and_metaplex_nft_create_recipe_slices() {
     ] {
         assert!(errors.contains(&format!("{variant},")));
     }
+    assert_recipe_snapshot(
+        "scaffold_recipes_spl_token_and_metaplex_nft",
+        generated_corpus(
+            &ws,
+            &[
+                "programs/asset_app/src/state/token_vault.rs",
+                "programs/asset_app/src/state/nft_collection.rs",
+                "programs/asset_app/src/instructions/initialize_token_vault.rs",
+                "programs/asset_app/src/instructions/mint_token_vault.rs",
+                "programs/asset_app/src/instructions/transfer_token_vault.rs",
+                "programs/asset_app/src/instructions/create_nft_collection.rs",
+                "programs/asset_app/src/instructions/mint_nft_collection.rs",
+                "programs/asset_app/src/instructions/verify_nft_collection.rs",
+                "programs/asset_app/src/events.rs",
+                "programs/asset_app/src/errors.rs",
+                "programs/asset_app/src/lib.rs",
+            ],
+        ),
+    );
 }
 
 #[test]
@@ -282,4 +355,8 @@ fn scaffold_recipe_invalid_field_exit_4() {
         ],
     );
     assert_eq!(out.status.code(), Some(4));
+    assert_recipe_snapshot(
+        "scaffold_recipes_invalid_field_error",
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    );
 }

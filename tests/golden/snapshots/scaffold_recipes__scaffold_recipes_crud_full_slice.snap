@@ -1,0 +1,206 @@
+---
+source: tests/scaffold_recipes.rs
+expression: contents
+---
+=== programs/blog_app/src/state/post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct Post {
+    pub authority: Pubkey,
+    pub title: String,
+    pub body: String,
+}
+// === sunscreen:auto-generated:end segment=file ===
+=== programs/blog_app/src/instructions/create_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::PostCreated;
+
+#[derive(Accounts)]
+#[instruction(authority: Pubkey, title: String, body: String)]
+pub struct CreatePost<'info> {
+    #[account(mut, seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<CreatePost>,
+    authority: Pubkey,
+    title: String,
+    body: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &authority;
+    let _ = &title;
+    let _ = &body;
+    emit!(PostCreated {
+        resource: todo!("set PostCreated.resource"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_app/src/instructions/read_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct ReadPost<'info> {
+    #[account(seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<ReadPost>,
+) -> Result<()> {
+    let _ = ctx;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_app/src/instructions/update_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::PostUpdated;
+
+#[derive(Accounts)]
+#[instruction(authority: Pubkey, title: String, body: String)]
+pub struct UpdatePost<'info> {
+    #[account(mut, seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<UpdatePost>,
+    authority: Pubkey,
+    title: String,
+    body: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &authority;
+    let _ = &title;
+    let _ = &body;
+    emit!(PostUpdated {
+        resource: todo!("set PostUpdated.resource"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_app/src/instructions/delete_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::PostDeleted;
+
+#[derive(Accounts)]
+pub struct DeletePost<'info> {
+    #[account(mut, seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<DeletePost>,
+) -> Result<()> {
+    let _ = ctx;
+    emit!(PostDeleted {
+        resource: todo!("set PostDeleted.resource"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_app/src/events.rs ===
+use anchor_lang::prelude::*;
+
+// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
+#[event]
+pub struct PostCreated {
+    pub resource: Pubkey,
+}
+
+#[event]
+pub struct PostUpdated {
+    pub resource: Pubkey,
+}
+
+#[event]
+pub struct PostDeleted {
+    pub resource: Pubkey,
+}
+// === sunscreen:auto-generated:end segment=events ===
+=== programs/blog_app/src/errors.rs ===
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum BlogAppError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("Post was not found")]
+    PostNotFound,
+    #[msg("caller cannot mutate this post")]
+    PostUnauthorized,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}
+=== programs/blog_app/src/lib.rs ===
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+pub mod errors;
+pub mod events;
+pub mod state;
+#[allow(unused_imports)]
+use instructions::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod blog_app {
+    use super::*;
+
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=cli ===
+pub fn create_post(ctx: Context<CreatePost>, authority: Pubkey, title: String, body: String) -> Result<()> {
+    instructions::create_post::handler(ctx, authority, title, body)
+}
+pub fn delete_post(ctx: Context<DeletePost>) -> Result<()> {
+    instructions::delete_post::handler(ctx)
+}
+pub fn read_post(ctx: Context<ReadPost>) -> Result<()> {
+    instructions::read_post::handler(ctx)
+}
+pub fn update_post(ctx: Context<UpdatePost>, authority: Pubkey, title: String, body: String) -> Result<()> {
+    instructions::update_post::handler(ctx, authority, title, body)
+}
+    // === sunscreen:auto-generated:end segment=dispatch ===
+}
+=== tests/blog_app/post.test.ts ===
+import * as anchor from "@coral-xyz/anchor";
+
+describe("post recipe", () => {
+  anchor.setProvider(anchor.AnchorProvider.env());
+
+  const program = anchor.workspace[Object.keys(anchor.workspace)[0]];
+
+  function expectMethod(name: string) {
+    if (!program?.methods?.[name]) throw new Error(`missing ${name} method`);
+  }
+
+  it("exposes generated CRUD methods", () => {
+    expectMethod("createPost");
+    expectMethod("readPost");
+    expectMethod("updatePost");
+    expectMethod("deletePost");
+  });
+});

@@ -1,0 +1,320 @@
+---
+source: tests/scaffold_recipes.rs
+expression: contents
+---
+=== programs/asset_app/src/state/token_vault.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct TokenVault {
+    pub authority: Pubkey,
+    pub mint: Pubkey,
+    pub total_supply: u64,
+}
+// === sunscreen:auto-generated:end segment=file ===
+=== programs/asset_app/src/state/nft_collection.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct NftCollection {
+    pub authority: Pubkey,
+    pub collection_mint: Pubkey,
+    pub items: u64,
+}
+// === sunscreen:auto-generated:end segment=file ===
+=== programs/asset_app/src/instructions/initialize_token_vault.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::TokenVaultInitialized;
+
+#[derive(Accounts)]
+pub struct InitializeTokenVault<'info> {
+    #[account(mut, seeds = [b"token", authority.key().as_ref()], bump)]
+    pub token_vault: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub mint: AccountInfo<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<InitializeTokenVault>,
+) -> Result<()> {
+    let _ = ctx;
+    emit!(TokenVaultInitialized {
+        mint: todo!("set TokenVaultInitialized.mint"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/asset_app/src/instructions/mint_token_vault.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::TokenVaultMinted;
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct MintTokenVault<'info> {
+    #[account(mut, seeds = [b"token", authority.key().as_ref()], bump)]
+    pub token_vault: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub mint: AccountInfo<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<MintTokenVault>,
+    amount: u64,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &amount;
+    emit!(TokenVaultMinted {
+        mint: todo!("set TokenVaultMinted.mint"),
+        amount: todo!("set TokenVaultMinted.amount"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/asset_app/src/instructions/transfer_token_vault.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::TokenVaultTransferred;
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct TransferTokenVault<'info> {
+    #[account(mut, seeds = [b"token", authority.key().as_ref()], bump)]
+    pub token_vault: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub mint: AccountInfo<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<TransferTokenVault>,
+    amount: u64,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &amount;
+    emit!(TokenVaultTransferred {
+        mint: todo!("set TokenVaultTransferred.mint"),
+        amount: todo!("set TokenVaultTransferred.amount"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/asset_app/src/instructions/create_nft_collection.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::NftCollectionCreated;
+
+#[derive(Accounts)]
+#[instruction(name: String, symbol: String, uri: String)]
+pub struct CreateNftCollection<'info> {
+    #[account(mut, seeds = [b"nft", authority.key().as_ref()], bump)]
+    pub nft_collection: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub collection_mint: AccountInfo<'info>,
+    #[account(mut)]
+    pub metadata: AccountInfo<'info>,
+    #[account(mut)]
+    pub master_edition: AccountInfo<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<CreateNftCollection>,
+    name: String,
+    symbol: String,
+    uri: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &name;
+    let _ = &symbol;
+    let _ = &uri;
+    emit!(NftCollectionCreated {
+        collection: todo!("set NftCollectionCreated.collection"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/asset_app/src/instructions/mint_nft_collection.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::NftCollectionMinted;
+
+#[derive(Accounts)]
+#[instruction(uri: String)]
+pub struct MintNftCollection<'info> {
+    #[account(mut, seeds = [b"nft", authority.key().as_ref()], bump)]
+    pub nft_collection: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub collection_mint: AccountInfo<'info>,
+    #[account(mut)]
+    pub metadata: AccountInfo<'info>,
+    #[account(mut)]
+    pub master_edition: AccountInfo<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<MintNftCollection>,
+    uri: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &uri;
+    emit!(NftCollectionMinted {
+        collection: todo!("set NftCollectionMinted.collection"),
+        mint: todo!("set NftCollectionMinted.mint"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/asset_app/src/instructions/verify_nft_collection.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+use crate::events::NftCollectionVerified;
+
+#[derive(Accounts)]
+pub struct VerifyNftCollection<'info> {
+    #[account(mut, seeds = [b"nft", authority.key().as_ref()], bump)]
+    pub nft_collection: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub collection_mint: AccountInfo<'info>,
+    #[account(mut)]
+    pub metadata: AccountInfo<'info>,
+    #[account(mut)]
+    pub master_edition: AccountInfo<'info>,
+    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<VerifyNftCollection>,
+) -> Result<()> {
+    let _ = ctx;
+    emit!(NftCollectionVerified {
+        collection: todo!("set NftCollectionVerified.collection"),
+        mint: todo!("set NftCollectionVerified.mint"),
+    });
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/asset_app/src/events.rs ===
+use anchor_lang::prelude::*;
+
+// === sunscreen:auto-generated:begin segment=events version=1 generator=event ===
+#[event]
+pub struct TokenVaultInitialized {
+    pub mint: Pubkey,
+}
+
+#[event]
+pub struct TokenVaultMinted {
+    pub mint: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct TokenVaultTransferred {
+    pub mint: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct NftCollectionCreated {
+    pub collection: Pubkey,
+}
+
+#[event]
+pub struct NftCollectionMinted {
+    pub collection: Pubkey,
+    pub mint: Pubkey,
+}
+
+#[event]
+pub struct NftCollectionVerified {
+    pub collection: Pubkey,
+    pub mint: Pubkey,
+}
+// === sunscreen:auto-generated:end segment=events ===
+=== programs/asset_app/src/errors.rs ===
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum AssetAppError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("mint does not match this token recipe")]
+    InvalidMint,
+    #[msg("caller cannot mutate token_vault")]
+    TokenVaultUnauthorized,
+    #[msg("metadata account does not match this NFT recipe")]
+    InvalidMetadata,
+    #[msg("caller cannot mutate nft_collection")]
+    NftCollectionUnauthorized,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}
+=== programs/asset_app/src/lib.rs ===
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+pub mod errors;
+pub mod events;
+pub mod state;
+#[allow(unused_imports)]
+use instructions::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod asset_app {
+    use super::*;
+
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=cli ===
+pub fn create_nft_collection(ctx: Context<CreateNftCollection>, name: String, symbol: String, uri: String) -> Result<()> {
+    instructions::create_nft_collection::handler(ctx, name, symbol, uri)
+}
+pub fn initialize_token_vault(ctx: Context<InitializeTokenVault>) -> Result<()> {
+    instructions::initialize_token_vault::handler(ctx)
+}
+pub fn mint_nft_collection(ctx: Context<MintNftCollection>, uri: String) -> Result<()> {
+    instructions::mint_nft_collection::handler(ctx, uri)
+}
+pub fn mint_token_vault(ctx: Context<MintTokenVault>, amount: u64) -> Result<()> {
+    instructions::mint_token_vault::handler(ctx, amount)
+}
+pub fn transfer_token_vault(ctx: Context<TransferTokenVault>, amount: u64) -> Result<()> {
+    instructions::transfer_token_vault::handler(ctx, amount)
+}
+pub fn verify_nft_collection(ctx: Context<VerifyNftCollection>) -> Result<()> {
+    instructions::verify_nft_collection::handler(ctx)
+}
+    // === sunscreen:auto-generated:end segment=dispatch ===
+}

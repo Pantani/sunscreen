@@ -29,9 +29,10 @@ Options:
 - `--no-frontend` skips the recipe hook.
 - `--dry-run` validates and reports the plan without writing.
 
-`read_<resource>` is the fourth CRUD instruction. The frontend hook still
-exposes `use<Resource>(address)` as the read query wrapper, matching the ADR's
-client-facing shape.
+`read_<resource>` is generated as a full instruction alongside
+`create_<resource>`, `update_<resource>`, and `delete_<resource>`. The frontend
+hook still exposes `use<Resource>(address)` as the read query wrapper, matching
+the ADR's client-facing shape.
 
 ### `sunscreen scaffold spl-token <Name>`
 
@@ -90,7 +91,7 @@ and frontend hook placement in `tests/scaffold_recipes.rs`.
 `tests/compile_generated.rs` includes gated recipe compile cases. Run them with:
 
 ```text
-SUNSCREEN_COMPILE_TESTS=1 cargo test --test compile_generated
+cargo fetch && SUNSCREEN_COMPILE_TESTS=1 cargo test --test compile_generated
 ```
 
 Real Anchor coverage is ignored by default:

@@ -1,0 +1,154 @@
+---
+source: tests/scaffold_recipes.rs
+expression: contents
+---
+=== programs/blog_frontend_app/src/state/post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=account ===
+use anchor_lang::prelude::*;
+
+#[account]
+pub struct Post {
+    pub authority: Pubkey,
+    pub title: String,
+}
+// === sunscreen:auto-generated:end segment=file ===
+=== programs/blog_frontend_app/src/instructions/create_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(authority: Pubkey, title: String)]
+pub struct CreatePost<'info> {
+    #[account(mut, seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<CreatePost>,
+    authority: Pubkey,
+    title: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &authority;
+    let _ = &title;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_frontend_app/src/instructions/read_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct ReadPost<'info> {
+    #[account(seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<ReadPost>,
+) -> Result<()> {
+    let _ = ctx;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_frontend_app/src/instructions/update_post.rs ===
+// === sunscreen:auto-generated:begin segment=file version=1 generator=instruction ===
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+#[instruction(authority: Pubkey, title: String)]
+pub struct UpdatePost<'info> {
+    #[account(mut, seeds = [b"resource", authority.key().as_ref()], bump)]
+    pub post: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+// === sunscreen:auto-generated:end segment=file ===
+
+// === sunscreen:user-region:begin segment=handler ===
+pub fn handler(
+    ctx: Context<UpdatePost>,
+    authority: Pubkey,
+    title: String,
+) -> Result<()> {
+    let _ = ctx;
+    let _ = &authority;
+    let _ = &title;
+    Ok(())
+}
+// === sunscreen:user-region:end segment=handler ===
+=== programs/blog_frontend_app/src/errors.rs ===
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum BlogFrontendAppError {
+    // === sunscreen:auto-generated:begin segment=error_variants version=1 generator=error ===
+    #[msg("Post was not found")]
+    PostNotFound,
+    #[msg("caller cannot mutate this post")]
+    PostUnauthorized,
+    // === sunscreen:auto-generated:end segment=error_variants ===
+}
+=== programs/blog_frontend_app/src/lib.rs ===
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+pub mod errors;
+pub mod state;
+#[allow(unused_imports)]
+use instructions::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod blog_frontend_app {
+    use super::*;
+
+    // === sunscreen:auto-generated:begin segment=dispatch version=1 generator=cli ===
+pub fn create_post(ctx: Context<CreatePost>, authority: Pubkey, title: String) -> Result<()> {
+    instructions::create_post::handler(ctx, authority, title)
+}
+pub fn read_post(ctx: Context<ReadPost>) -> Result<()> {
+    instructions::read_post::handler(ctx)
+}
+pub fn update_post(ctx: Context<UpdatePost>, authority: Pubkey, title: String) -> Result<()> {
+    instructions::update_post::handler(ctx, authority, title)
+}
+    // === sunscreen:auto-generated:end segment=dispatch ===
+}
+=== app/src/hooks/use-post.ts ===
+import { useMutation, useQuery } from "@tanstack/react-query";
+
+type RpcFn = (input?: unknown) => Promise<unknown>;
+
+export function usePost(address?: string) {
+  return useQuery({
+    queryKey: ["sunscreen", "post", address],
+    enabled: Boolean(address),
+    queryFn: async () => ({ address }),
+  });
+}
+
+export function useCreatePost(rpc?: RpcFn) {
+  return useMutation({
+    mutationKey: ["sunscreen", "create", "post"],
+    mutationFn: async (input?: unknown) => (rpc ? rpc(input) : input),
+  });
+}
+
+export function useUpdatePost(rpc?: RpcFn) {
+  return useMutation({
+    mutationKey: ["sunscreen", "update", "post"],
+    mutationFn: async (input?: unknown) => (rpc ? rpc(input) : input),
+  });
+}
+
+export const postRecipe = { resource: "post", hook: "usePost" } as const;

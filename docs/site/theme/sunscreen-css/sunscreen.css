@@ -124,7 +124,7 @@ body {
 /* Inline code */
 .content code {
   font-family: var(--font-mono);
-  font-size: 0.88em;
+  font-size: 0.93em;
   background: var(--bg-inline-code);
   color: var(--inline-code-color);
   padding: 0.12em 0.42em;
@@ -146,7 +146,7 @@ body {
   background: transparent;
   border: none;
   padding: 0;
-  font-size: 0.92rem;
+  font-size: 16px;
   line-height: 1.65;
   color: var(--fg);
 }
@@ -194,22 +194,25 @@ body {
 
 /* Sidebar — quiet, sunken, editorial */
 .sidebar {
-  font-size: 1.12rem;
+  font-size: 17px;
   border-right: 1px solid var(--border);
   width: var(--sidebar-width);
   background: var(--sidebar-bg);
 }
 .sidebar .sidebar-scrollbox {
   padding: 1.4rem 0.9rem 2rem;
+  font-size: 17px;
 }
 .sidebar .chapter li.chapter-item {
   padding: 0;
-  margin: 0.08rem 0;
+  margin: 0.1rem 0;
   line-height: 1.5;
+  font-size: 17px;
 }
 .sidebar .chapter li.chapter-item a {
   color: var(--fg-muted);
-  padding: 0.42rem 0.8rem;
+  font-size: 17px;
+  padding: 0.48rem 0.85rem;
   border-radius: var(--radius-sm);
   transition: background 90ms ease, color 90ms ease;
   border-bottom: none;
@@ -230,7 +233,7 @@ body {
 .sidebar .part-title {
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--fg-faint);
   font-weight: 600;
   padding: 1.4rem 0.7rem 0.5rem;

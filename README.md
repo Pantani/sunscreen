@@ -181,7 +181,7 @@ See [`src/config/`](src/config/) for the schema implementation and [`docs/adr/AD
 
 Incremental scaffolding is marker-based. Generated regions are wrapped in stable comments so `sunscreen` can make future edits without owning the whole file. You can edit normal Rust code around those regions; if a generated region drifts, `sunscreen chain doctor --fix-markers` repairs only the cases it can prove are safe.
 
-The marker contract is documented in [`docs/reference/markers.md`](docs/reference/markers.md). Codegen ownership, recipe behaviour, plugin runtime, Pinocchio workspaces, and onboarding commands are documented in [`docs/reference/codegen.md`](docs/reference/codegen.md), [`docs/reference/recipes.md`](docs/reference/recipes.md), [`docs/reference/app.md`](docs/reference/app.md), [`docs/reference/pinocchio.md`](docs/reference/pinocchio.md), and [`docs/reference/onboarding.md`](docs/reference/onboarding.md).
+The marker contract is documented in [`docs/reference/markers.md`](docs/reference/markers.md). Codegen ownership, recipe behaviour, plugin runtime, Pinocchio workspaces, testing tiers, and onboarding commands are documented in [`docs/reference/codegen.md`](docs/reference/codegen.md), [`docs/reference/recipes.md`](docs/reference/recipes.md), [`docs/reference/app.md`](docs/reference/app.md), [`docs/reference/pinocchio.md`](docs/reference/pinocchio.md), [`docs/reference/testing.md`](docs/reference/testing.md), and [`docs/reference/onboarding.md`](docs/reference/onboarding.md).
 
 ---
 
@@ -193,6 +193,8 @@ cargo test               # run unit + golden tests
 cargo clippy -- -D warnings
 cargo fmt --check
 cargo bench --bench cold_start
+bash scripts/integration-heavy.sh
+SUNSCREEN_REAL_TOOLCHAIN=1 bash scripts/integration-heavy.sh
 ```
 
 Project layout:

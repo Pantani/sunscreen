@@ -4,7 +4,7 @@
 
 `sunscreen` helps Solana developers move from an empty folder to a working Anchor or Pinocchio project without hand-stitching `anchor`, `solana`, `cargo`, `codama`, `surfpool`, and frontend tooling. It focuses on deterministic project generation, marker-based incremental edits, plugins, and a supervised local development loop.
 
-**Current status:** `v0.1.0` is the first preview release, with GitHub Release binaries for Linux and macOS. Phase 8 distribution/docs work continues toward v1.0. `sunscreen` is not published to crates.io yet. The live project tracker is [`ROADMAP.md`](ROADMAP.md).
+**Current status:** all v1.0 phases (0–8) are closed. `v0.1.0` is the first preview release, with GitHub Release binaries for Linux and macOS and publishing across Homebrew, Snap, and APT. `sunscreen` is not published to crates.io yet. The live project tracker is [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -23,7 +23,7 @@ Today, `sunscreen` can:
 - Manage local plugins, run plugin commands/hooks, list the reference marketplace, and route plugin-backed `scaffold <noun>` commands.
 - Bootstrap Pinocchio programs with `chain new --framework pinocchio` and build them through `cargo build-sbf`.
 
-Remaining v1.0 work is docs publication polish, shell completions, Windows/Homebrew distribution, and release-channel polish. Remote plugin artifact download and richer Pinocchio-native scaffold/codegen flows remain follow-up work.
+Follow-up work beyond v1.0 includes remote plugin artifact download, richer Pinocchio-native scaffold/codegen flows, Windows distribution, and shell completions.
 
 The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md). For the available user and contributor docs, start with the documentation map below.
 
@@ -167,35 +167,35 @@ Most scaffold commands also support `--dry-run` and `--json`, so you can preview
 
 ## Commands
 
-| Command | Status | Description |
-|---------|--------|-------------|
-| `version` | ✅ | Print sunscreen version (text or JSON) |
-| `doctor` | ✅ | Diagnose toolchain & environment |
-| `chain new` | ✅ | Bootstrap a compilable Anchor or Pinocchio workspace (+ frontend variants) |
-| `chain doctor --fix-markers` | ✅ | Repair drifted scaffolder markers in appendable hosts |
-| `chain build --headless` | ✅ | Run the headless build pipeline (`anchor build` + optional Codama, or Pinocchio `cargo build-sbf`) |
-| `chain serve --headless` | ✅ | Run the supervised runtime/watch loop with line-delimited JSON events |
-| `scaffold program` | ✅ | Add a new program crate to an existing workspace |
-| `scaffold instruction` | ✅ | Add an instruction (idempotent, marker-based, `--dry-run`, `--json`) |
-| `scaffold account` | ✅ | Add an account struct |
-| `scaffold event` | ✅ | Add an event |
-| `scaffold error` | ✅ | Add an error variant |
-| `scaffold crud` | ✅ | Generate a CRUD dApp slice |
-| `scaffold spl-token` | ✅ | Generate an SPL token recipe slice |
-| `scaffold metaplex-nft` | ✅ | Generate a Metaplex NFT recipe slice |
-| `chain serve` | ✅ | Full supervised dev loop (Surfpool/test-validator + watcher + TUI) |
-| `generate idl` | ✅ | Export built Anchor IDLs into `clients/idl` |
-| `generate clients` | ✅ | Write `codama.json` and run Codama client generation |
-| `generate frontend-hooks` | ✅ | Generate IDL/core TypeScript plus React/Solid Query hooks |
-| `init` | ✅ | Beginner-friendly workspace wizard/non-interactive bootstrap |
-| `quickstart {token,nft,dao,blog}` | ✅ | Create a complete starter dApp from a recipe |
-| `examples {list,describe,use}` | ✅ | Browse or copy embedded examples |
-| `wallet {new,list,airdrop,balance,set-default}` | ✅ | Manage local Solana wallets and devnet balances |
-| `deploy <cluster>` | ✅ | Plan or run Anchor deploys with safety gates |
-| `learn [topic]` | ✅ | Render embedded learning topics offline |
-| `app`<br>`{install, uninstall, list, describe, update}` | ✅ | Declarative plugin lifecycle in `sunscreen.yml` |
-| `app`<br>`{commands, run, hook, marketplace}` | ✅ | Plugin runtime commands, lifecycle hooks, and reference marketplace |
-| `scaffold <plugin-noun>` | ✅ | Route plugin-declared scaffold commands without changing core |
+| Command | Description |
+|---------|-------------|
+| `version` | Print sunscreen version (text or JSON) |
+| `doctor` | Diagnose toolchain & environment |
+| `chain new` | Bootstrap a compilable Anchor or Pinocchio workspace (+ frontend variants) |
+| `chain doctor --fix-markers` | Repair drifted scaffolder markers in appendable hosts |
+| `chain build --headless` | Run the headless build pipeline (`anchor build` + optional Codama, or Pinocchio `cargo build-sbf`) |
+| `chain serve --headless` | Run the supervised runtime/watch loop with line-delimited JSON events |
+| `scaffold program` | Add a new program crate to an existing workspace |
+| `scaffold instruction` | Add an instruction (idempotent, marker-based, `--dry-run`, `--json`) |
+| `scaffold account` | Add an account struct |
+| `scaffold event` | Add an event |
+| `scaffold error` | Add an error variant |
+| `scaffold crud` | Generate a CRUD dApp slice |
+| `scaffold spl-token` | Generate an SPL token recipe slice |
+| `scaffold metaplex-nft` | Generate a Metaplex NFT recipe slice |
+| `chain serve` | Full supervised dev loop (Surfpool/test-validator + watcher + TUI) |
+| `generate idl` | Export built Anchor IDLs into `clients/idl` |
+| `generate clients` | Write `codama.json` and run Codama client generation |
+| `generate frontend-hooks` | Generate IDL/core TypeScript plus React/Solid Query hooks |
+| `init` | Beginner-friendly workspace wizard/non-interactive bootstrap |
+| `quickstart {token,nft,dao,blog}` | Create a complete starter dApp from a recipe |
+| `examples {list,describe,use}` | Browse or copy embedded examples |
+| `wallet {new,list,airdrop,balance,set-default}` | Manage local Solana wallets and devnet balances |
+| `deploy <cluster>` | Plan or run Anchor deploys with safety gates |
+| `learn [topic]` | Render embedded learning topics offline |
+| `app`<br>`{install, uninstall, list, describe, update}` | Declarative plugin lifecycle in `sunscreen.yml` |
+| `app`<br>`{commands, run, hook, marketplace}` | Plugin runtime commands, lifecycle hooks, and reference marketplace |
+| `scaffold <plugin-noun>` | Route plugin-declared scaffold commands without changing core |
 
 ---
 
@@ -270,9 +270,9 @@ Live tracker: [`ROADMAP.md`](ROADMAP.md) is the single source of truth. Total pl
 - **Phase 5.5** — Onboarding layer (`init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, actionable errors) — see [ADR-0005](docs/adr/ADR-0005-beginner-onboarding.md). ✅
 - **Phase 6** — Plugin system: lifecycle, manifest/runtime, stdio/gRPC transport contract, sandbox, marketplace/reference plugins. ✅
 - **Phase 7** — Pinocchio support (`chain new --framework pinocchio`, Cargo/Solana toolchain config, `cargo build-sbf` pipeline, Anchor-only guards). ✅
-- **Phase 8** — Distribution & docs (preview release pipeline active; v1.0 docs/completions/installers remain). 🚧
+- **Phase 8** — Distribution & docs. ✅
 
-Phase 6 and Phase 7 are now closed in the v1.0 line. Phase 8 is in progress and starts with the `v0.1.0` preview release.
+All v1.0 phases are now closed.
 
 ---
 

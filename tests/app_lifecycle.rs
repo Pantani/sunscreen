@@ -320,6 +320,65 @@ fn env_overlay_does_not_leak_into_persisted_manifest() {
 }
 
 #[test]
+fn bare_reinstall_preserves_existing_pinned_version() {
+    // Regression: `install <source>` with no `@version` / `--version` must
+    // NOT silently unpin a previously pinned entry.
+    let env = CliEnv::new();
+    let ws = seeded(&env, "ws-reinstall-bare");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["app", "install", "github.com/org/foo.git@1.2.3"]);
+    env.ok("seed install", &mut cmd);
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "install", "github.com/org/foo.git"]);
+    let payload = env.json_ok("bare reinstall", &mut cmd);
+    assert_eq!(payload["changed"], false);
+    assert_eq!(payload["app"]["version"], "1.2.3");
+
+    let yml = read_yml(&ws);
+    assert!(
+        yml.contains("1.2.3"),
+        "bare reinstall unpinned the existing entry:\n{yml}"
+    );
+}
+
+#[test]
+fn install_of_exact_source_succeeds_even_with_basename_neighbour() {
+    // Regression: a same-basename neighbour must not shadow the exact-source
+    // match. Re-installing the exact source of an already-declared plugin is
+    // idempotent even when another entry shares its normalized basename.
+    let env = CliEnv::new();
+    let ws = env.path("ws-exact-vs-basename");
+    fs::create_dir_all(&ws).expect("mkdir");
+    // Seed two distinct sources whose basenames both normalize to `foo`.
+    let yml = "version: 1
+project:
+  name: demo
+  framework: anchor
+programs:
+  - name: demo
+    path: programs/demo
+plugins:
+  - source: gitlab.com/other/foo
+    version: 0.1.0
+  - source: github.com/org/foo.git
+    version: 1.2.3
+";
+    fs::write(ws.join("sunscreen.yml"), yml).expect("write yml");
+    let prog = ws.join("programs/demo/src/instructions");
+    fs::create_dir_all(&prog).expect("create prog dir");
+    fs::write(prog.join("mod.rs"), "// noop\n").unwrap();
+    fs::write(prog.parent().unwrap().join("lib.rs"), "// noop\n").unwrap();
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "install", "github.com/org/foo.git@1.2.3"]);
+    let payload = env.json_ok("exact reinstall", &mut cmd);
+    assert_eq!(payload["changed"], false);
+    assert_eq!(payload["app"]["version"], "1.2.3");
+}
+
+#[test]
 fn no_app_subcommand_executes_external_process() {
     // The fake-toolchain log captures every external tool invocation. None
     // of the `app` subcommands may shell out — they are pure declaration

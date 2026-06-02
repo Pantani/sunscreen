@@ -290,16 +290,17 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
     let mut cfg = ws.config.clone();
 
     // Conflict / idempotency check:
-    // - exact source match → update entry in place.
-    // - basename collision with a different source → exit 4.
+    // - exact source match → update entry in place (resolved across ALL
+    //   entries first so a same-basename neighbour does not shadow it).
+    // - otherwise, basename collision with a different source → exit 4.
     let basename = normalize_basename(&source);
-    let mut existing_idx: Option<usize> = None;
-    for (i, p) in cfg.plugins.iter().enumerate() {
-        if p.source == source {
-            existing_idx = Some(i);
-            break;
-        }
-        if normalize_basename(&p.source) == basename {
+    let existing_idx = cfg.plugins.iter().position(|p| p.source == source);
+    if existing_idx.is_none() {
+        if let Some(p) = cfg
+            .plugins
+            .iter()
+            .find(|p| normalize_basename(&p.source) == basename)
+        {
             return Err(SunscreenError::UserInput(format!(
                 "plugin name {basename:?} already declared with a different source ({:?}); \
                  uninstall it first or pick a different source",
@@ -309,18 +310,25 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
     }
 
     let mut changed = false;
-    if let Some(i) = existing_idx {
-        if cfg.plugins[i].version != version {
-            cfg.plugins[i].version = version.clone();
-            changed = true;
+    let stored_version = if let Some(i) = existing_idx {
+        // Bare `install <source>` (no `@version` / `--version`) MUST NOT
+        // silently unpin an entry that already carries a pinned version.
+        // Re-pin only when the caller explicitly supplied a version.
+        if let Some(new_v) = version.clone() {
+            if cfg.plugins[i].version.as_deref() != Some(new_v.as_str()) {
+                cfg.plugins[i].version = Some(new_v);
+                changed = true;
+            }
         }
+        cfg.plugins[i].version.clone()
     } else {
         cfg.plugins.push(PluginCfg {
             source: source.clone(),
             version: version.clone(),
         });
         changed = true;
-    }
+        version.clone()
+    };
 
     if !args.dry_run && changed {
         write_plugins(&ws, cfg.plugins.clone())?;
@@ -331,7 +339,7 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
 
     let app = plugin_to_json(&PluginCfg {
         source: source.clone(),
-        version: version.clone(),
+        version: stored_version,
     });
     let config_rel = ws
         .config_path

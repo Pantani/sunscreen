@@ -185,11 +185,12 @@ impl Config {
                     });
                 }
             }
-            // Duplicate detection uses the trimmed, lowercased source so
-            // accidental whitespace or case differences still surface as
-            // drift.
-            let normalized = trimmed.to_ascii_lowercase();
-            if !seen_sources.insert(normalized) {
+            // Duplicate detection uses the trimmed source. We deliberately
+            // do NOT case-fold here: local filesystem paths on Linux and
+            // some case-sensitive Git hosts treat `local/Foo` and
+            // `local/foo` as distinct, and dropping that distinction would
+            // reject legitimate configs.
+            if !seen_sources.insert(trimmed.to_string()) {
                 return Err(ValidationError::DuplicatePluginSource {
                     plugin: plugin.source.clone(),
                 });

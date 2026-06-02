@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B0D12"/>
+      <stop offset="1" stop-color="#13161D"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F4A340" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#F4A340" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#F4A340" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brandText" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FBD38D"/>
+      <stop offset="1" stop-color="#F4A340"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- subtle grid -->
+  <g stroke="#1F232C" stroke-width="1" opacity="0.6">
+    <path d="M0 158 H1200 M0 316 H1200 M0 474 H1200"/>
+    <path d="M300 0 V630 M600 0 V630 M900 0 V630"/>
+  </g>
+
+  <!-- sun glow behind logo mark -->
+  <circle cx="980" cy="315" r="280" fill="url(#sun)"/>
+
+  <!-- sun mark, right side -->
+  <g transform="translate(820,175)">
+    <!-- horizon line -->
+    <path d="M-40 240 H320" stroke="#F4A340" stroke-width="6" stroke-linecap="round"/>
+    <!-- sun disk -->
+    <circle cx="140" cy="170" r="92" fill="#F4A340"/>
+    <!-- rays -->
+    <g stroke="#FBD38D" stroke-width="6" stroke-linecap="round">
+      <path d="M140 30 V60"/>
+      <path d="M40 70 L62 92"/>
+      <path d="M240 70 L218 92"/>
+      <path d="M-20 150 H10"/>
+      <path d="M270 150 H300"/>
+    </g>
+  </g>
+
+  <!-- left content -->
+  <g transform="translate(80,150)">
+    <!-- eyebrow -->
+    <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" letter-spacing="6" fill="#8A8B92">SUNSCREEN · DOCS</text>
+
+    <!-- wordmark / headline -->
+    <text x="0" y="100" font-family="Inter, -apple-system, Segoe UI, sans-serif" font-size="96" font-weight="800" letter-spacing="-3" fill="url(#brandText)">sunscreen</text>
+
+    <!-- tagline -->
+    <text x="0" y="180" font-family="Inter, -apple-system, sans-serif" font-size="34" font-weight="600" fill="#E8E6E1">The Rust CLI for Solana</text>
+    <text x="0" y="222" font-family="Inter, -apple-system, sans-serif" font-size="26" font-weight="400" fill="#8A8B92">Scaffold · Repair · Orchestrate</text>
+
+    <!-- terminal card -->
+    <g transform="translate(0,270)">
+      <rect x="0" y="0" width="640" height="150" rx="14" fill="#13161D" stroke="#2A2F3A" stroke-width="1"/>
+      <g transform="translate(22,24)">
+        <circle cx="0" cy="0" r="6" fill="#F47272"/>
+        <circle cx="20" cy="0" r="6" fill="#F4C462"/>
+        <circle cx="40" cy="0" r="6" fill="#6FCF97"/>
+      </g>
+      <text x="24" y="80" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" fill="#8A8B92">$</text>
+      <text x="48" y="80" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" fill="#E8E6E1">sunscreen chain new </text>
+      <text x="376" y="80" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" fill="#FBD38D">my-app</text>
+      <text x="24" y="116" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" fill="#6FCF97">✓ workspace ready — anchor + codama + frontend</text>
+    </g>
+  </g>
+
+  <!-- footer URL -->
+  <text x="80" y="580" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" fill="#5C5E66">pantani.github.io/sunscreen</text>
+
+  <!-- bottom-right brand stripe -->
+  <rect x="0" y="618" width="1200" height="12" fill="#F4A340"/>
+</svg>

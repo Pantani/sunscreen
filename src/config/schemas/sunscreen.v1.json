@@ -173,15 +173,56 @@
         "none"
       ]
     },
+    "PluginCapabilities": {
+      "description": "Coarse capabilities requested by a plugin runtime.",
+      "type": "object",
+      "properties": {
+        "filesystem": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginFilesystemScope"
+          }
+        },
+        "network": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "PluginCfg": {
-      "description": "Plugin reference (placeholder for v1; full plugin protocol lands later).",
+      "description": "Plugin reference under `plugins[]`.",
       "type": "object",
       "required": [
         "source"
       ],
       "properties": {
+        "capabilities": {
+          "$ref": "#/definitions/PluginCapabilities"
+        },
+        "entrypoint": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "manifest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "source": {
           "type": "string"
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PluginTransport"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "version": {
           "type": [
@@ -191,6 +232,22 @@
         }
       },
       "additionalProperties": false
+    },
+    "PluginFilesystemScope": {
+      "description": "Coarse filesystem scopes granted to a plugin.",
+      "type": "string",
+      "enum": [
+        "workspace",
+        "scratch"
+      ]
+    },
+    "PluginTransport": {
+      "description": "Plugin transport advertised either in `sunscreen.yml` or the plugin manifest.",
+      "type": "string",
+      "enum": [
+        "stdio-jsonrpc",
+        "grpc"
+      ]
     },
     "ProgramCfg": {
       "description": "One program entry under `programs`.",

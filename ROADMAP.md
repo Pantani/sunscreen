@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-02 (CLI integration harness wired into CI)
+**Last updated:** 2026-06-02 (Phase 6 plugin runtime closed)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -36,7 +36,7 @@
 
 ## 1. Overall Timeline
 
-Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0001 plan). The increase absorbs the +4-week Phase 5.5 (Onboarding) introduced by ADR-0005. Phase 6 (plugins) and Phase 7 (Pinocchio) are explicitly deferred post-v1.0 to hold the v1.0 line.
+Total to **v1.0**: ~25 weeks of focused work (vs. 16 weeks in the original ADR-0001 plan). The increase absorbs the +4-week Phase 5.5 (Onboarding) introduced by ADR-0005 and brings Phase 6 (plugins) into the v1.0 line. Phase 7 (Pinocchio) remains outside the v1.0 line.
 
 | Phase | Theme | Status | Duration | Cum. | Key deliverables | DoD source |
 |---|---|---|---:|---:|---|---|
@@ -47,11 +47,11 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **4** | Codegen & Frontend Hooks | ✅ DONE | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, Codama wrapper, IDL artifacts, React/Solid Query hooks | ADR-0001 §10.6 |
 | **5** | Recipes | ✅ DONE | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
 | **5.5** | Onboarding Layer | ✅ DONE | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
-| **6** | Plugin System | 🔮 post-v1.0 | 4 wk | — | gRPC + stdio plugins, 2 reference plugins | ADR-0001 §10.8 |
+| **6** | Plugin System | ✅ DONE | 4 wk | 24 wk | runtime manager, gRPC proto contract + stdio plugins, sandbox/trust model, marketplace/local plugins, 2 reference plugins | ADR-0001 §10.8 |
 | **7** | Pinocchio support | 🔮 post-v1.0 | 3 wk | — | `--framework pinocchio` MVP | ADR-0001 §10.9 |
-| **8** | Distribution & Docs (v1.0) | ⏳ NEXT | 1 wk | 21 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
+| **8** | Distribution & Docs (v1.0) | ⏳ NEXT | 1 wk | 25 wk | cargo-dist multi-OS, mdBook/Starlight docs, shell completions | ADR-0001 §10 |
 
-> Phases are listed in ascending numeric order. Phase 8 is what cuts v1.0 (~21 wk cumulative); Phases 6 and 7 are explicitly deferred post-v1.0 and do **not** gate the v1.0 release — they are listed above Phase 8 only to keep the numeric sequence readable.
+> Phases are listed in ascending numeric order. Phase 6 is closed and now sits in the v1.0 line; Phase 8 cuts v1.0 after plugin closure. Phase 7 remains deferred and does not gate the release.
 
 ---
 
@@ -254,7 +254,7 @@ Shipped via PR #7.
 
 ### Phase 8 — Distribution & Docs (v1.0) 📋
 
-**Status.** ⏳ Next.
+**Status.** ⏳ Next; resumes after Phase 6 closure.
 
 **Goal.** Cut v1.0 with multi-OS prebuilt binaries and a published docs site.
 
@@ -272,11 +272,27 @@ Shipped via PR #7.
 
 ---
 
-### Phase 6 — Plugin System 🔮 (post-v1.0)
+### Phase 6 — Plugin System ✅
 
-Deferred to preserve a tight v1.0. Design intent unchanged from ADR-0001 §10.8: gRPC (tonic) and stdio transports, reference plugins for spl-token-2022 and a Yellowstone indexer. Will be revisited once the v1.0 surface stabilises.
+**Status.** ✅ DONE in this PR. The Phase 6 documentation and runtime contract are captured in [`docs/reference/app.md`](docs/reference/app.md). The implementation closes local plugin discovery, manifest validation, stdio JSON-RPC execution, gRPC proto contract, sandbox/trust boundaries, dynamic scaffold routing, lifecycle hook execution, and the offline reference marketplace.
 
-**Pre-Phase-6 lifecycle MVP shipped.** `sunscreen app {install,uninstall,list,describe,update}` now manages declarative plugin entries in `plugins[]` of `sunscreen.yml`, with idempotent install, `--dry-run`, basename normalization (`github.com/org/foo.git` → `foo`), semver validation, and stable `status: "declared"` JSON output (see [`docs/reference/app.md`](docs/reference/app.md)). The plugin **runtime** itself — gRPC/stdio transports, marketplace, mandatory remote download, sandboxing, dynamic command registration — remains explicitly post-v1.0 and out of scope of this MVP.
+**Goal.** Turn the existing declarative `sunscreen app` lifecycle into a supervised plugin runtime that can register commands and hooks without modifying core.
+
+**Already shipped.**
+- [x] `sunscreen app {install,uninstall,list,describe,update}` manages declarative plugin entries in `plugins[]` of `sunscreen.yml`
+- [x] Idempotent install, `--dry-run`, basename normalization (`github.com/org/foo.git` → `foo`), semver validation, and stable JSON envelope
+
+**Deliverables.**
+- [x] Runtime manager that resolves declared local-path plugins and reports available dynamic commands from their manifests
+- [x] gRPC contract finalized in `proto/plugin.proto` with `initialize`, `capabilities`, `run_command`, `run_hook`, and `shutdown`
+- [x] stdio JSON-RPC transport with `Content-Length: N\r\n\r\n{json}` framing, dynamic command dispatch, and hook execution
+- [x] Plugin manifest validation for `sunscreen-plugin.json` (`name`, `version`, `transport`, `entrypoint`, commands, hooks, capabilities)
+- [x] Sandbox/trust model: workspace + scratch filesystem boundary, path-traversal rejection, sanitized environment, and Unix process-group launch
+- [x] Marketplace conventions and offline reference index for `sunscreen-apps/spl-token-2022` and `sunscreen-apps/yellowstone-indexer`
+- [x] `app commands`, `app run`, `app hook`, and plugin-backed `scaffold <noun>` command routing
+- [x] CI smoke now includes `tests/app_lifecycle.rs` explicitly
+
+**DoD.** A third-party local plugin can register a new `sunscreen scaffold <noun>` command and a lifecycle hook without modifying `sunscreen` core; stdio runtime and gRPC proto-contract tests pass; sandbox/runtime violations fail with exit 9 (`plugin_runtime`).
 
 ---
 
@@ -295,14 +311,16 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
               └─► Phase 4 (codegen, frontend hooks) ✅
                     └─► Phase 5 (recipes: crud, spl-token, metaplex-nft) ✅
                            └─► Phase 5.5 (onboarding: quickstart wraps recipes) ✅
-                                 └─► Phase 8 (cargo-dist + docs site) ⏳ NEXT ─► v1.0
+                                 └─► Phase 6 (plugin runtime + reference plugins) ✅
+                                       └─► Phase 8 (cargo-dist + docs site) ⏳ NEXT ─► v1.0
 ```
 
 - **Phase 5 is closed.** Composite recipe scaffolding can now consume the generated hooks/client surface without owning Phase 4 generated paths.
 - **Phase 5.5 is closed.** The top-level beginner commands now wrap the core scaffolding/runtime/deploy surfaces without duplicating their internals.
 - **Binary-level CLI integration smoke now exists.** The Ignite-inspired Rust harness exercises the command groups through the compiled binary with isolated temp workspaces and fake external tools, giving Phase 8 a release-oriented QA layer without requiring network or a real Solana toolchain.
 - **CI now runs that smoke layer explicitly.** The main pipeline also enforces lockfile use and keeps the optional onboarding feature boundary building via a no-default-features target check.
-- **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
+- **Phase 6 (plugins) is closed.** The declarative `app` MVP now has local manifest discovery, stdio execution, gRPC proto contract, sandbox/runtime failure handling, reference marketplace entries, dynamic scaffold routing, and lifecycle hook execution.
+- **Phase 7 (Pinocchio) remains post-v1.0.** It requires its own ADR before scoping and should not pull engineering attention from plugin/runtime and release closure.
 - **Phase 8 is the immediate unblock.** Distribution, published docs, shell completions, changelog, and release polish now gate v1.0.
 
 ---

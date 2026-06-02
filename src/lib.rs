@@ -9,6 +9,7 @@ pub mod error;
 pub mod fsutil;
 #[cfg(feature = "onboarding")]
 pub mod onboarding;
+pub mod plugin;
 pub mod runtime;
 pub mod rustpatch;
 pub mod scaffold;

@@ -1,7 +1,6 @@
-use std::process::Command;
-
 use sunscreen::SunscreenError;
 
+#[cfg(feature = "onboarding")]
 fn sunscreen_bin() -> &'static str {
     env!("CARGO_BIN_EXE_sunscreen")
 }
@@ -20,6 +19,7 @@ fn all_sunscreen_errors_have_stable_exit_kind_and_next_step() {
         },
         SunscreenError::PathConflict("target exists".into()),
         SunscreenError::Network("rpc failed".into()),
+        SunscreenError::PluginRuntime("plugin crashed".into()),
     ];
 
     for err in cases {
@@ -43,13 +43,14 @@ fn expected_contract(err: &SunscreenError) -> (i32, &'static str) {
         SunscreenError::InstructionDrift { .. } => (6, "instruction_drift"),
         SunscreenError::PathConflict(_) => (7, "path_conflict"),
         SunscreenError::Network(_) => (8, "network"),
+        SunscreenError::PluginRuntime(_) => (9, "plugin_runtime"),
     }
 }
 
 #[cfg(feature = "onboarding")]
 #[test]
 fn json_error_schema_preserves_legacy_fields_and_adds_next_step() {
-    let out = Command::new(sunscreen_bin())
+    let out = std::process::Command::new(sunscreen_bin())
         .args(["--json", "quickstart", "token", "--non-interactive"])
         .output()
         .expect("invoke sunscreen");

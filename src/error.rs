@@ -29,6 +29,10 @@ pub enum SunscreenError {
     #[error("network operation failed: {0}")]
     Network(String),
 
+    /// A plugin process, manifest, or transport failed after discovery.
+    #[error("plugin runtime failed: {0}")]
+    PluginRuntime(String),
+
     /// An existing instruction file has no recognizable auto-generated markers,
     /// so sunscreen cannot safely re-apply the scaffold (the file may have been
     /// hand-written or its markers removed/corrupted).
@@ -56,6 +60,7 @@ impl SunscreenError {
     /// - `6` instruction drift
     /// - `7` path conflict
     /// - `8` network / RPC failure
+    /// - `9` plugin runtime failure
     #[must_use]
     pub fn exit_code(&self) -> i32 {
         match self {
@@ -67,6 +72,7 @@ impl SunscreenError {
             SunscreenError::InstructionDrift { .. } => 6,
             SunscreenError::PathConflict(_) => 7,
             SunscreenError::Network(_) => 8,
+            SunscreenError::PluginRuntime(_) => 9,
         }
     }
 
@@ -81,6 +87,7 @@ impl SunscreenError {
             SunscreenError::InstructionDrift { .. } => "instruction_drift",
             SunscreenError::PathConflict(_) => "path_conflict",
             SunscreenError::Network(_) => "network",
+            SunscreenError::PluginRuntime(_) => "plugin_runtime",
             SunscreenError::Other(_) => "other",
         }
     }
@@ -102,6 +109,9 @@ impl SunscreenError {
             }
             SunscreenError::Network(_) => {
                 "check your RPC URL, wallet balance, and network connectivity, then retry"
+            }
+            SunscreenError::PluginRuntime(_) => {
+                "run `sunscreen app commands --json`, inspect the plugin manifest, then retry"
             }
             SunscreenError::InstructionDrift { .. } => "run `sunscreen chain doctor --fix-markers`",
             SunscreenError::Other(_) => "rerun with `-v` and inspect the error context",

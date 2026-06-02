@@ -24,6 +24,8 @@ use serde_json::json;
 use crate::config::schema::PluginCfg;
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
+use crate::plugin::manager::{self, PluginManager};
+use crate::plugin::marketplace;
 use crate::workspace::{self, WorkspaceRoot};
 
 #[derive(Debug, Subcommand)]
@@ -38,6 +40,14 @@ pub enum AppCmd {
     Describe(DescribeArgs),
     /// Change the pinned version of a declared plugin.
     Update(UpdateArgs),
+    /// List dynamic commands exported by available plugin manifests.
+    Commands,
+    /// Execute an app-kind plugin command.
+    Run(RunArgs),
+    /// Execute a lifecycle hook declared by available plugins.
+    Hook(HookArgs),
+    /// List built-in/reference marketplace entries.
+    Marketplace,
 }
 
 #[derive(Debug, Args)]
@@ -82,6 +92,26 @@ pub struct UpdateArgs {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct RunArgs {
+    /// Plugin name, basename, or exact source.
+    pub plugin: String,
+    /// App-kind command declared by the plugin manifest.
+    pub command: String,
+    /// Arguments forwarded to the plugin command after `--`.
+    #[arg(last = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct HookArgs {
+    /// Hook name, for example `post-codama`.
+    pub hook: String,
+    /// Arguments forwarded to each plugin hook after `--`.
+    #[arg(last = true)]
+    pub args: Vec<String>,
+}
+
 /// Dispatch entry invoked from `cli::root`.
 pub fn run(cmd: &AppCmd, json_out: bool) -> Result<i32, SunscreenError> {
     match cmd {
@@ -90,6 +120,10 @@ pub fn run(cmd: &AppCmd, json_out: bool) -> Result<i32, SunscreenError> {
         AppCmd::List => run_list(json_out),
         AppCmd::Describe(args) => run_describe(args, json_out),
         AppCmd::Update(args) => run_update(args, json_out),
+        AppCmd::Commands => run_commands(json_out),
+        AppCmd::Run(args) => run_plugin_command(args, json_out),
+        AppCmd::Hook(args) => run_hook(args, json_out),
+        AppCmd::Marketplace => run_marketplace(json_out),
     }
 }
 
@@ -169,6 +203,21 @@ fn plugin_to_json(plugin: &PluginCfg) -> serde_json::Value {
             .unwrap_or(serde_json::Value::Null),
     );
     obj.insert("status".to_string(), json!("declared"));
+    if let Some(manifest) = &plugin.manifest {
+        obj.insert("manifest".to_string(), json!(manifest));
+    }
+    if let Some(transport) = plugin.transport {
+        obj.insert(
+            "transport".to_string(),
+            json!(manager::transport_str(transport)),
+        );
+    }
+    if !plugin.entrypoint.is_empty() {
+        obj.insert("entrypoint".to_string(), json!(plugin.entrypoint));
+    }
+    if plugin.capabilities != crate::config::PluginCapabilities::default() {
+        obj.insert("capabilities".to_string(), json!(plugin.capabilities));
+    }
     serde_json::Value::Object(obj)
 }
 
@@ -325,6 +374,7 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
         cfg.plugins.push(PluginCfg {
             source: source.clone(),
             version: version.clone(),
+            ..PluginCfg::default()
         });
         changed = true;
         version.clone()
@@ -340,6 +390,7 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
     let app = plugin_to_json(&PluginCfg {
         source: source.clone(),
         version: stored_version,
+        ..PluginCfg::default()
     });
     let config_rel = ws
         .config_path
@@ -363,6 +414,92 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
         println!("declared plugin {source}");
     } else {
         println!("plugin {source} already declared (no change)");
+    }
+    Ok(0)
+}
+
+fn run_commands(json_out: bool) -> Result<i32, SunscreenError> {
+    let manager = PluginManager::discover_current_workspace()?;
+    let commands = manager.commands_json();
+    if json_out {
+        let payload = json!({
+            "ok": true,
+            "command": "app commands",
+            "commands": commands,
+            "changed": false,
+            "dry_run": false,
+        });
+        println!("{payload}");
+    } else if commands.is_empty() {
+        println!("no plugin commands available");
+    } else {
+        for command in commands {
+            println!(
+                "{kind} {name}  {plugin}  {transport}",
+                kind = command["kind"].as_str().unwrap_or("unknown"),
+                name = command["name"].as_str().unwrap_or("unknown"),
+                plugin = command["plugin"].as_str().unwrap_or("unknown"),
+                transport = command["transport"].as_str().unwrap_or("unknown"),
+            );
+        }
+    }
+    Ok(0)
+}
+
+fn run_plugin_command(args: &RunArgs, json_out: bool) -> Result<i32, SunscreenError> {
+    let manager = PluginManager::discover_current_workspace()?;
+    let report = manager.run_app_command(&args.plugin, &args.command, &args.args)?;
+    if json_out {
+        println!("{}", manager::report_json(&report, "app run".to_string()));
+    } else {
+        println!(
+            "plugin {plugin} ran {command}",
+            plugin = report.plugin,
+            command = report.command
+        );
+    }
+    Ok(0)
+}
+
+fn run_hook(args: &HookArgs, json_out: bool) -> Result<i32, SunscreenError> {
+    let manager = PluginManager::discover_current_workspace()?;
+    let reports = manager.run_hook(&args.hook, &args.args)?;
+    if json_out {
+        println!("{}", manager::hook_reports_json(&reports, &args.hook));
+    } else {
+        for report in reports {
+            println!(
+                "plugin {plugin} ran hook {hook}",
+                plugin = report.plugin,
+                hook = report.hook
+            );
+        }
+    }
+    Ok(0)
+}
+
+fn run_marketplace(json_out: bool) -> Result<i32, SunscreenError> {
+    let plugins = marketplace::as_json();
+    if json_out {
+        let payload = json!({
+            "ok": true,
+            "command": "app marketplace",
+            "plugins": plugins,
+            "changed": false,
+            "dry_run": false,
+            "grpc_contract": crate::plugin::grpc::contract_summary(),
+        });
+        println!("{payload}");
+    } else {
+        for plugin in plugins {
+            println!(
+                "{name}  {source}  {version}  {transport}",
+                name = plugin["name"].as_str().unwrap_or("unknown"),
+                source = plugin["source"].as_str().unwrap_or("unknown"),
+                version = plugin["version"].as_str().unwrap_or("unknown"),
+                transport = plugin["transport"].as_str().unwrap_or("unknown"),
+            );
+        }
     }
     Ok(0)
 }

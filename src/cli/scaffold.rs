@@ -5,6 +5,7 @@
 //! `program` remains reserved for R4.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
@@ -13,6 +14,7 @@ use heck::{ToPascalCase, ToSnakeCase};
 use crate::config::schema::Frontend;
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
+use crate::plugin::manager::{self, PluginManager};
 use crate::rustpatch::{apply, scan, MarkerKind, Patch, RustpatchError};
 use crate::scaffold::crud::{build as build_crud_recipe, CrudRecipeOptions};
 use crate::scaffold::recipes::metaplex_nft::{
@@ -48,6 +50,9 @@ pub enum ScaffoldCmd {
     SplToken(BuiltinRecipeArgs),
     /// Generate a Metaplex NFT recipe slice.
     MetaplexNft(BuiltinRecipeArgs),
+    /// Route a plugin-declared scaffold command.
+    #[command(external_subcommand)]
+    External(Vec<OsString>),
 }
 
 /// Flags for `sunscreen scaffold crud`.
@@ -199,7 +204,36 @@ pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
         ScaffoldCmd::Crud(args) => run_crud(args, json),
         ScaffoldCmd::SplToken(args) => run_spl_token(args, json),
         ScaffoldCmd::MetaplexNft(args) => run_metaplex_nft(args, json),
+        ScaffoldCmd::External(args) => run_external(args, json),
     }
+}
+
+fn run_external(args: &[OsString], json: bool) -> Result<i32, SunscreenError> {
+    let Some(command) = args.first() else {
+        return Err(SunscreenError::UserInput(
+            "missing scaffold plugin command".to_string(),
+        ));
+    };
+    let command = command.to_string_lossy().into_owned();
+    let forwarded = args
+        .iter()
+        .skip(1)
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let manager = PluginManager::discover_current_workspace()?;
+    let report = manager.run_scaffold_command(&command, &forwarded)?;
+    if json {
+        println!(
+            "{}",
+            manager::report_json(&report, format!("scaffold {command}"))
+        );
+    } else {
+        println!(
+            "plugin {plugin} scaffolded {command}",
+            plugin = report.plugin
+        );
+    }
+    Ok(0)
 }
 
 #[cfg(feature = "onboarding")]

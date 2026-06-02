@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package sunscreen.plugin.v1;
+
+service Plugin {
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+  rpc RunCommand(RunCommandRequest) returns (RunCommandResponse);
+  rpc RunHook(RunHookRequest) returns (RunHookResponse);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+message InitializeRequest {
+  string protocol_version = 1;
+  string sunscreen_version = 2;
+  string workspace_root = 3;
+}
+
+message InitializeResponse {
+  string protocol_version = 1;
+  repeated string accepted_capabilities = 2;
+}
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  repeated PluginCommand commands = 1;
+  repeated string hooks = 2;
+}
+
+message PluginCommand {
+  string kind = 1;
+  string name = 2;
+  string summary = 3;
+}
+
+message RunCommandRequest {
+  string kind = 1;
+  string name = 2;
+  repeated string args = 3;
+}
+
+message RunCommandResponse {
+  bool ok = 1;
+  string json_result = 2;
+}
+
+message RunHookRequest {
+  string hook = 1;
+  string json_context = 2;
+}
+
+message RunHookResponse {
+  bool ok = 1;
+  string json_result = 2;
+}
+
+message ShutdownRequest {}
+
+message ShutdownResponse {
+  bool ok = 1;
+}

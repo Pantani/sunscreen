@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-02 (Phase 5.5 closed in PR)
+**Last updated:** 2026-06-02 (CLI integration harness wired into CI)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -259,7 +259,10 @@ Shipped via PR #7.
 **Goal.** Cut v1.0 with multi-OS prebuilt binaries and a published docs site.
 
 **Deliverables.**
-- [ ] `cargo-dist` config — linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
+- [x] Ignite-style Rust CLI integration harness — builds/uses the real `sunscreen` binary, isolates HOME/PATH, provides fake Solana/Anchor/Codama toolchain scripts, and runs command-group smoke suites for `chain`, `scaffold`, `generate`, and onboarding commands.
+- [x] CI hardening for v1.0 QA — explicit command-group integration smoke job, locked Cargo commands, no-default-features build check, workflow concurrency, read-only permissions, and job timeouts.
+- [x] `cargo-dist` baseline for Linux/macOS — `Cargo.toml` metadata + release workflow cover linux/amd64, linux/arm64, darwin/amd64, darwin/arm64.
+- [ ] Complete distribution matrix — add/validate windows/amd64, release-plan CI (`cargo dist plan`), and final v1.0 artifact publishing flow.
 - [ ] Homebrew tap, optional `cargo binstall` path
 - [ ] Docs site (mdBook or Starlight per ADR-0003)
 - [ ] Shell completions (bash / zsh / fish / pwsh) emitted by `sunscreen completions`
@@ -295,6 +298,8 @@ Phase 2 R4 (program + doctor --fix-markers) ✅
 
 - **Phase 5 is closed.** Composite recipe scaffolding can now consume the generated hooks/client surface without owning Phase 4 generated paths.
 - **Phase 5.5 is closed.** The top-level beginner commands now wrap the core scaffolding/runtime/deploy surfaces without duplicating their internals.
+- **Binary-level CLI integration smoke now exists.** The Ignite-inspired Rust harness exercises the command groups through the compiled binary with isolated temp workspaces and fake external tools, giving Phase 8 a release-oriented QA layer without requiring network or a real Solana toolchain.
+- **CI now runs that smoke layer explicitly.** The main pipeline also enforces lockfile use and keeps the optional onboarding feature boundary building via a no-default-features target check.
 - **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
 - **Phase 8 is the immediate unblock.** Distribution, published docs, shell completions, changelog, and release polish now gate v1.0.
 

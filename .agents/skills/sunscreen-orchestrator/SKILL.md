@@ -1,6 +1,6 @@
 ---
 name: sunscreen-orchestrator
-description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 3", "Phase 4", "Phase 5", "Phase 5.5", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
+description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, validar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 8", "CI", "integration", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
 ---
 
 # Sunscreen Orchestrator
@@ -23,11 +23,14 @@ Antes de qualquer ação:
 - Phase 3 está concluída: `chain build`, `chain serve`, watcher, runtime supervisionado, fallback Surfpool→test-validator, frontend notify, serve model e teardown Ctrl-C.
 - Phase 4 está concluída: `generate {clients, idl, frontend-hooks}`, wrapper Codama, export IDL determinístico, React/Solid Query hooks e pipeline compartilhado.
 - Phase 5 está concluída: `scaffold {crud, spl-token, metaplex-nft}` como receitas compostas sobre os scaffolders Phase 2.
-- Phase 5.5 (Onboarding Layer) é a próxima fase.
+- Phase 5.5 está concluída: `init`, `examples`, `quickstart`, `wallet`, `deploy`, `learn` e erros com `next_step`.
+- Phase 8 (Distribution & Docs / v1.0) é a próxima fase: cargo-dist multi-OS completo, docs site, shell completions, changelog/SemVer e release polish.
+- A camada Ignite-style de integração CLI já existe e roda no CI: `tests/integration_{chain,scaffold,generate,onboarding}.rs` com `tests/support/mod.rs`.
+- O CI principal já tem smoke explícito de integração, `--locked`, check `--no-default-features`, permissões read-only, concorrência e timeouts.
 
 ## Execução
 
-**Modo de execução: hybrid.** Use subagentes somente quando o ambiente disponibilizar essa capacidade; sem subagentes, execute localmente seguindo os donos abaixo.
+**Modo de execução: hybrid.** Use subagentes somente quando o ambiente disponibilizar essa capacidade e o pedido autorizar trabalho por harness/equipe. No Codex, prefira `multi_agent_v1.spawn_agent` com agentes de QA/docs/arquitetura; sem subagentes, execute localmente seguindo os mesmos donos abaixo.
 
 ### Donos por área
 
@@ -49,7 +52,7 @@ Antes de qualquer ação:
 
 ### Phase 3 closure
 
-- `chain build --headless` emite NDJSON e roda build → Codama.
+- `chain build --headless` emite NDJSON e roda build -> Codama.
 - Watcher faz debounce e aciona pipeline com paths relativos.
 - `chain serve` lança runtime Surfpool/test-validator com fallback quando Surfpool implícito está ausente.
 - Frontend notify toca `app/.sunscreen/reload`.
@@ -71,24 +74,33 @@ Antes de qualquer ação:
 - Recipes fazem preflight dry-run dos primitives antes de escrever e mantêm um único objeto JSON sob `--json`.
 - `docs/reference/recipes.md`, `ROADMAP.md`, `AGENTS.md` e `CLAUDE.md` refletem Phase 5 fechada.
 
-### Phase 5.5 opening
+### Phase 5.5 closure
 
-1. Implementar `init`/wizard e `--non-interactive` sem duplicar `chain new`.
-2. Implementar `quickstart {token,nft,dao,blog}` como wrappers sobre recipes Phase 5.
-3. Adicionar `examples`, `wallet`, `deploy`, `learn` e contrato `next_step` em erros.
-4. Atualizar ADR-0002 exit-code table somente quando Phase 5.5 adicionar `PathConflict`/`Network`.
+- `init`/wizard e `--non-interactive` reutilizam `chain new`.
+- `quickstart {token,nft,dao,blog}` compõe recipes Phase 5.
+- `examples`, `wallet`, `deploy`, `learn` e contrato `next_step` estão implementados.
+- ADR-0002 cobre `PathConflict` e `Network`.
+
+### Phase 8 / CI QA
+
+- CI deve rodar `cargo fmt --all -- --check`, `cargo clippy --locked --all-targets --all-features -- -D warnings`, `cargo test --locked --all --all-features --no-fail-fast`, `cargo build --locked --release --all-features` e `cargo check --locked --no-default-features --all-targets`.
+- O smoke Ignite-style deve rodar explicitamente os quatro grupos `integration_chain`, `integration_scaffold`, `integration_generate` e `integration_onboarding`.
+- Testes reais de Anchor/Codama em `tests/integration_anchor.rs` continuam gated/ignored por padrão; quando executados, reporte se validaram de verdade ou apenas pularam por toolchain ausente.
+- Phase 8 ainda tem lacunas: docs site no CI, completions, changelog/SemVer, Windows/cargo-dist completo, Homebrew/binstall e validação `cargo dist plan`.
 
 ## Relatório
 
 Resuma ao usuário:
 
 - Arquivos criados/alterados agrupados por módulo.
-- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`, `cargo test` status.
+- `cargo fmt --all -- --check`, `cargo clippy --locked --all-targets --all-features -- -D warnings`, `cargo build --locked --release --all-features`, `cargo test --locked --all --all-features --no-fail-fast` status.
+- Status do smoke `cargo test --locked --test integration_chain --test integration_scaffold --test integration_generate --test integration_onboarding`.
+- Status do feature gate `cargo check --locked --no-default-features --all-targets`.
 - Pendências remanescentes do roadmap.
 - Próximo passo sugerido.
 
 ## Error Handling
 
-- Etapa falha → 1 retry com a mensagem de erro.
-- Repetiu → reporte bloqueio com comando, saída e arquivo provável.
-- Conflito de design → preserve alternativas no relatório e escolha o caminho que mantém `ROADMAP.md` coerente.
+- Etapa falha -> 1 retry com a mensagem de erro.
+- Repetiu -> reporte bloqueio com comando, saída e arquivo provável.
+- Conflito de design -> preserve alternativas no relatório e escolha o caminho que mantém `ROADMAP.md` coerente.

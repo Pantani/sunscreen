@@ -274,7 +274,7 @@ body {
   flex-wrap: wrap;
   margin: 1.75rem 0 2.5rem 0;
 }
-.hero-cta a {
+.content .hero-cta a {
   display: inline-block;
   padding: 0.7rem 1.25rem;
   border-radius: var(--radius-md);
@@ -285,17 +285,18 @@ body {
   font-size: 1rem;
   transition: transform 100ms ease, background 100ms ease;
 }
-.hero-cta a:hover {
+.content .hero-cta a:hover {
   background: var(--brand-soft);
+  color: #14110B;
   border-bottom: none;
   transform: translateY(-1px);
 }
-.hero-cta a:nth-child(2) {
+.content .hero-cta a:nth-child(2) {
   background: transparent;
   color: var(--fg-strong);
   border: 1px solid var(--border-strong);
 }
-.hero-cta a:nth-child(2):hover {
+.content .hero-cta a:nth-child(2):hover {
   background: var(--bg-elevated);
   border-color: var(--brand);
   color: var(--brand);
@@ -304,15 +305,15 @@ body {
 /* Card grid on landing */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1.5rem;
-  margin: 2.5rem 0 4rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 3rem 0;
 }
 .card {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 2.25rem 2.25rem;
+  padding: 1.4rem 1.5rem;
   transition: border-color 120ms ease, transform 120ms ease;
 }
 .card:hover {
@@ -321,21 +322,21 @@ body {
 }
 .card h3 {
   margin-top: 0 !important;
-  margin-bottom: 1.1rem !important;
-  font-size: 1.85rem !important;
-  line-height: 1.25 !important;
+  margin-bottom: 0.7rem !important;
+  font-size: 2.4rem !important;
+  line-height: 1.2 !important;
 }
 .card p {
   color: var(--fg-muted);
-  font-size: 1.2rem;
-  line-height: 1.65;
-  margin-bottom: 1.4rem;
+  font-size: 1.5rem !important;
+  line-height: 1.55 !important;
+  margin-bottom: 1.25rem;
 }
-.card a {
+.content .card a {
   color: var(--brand);
   font-weight: 600;
   border-bottom: none;
-  font-size: 1.2rem;
+  font-size: 1.45rem;
 }
 .card a:hover {
   color: var(--brand-soft);

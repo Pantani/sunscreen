@@ -4,14 +4,22 @@
 //! using the same architecture (Args struct → `run_*` → Transaction commit).
 //! `program` remains reserved for R4.
 
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use heck::{ToPascalCase, ToSnakeCase};
 
+use crate::config::schema::Frontend;
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
 use crate::rustpatch::{apply, scan, MarkerKind, Patch, RustpatchError};
+use crate::scaffold::crud::{build as build_crud_recipe, CrudRecipeOptions};
+use crate::scaffold::recipes::metaplex_nft::{
+    build as build_metaplex_nft_recipe, MetaplexNftRecipeOptions,
+};
+use crate::scaffold::recipes::spl_token::{build as build_spl_token_recipe, SplTokenRecipeOptions};
+use crate::scaffold::{GeneratedFile, RecipePlan, RecipeStep};
 use crate::templates::{
     render_account_file, render_account_mod_segment, render_dispatch_segment, render_error_variant,
     render_event_entry, render_instruction, render_instructions_mod_segment, render_program,
@@ -34,6 +42,57 @@ pub enum ScaffoldCmd {
     Error(ErrorArgs),
     /// Add a new Anchor program crate to an existing multi-program workspace.
     Program(ProgramArgs),
+    /// Generate a CRUD dApp slice for a resource.
+    Crud(CrudArgs),
+    /// Generate an SPL token recipe slice.
+    SplToken(BuiltinRecipeArgs),
+    /// Generate a Metaplex NFT recipe slice.
+    MetaplexNft(BuiltinRecipeArgs),
+}
+
+/// Flags for `sunscreen scaffold crud`.
+#[derive(Debug, Args)]
+pub struct CrudArgs {
+    /// Resource name. Used as the account name and instruction suffix.
+    pub name: String,
+    /// Parent program (must exist in `sunscreen.yml`).
+    #[arg(long, value_name = "NAME")]
+    pub program: String,
+    /// Comma-separated resource fields, e.g. `"authority:Pubkey,title:String,body:String"`.
+    #[arg(
+        long,
+        value_name = "LIST",
+        default_value = "authority:Pubkey,title:String,body:String,published:bool"
+    )]
+    pub fields: String,
+    /// Skip `update_<resource>`.
+    #[arg(long, default_value_t = false)]
+    pub no_update: bool,
+    /// Skip `delete_<resource>`.
+    #[arg(long, default_value_t = false)]
+    pub no_delete: bool,
+    /// Skip generated event structs and instruction `emit!` stubs.
+    #[arg(long, default_value_t = false)]
+    pub no_events: bool,
+    /// Skip recipe frontend hooks even when the workspace has a frontend.
+    #[arg(long, default_value_t = false)]
+    pub no_frontend: bool,
+    /// Print the planned changes without touching disk.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+}
+
+/// Shared flags for built-in recipe scaffolders.
+#[derive(Debug, Args)]
+pub struct BuiltinRecipeArgs {
+    /// Recipe resource name.
+    pub name: String,
+    /// Parent program (must exist in `sunscreen.yml`).
+    #[arg(long, value_name = "NAME")]
+    pub program: String,
+    /// Print the planned changes without touching disk.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 /// Flags for `sunscreen scaffold program`.
@@ -132,15 +191,22 @@ pub struct InstructionArgs {
 /// Dispatch entry invoked from `cli::root`.
 pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
     match cmd {
-        ScaffoldCmd::Instruction(args) => run_instruction(args, json),
-        ScaffoldCmd::Account(args) => run_account(args, json),
-        ScaffoldCmd::Event(args) => run_event(args, json),
-        ScaffoldCmd::Error(args) => run_error(args, json),
-        ScaffoldCmd::Program(args) => run_program(args, json),
+        ScaffoldCmd::Instruction(args) => run_instruction(args, json, false),
+        ScaffoldCmd::Account(args) => run_account(args, json, false),
+        ScaffoldCmd::Event(args) => run_event(args, json, false),
+        ScaffoldCmd::Error(args) => run_error(args, json, false),
+        ScaffoldCmd::Program(args) => run_program(args, json, false),
+        ScaffoldCmd::Crud(args) => run_crud(args, json),
+        ScaffoldCmd::SplToken(args) => run_spl_token(args, json),
+        ScaffoldCmd::MetaplexNft(args) => run_metaplex_nft(args, json),
     }
 }
 
-fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenError> {
+fn run_instruction(
+    args: &InstructionArgs,
+    json: bool,
+    quiet: bool,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "instruction name")?;
     if let Some(emit) = &args.emit {
         validate_ident(emit, "--emit event name")?;
@@ -317,7 +383,9 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
         && lib_file_status != FileStatus::Updated;
 
     if args.dry_run {
-        emit_dry_run(json, &args.name, &args.program, &plan_files, &lib_status);
+        if !quiet {
+            emit_dry_run(json, &args.name, &args.program, &plan_files, &lib_status);
+        }
         return Ok(0);
     }
 
@@ -359,6 +427,10 @@ fn run_instruction(args: &InstructionArgs, json: bool) -> Result<i32, SunscreenE
     }
 
     let written = tx.commit().map_err(map_tx_err)?;
+
+    if quiet {
+        return Ok(0);
+    }
 
     if json {
         let payload = serde_json::json!({
@@ -958,7 +1030,7 @@ fn parse_fields(raw: &str) -> Result<Vec<ParsedField>, SunscreenError> {
 // scaffold account
 // ---------------------------------------------------------------------------
 
-fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
+fn run_account(args: &AccountArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "account name")?;
     let fields = parse_fields(&args.fields)?;
     let account_snake = args.name.to_snake_case();
@@ -1076,7 +1148,9 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
         && lib_new.is_none();
 
     if args.dry_run {
-        emit_noun_dry_run(json, "account", &args.name, &args.program, &plan_files);
+        if !quiet {
+            emit_noun_dry_run(json, "account", &args.name, &args.program, &plan_files);
+        }
         return Ok(0);
     }
 
@@ -1104,27 +1178,29 @@ fn run_account(args: &AccountArgs, json: bool) -> Result<i32, SunscreenError> {
     }
     let _written = tx.commit().map_err(map_tx_err)?;
 
-    emit_noun_result(
-        json,
-        "account",
-        &args.name,
-        &args.program,
-        &plan_files,
-        &segments_patched,
-        unchanged,
-        &[
-            ("account_file", account_status.as_str()),
-            ("mod_file", mod_status.as_str()),
-            (
-                "lib_rs",
-                if lib_new.is_some() {
-                    "patched"
-                } else {
-                    "unchanged"
-                },
-            ),
-        ],
-    );
+    if !quiet {
+        emit_noun_result(
+            json,
+            "account",
+            &args.name,
+            &args.program,
+            &plan_files,
+            &segments_patched,
+            unchanged,
+            &[
+                ("account_file", account_status.as_str()),
+                ("mod_file", mod_status.as_str()),
+                (
+                    "lib_rs",
+                    if lib_new.is_some() {
+                        "patched"
+                    } else {
+                        "unchanged"
+                    },
+                ),
+            ],
+        );
+    }
     Ok(0)
 }
 
@@ -1215,7 +1291,7 @@ fn build_segment_host(
 // scaffold event
 // ---------------------------------------------------------------------------
 
-fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
+fn run_event(args: &EventArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "event name")?;
     let fields = parse_fields(&args.fields)?;
     let event_pascal = args.name.to_pascal_case();
@@ -1322,7 +1398,9 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
     let unchanged = file_status == FileStatus::Unchanged && lib_new.is_none();
 
     if args.dry_run {
-        emit_noun_dry_run(json, "event", &args.name, &args.program, &plan_files);
+        if !quiet {
+            emit_noun_dry_run(json, "event", &args.name, &args.program, &plan_files);
+        }
         return Ok(0);
     }
 
@@ -1347,26 +1425,28 @@ fn run_event(args: &EventArgs, json: bool) -> Result<i32, SunscreenError> {
         let _ = tx.commit().map_err(map_tx_err)?;
     }
 
-    emit_noun_result(
-        json,
-        "event",
-        &args.name,
-        &args.program,
-        &plan_files,
-        &segments_patched,
-        unchanged,
-        &[
-            ("events_file", file_status.as_str()),
-            (
-                "lib_rs",
-                if lib_new.is_some() {
-                    "patched"
-                } else {
-                    "unchanged"
-                },
-            ),
-        ],
-    );
+    if !quiet {
+        emit_noun_result(
+            json,
+            "event",
+            &args.name,
+            &args.program,
+            &plan_files,
+            &segments_patched,
+            unchanged,
+            &[
+                ("events_file", file_status.as_str()),
+                (
+                    "lib_rs",
+                    if lib_new.is_some() {
+                        "patched"
+                    } else {
+                        "unchanged"
+                    },
+                ),
+            ],
+        );
+    }
     Ok(0)
 }
 
@@ -1521,7 +1601,7 @@ fn normalize_entry(s: &str) -> String {
 // scaffold error
 // ---------------------------------------------------------------------------
 
-fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
+fn run_error(args: &ErrorArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "error variant name")?;
     let variant_pascal = args.name.to_pascal_case();
     let program_snake = args.program.to_snake_case();
@@ -1615,7 +1695,9 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
     let unchanged = file_status == FileStatus::Unchanged && lib_new.is_none();
 
     if args.dry_run {
-        emit_noun_dry_run(json, "error", &args.name, &args.program, &plan_files);
+        if !quiet {
+            emit_noun_dry_run(json, "error", &args.name, &args.program, &plan_files);
+        }
         return Ok(0);
     }
 
@@ -1640,26 +1722,28 @@ fn run_error(args: &ErrorArgs, json: bool) -> Result<i32, SunscreenError> {
         let _ = tx.commit().map_err(map_tx_err)?;
     }
 
-    emit_noun_result(
-        json,
-        "error",
-        &args.name,
-        &args.program,
-        &plan_files,
-        &segments_patched,
-        unchanged,
-        &[
-            ("errors_file", file_status.as_str()),
-            (
-                "lib_rs",
-                if lib_new.is_some() {
-                    "patched"
-                } else {
-                    "unchanged"
-                },
-            ),
-        ],
-    );
+    if !quiet {
+        emit_noun_result(
+            json,
+            "error",
+            &args.name,
+            &args.program,
+            &plan_files,
+            &segments_patched,
+            unchanged,
+            &[
+                ("errors_file", file_status.as_str()),
+                (
+                    "lib_rs",
+                    if lib_new.is_some() {
+                        "patched"
+                    } else {
+                        "unchanged"
+                    },
+                ),
+            ],
+        );
+    }
     Ok(0)
 }
 
@@ -1813,7 +1897,7 @@ fn emit_noun_result(
 
 const DEFAULT_PROGRAM_ID: &str = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS";
 
-fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
+fn run_program(args: &ProgramArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
     use heck::ToKebabCase;
 
     validate_program_name(&args.name)?;
@@ -1922,20 +2006,22 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
     }
 
     if args.dry_run {
-        if json {
-            let payload = serde_json::json!({
-                "ok": true,
-                "dry_run": true,
-                "noun": "program",
-                "name": program_kebab,
-                "files": all_files,
-                "program_id": program_id,
-            });
-            println!("{payload}");
-        } else {
-            println!("dry-run: would scaffold program `{program_kebab}`");
-            for f in &all_files {
-                println!("  {f}");
+        if !quiet {
+            if json {
+                let payload = serde_json::json!({
+                    "ok": true,
+                    "dry_run": true,
+                    "noun": "program",
+                    "name": program_kebab,
+                    "files": all_files,
+                    "program_id": program_id,
+                });
+                println!("{payload}");
+            } else {
+                println!("dry-run: would scaffold program `{program_kebab}`");
+                for f in &all_files {
+                    println!("  {f}");
+                }
             }
         }
         return Ok(0);
@@ -1962,6 +2048,10 @@ fn run_program(args: &ProgramArgs, json: bool) -> Result<i32, SunscreenError> {
             .map_err(map_tx_err)?;
     }
     let written = tx.commit().map_err(map_tx_err)?;
+
+    if quiet {
+        return Ok(0);
+    }
 
     if json {
         let payload = serde_json::json!({

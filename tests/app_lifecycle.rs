@@ -113,7 +113,7 @@ fn seed_stdio_plugin_workspace(env: &CliEnv, sub: &str) -> PathBuf {
     { "name": "indexer", "kind": "scaffold", "summary": "Scaffold an indexer" }
   ],
   "hooks": ["post-codama"],
-  "capabilities": { "network": false, "filesystem": ["workspace", "scratch"] }
+  "capabilities": { "network": true, "filesystem": ["workspace", "scratch"] }
 }
 "#,
     )
@@ -162,7 +162,8 @@ fn seed_bad_plugin_workspace(
   "version": "0.1.0",
   "transport": "stdio-jsonrpc",
   "entrypoint": [{manifest_entrypoint}],
-  "commands": [{{ "name": "hello", "kind": "app" }}]
+  "commands": [{{ "name": "hello", "kind": "app" }}],
+  "capabilities": {{ "network": true, "filesystem": ["workspace", "scratch"] }}
 }}
 "#
         ),
@@ -181,6 +182,104 @@ plugins:
   - source: plugins/hello
     version: 0.1.0
     manifest: plugins/hello/sunscreen-plugin.json
+",
+    );
+    ws
+}
+
+#[cfg(unix)]
+fn seed_plugin_workspace_with_capabilities(
+    env: &CliEnv,
+    sub: &str,
+    capabilities: &str,
+    script: &str,
+) -> PathBuf {
+    let ws = env.path(sub);
+    fs::create_dir_all(ws.join("plugins/hello")).expect("create plugin dir");
+    fs::write(ws.join("plugins/hello/plugin.sh"), script).expect("write plugin script");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(ws.join("plugins/hello/plugin.sh"))
+            .expect("metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(ws.join("plugins/hello/plugin.sh"), perms).expect("chmod");
+    }
+    fs::write(
+        ws.join("plugins/hello/sunscreen-plugin.json"),
+        format!(
+            r#"{{
+  "name": "hello",
+  "version": "0.1.0",
+  "transport": "stdio-jsonrpc",
+  "entrypoint": ["./plugin.sh"],
+  "commands": [{{ "name": "hello", "kind": "app" }}],
+  "capabilities": {capabilities}
+}}
+"#
+        ),
+    )
+    .expect("write plugin manifest");
+    seed_workspace_with_config(
+        &ws,
+        "version: 1
+project:
+  name: demo
+  framework: anchor
+programs:
+  - name: demo
+    path: programs/demo
+plugins:
+  - source: plugins/hello
+    version: 0.1.0
+    manifest: plugins/hello/sunscreen-plugin.json
+",
+    );
+    ws
+}
+
+#[cfg(unix)]
+fn seed_ambiguous_stdio_plugins_workspace(env: &CliEnv, sub: &str) -> PathBuf {
+    let ws = env.path(sub);
+    for (dir, message) in [
+        ("plugins/alpha", "alpha plugin"),
+        ("plugins/beta", "beta plugin"),
+    ] {
+        fs::create_dir_all(ws.join(dir)).expect("create plugin dir");
+        write_stdio_plugin_script(
+            &ws.join(dir).join("plugin.sh"),
+            &format!(r#"{{"jsonrpc":"2.0","id":1,"result":{{"message":"{message}"}}}}"#),
+        );
+        fs::write(
+            ws.join(dir).join("sunscreen-plugin.json"),
+            r#"{
+  "name": "hello",
+  "version": "0.1.0",
+  "transport": "stdio-jsonrpc",
+  "entrypoint": ["./plugin.sh"],
+  "commands": [{ "name": "hello", "kind": "app" }],
+  "capabilities": { "network": true, "filesystem": ["workspace", "scratch"] }
+}
+"#,
+        )
+        .expect("write plugin manifest");
+    }
+    seed_workspace_with_config(
+        &ws,
+        "version: 1
+project:
+  name: demo
+  framework: anchor
+programs:
+  - name: demo
+    path: programs/demo
+plugins:
+  - source: plugins/alpha
+    version: 0.1.0
+    manifest: plugins/alpha/sunscreen-plugin.json
+  - source: plugins/beta
+    version: 0.1.0
+    manifest: plugins/beta/sunscreen-plugin.json
 ",
     );
     ws
@@ -254,6 +353,86 @@ fn run_executes_stdio_jsonrpc_plugin_command() {
 
 #[cfg(unix)]
 #[test]
+fn run_rejects_plugin_without_workspace_capability_before_spawn() {
+    let env = CliEnv::new();
+    let ws = seed_plugin_workspace_with_capabilities(
+        &env,
+        "ws-plugin-scratch-only",
+        r#"{ "network": false, "filesystem": ["scratch"] }"#,
+        "#!/bin/sh\ntouch spawned.txt\nprintf 'Content-Length: 51\\r\\n\\r\\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}'\n",
+    );
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "hello", "hello"]);
+    let payload = env.json_err("app run scratch-only", &mut cmd, 4);
+    assert_eq!(payload["kind"], "user_input");
+    assert!(
+        payload["error"].as_str().unwrap().contains("workspace"),
+        "unexpected error payload: {payload}"
+    );
+    assert!(
+        !ws.join("plugins/hello/spawned.txt").exists(),
+        "plugin was spawned before capability enforcement"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_rejects_stdio_plugin_without_network_capability_before_spawn() {
+    let env = CliEnv::new();
+    let ws = seed_plugin_workspace_with_capabilities(
+        &env,
+        "ws-plugin-network-denied",
+        r#"{ "network": false, "filesystem": ["workspace", "scratch"] }"#,
+        "#!/bin/sh\ntouch spawned.txt\nprintf 'Content-Length: 51\\r\\n\\r\\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}'\n",
+    );
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "hello", "hello"]);
+    let payload = env.json_err("app run network-denied", &mut cmd, 4);
+    assert_eq!(payload["kind"], "user_input");
+    assert!(
+        payload["error"].as_str().unwrap().contains("network"),
+        "unexpected error payload: {payload}"
+    );
+    assert!(
+        !ws.join("plugins/hello/spawned.txt").exists(),
+        "plugin was spawned before capability enforcement"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_rejects_ambiguous_plugin_alias_before_dispatch() {
+    let env = CliEnv::new();
+    let ws = seed_ambiguous_stdio_plugins_workspace(&env, "ws-plugin-run-ambiguous");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "hello", "hello"]);
+    let payload = env.json_err("app run ambiguous target", &mut cmd, 4);
+    assert_eq!(payload["kind"], "user_input");
+    assert!(
+        payload["error"].as_str().unwrap().contains("matches 2"),
+        "unexpected error payload: {payload}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_allows_exact_source_to_disambiguate_plugin_alias() {
+    let env = CliEnv::new();
+    let ws = seed_ambiguous_stdio_plugins_workspace(&env, "ws-plugin-run-exact-source");
+
+    let mut cmd = env.sunscreen_in(&ws);
+    cmd.args(["--json", "app", "run", "plugins/beta", "hello"]);
+    let payload = env.json_ok("app run exact source", &mut cmd);
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["plugin"], "hello");
+    assert_eq!(payload["result"]["message"], "beta plugin");
+}
+
+#[cfg(unix)]
+#[test]
 fn hook_executes_declared_stdio_plugin_hook() {
     let env = CliEnv::new();
     let ws = seed_stdio_plugin_workspace(&env, "ws-plugin-hook");
@@ -310,13 +489,7 @@ fn run_maps_nonzero_plugin_exit_to_plugin_runtime() {
     cmd.args(["--json", "app", "run", "hello", "hello"]);
     let payload = env.json_err("app run nonzero", &mut cmd, 9);
     assert_eq!(payload["kind"], "plugin_runtime");
-    assert!(
-        payload["error"]
-            .as_str()
-            .unwrap()
-            .contains("exited with code"),
-        "unexpected error payload: {payload}"
-    );
+    assert_eq!(payload["exit_code"], 9);
 }
 
 #[cfg(unix)]

@@ -148,16 +148,24 @@ impl PluginManager {
     }
 
     fn resolve_plugin(&self, target: &str) -> Result<&ResolvedPlugin, SunscreenError> {
-        if let Some(plugin) = self.plugins.iter().find(|plugin| {
-            plugin.source == target
-                || plugin.manifest.name == target
-                || basename(&plugin.source) == target
-        }) {
+        if let Some(plugin) = self.plugins.iter().find(|plugin| plugin.source == target) {
             return Ok(plugin);
         }
-        Err(SunscreenError::UserInput(format!(
-            "no available plugin matches {target:?}"
-        )))
+        let matches = self
+            .plugins
+            .iter()
+            .filter(|plugin| plugin.manifest.name == target || basename(&plugin.source) == target)
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [] => Err(SunscreenError::UserInput(format!(
+                "no available plugin matches {target:?}"
+            ))),
+            [plugin] => Ok(*plugin),
+            many => Err(SunscreenError::UserInput(format!(
+                "plugin target {target:?} matches {} available plugins; pass the exact source",
+                many.len()
+            ))),
+        }
     }
 
     fn run(
@@ -173,7 +181,7 @@ impl PluginManager {
             &plugin.manifest.name,
             plugin.capabilities(),
         );
-        sandbox.prepare()?;
+        sandbox.prepare_for_workspace_execution(&plugin.manifest.name)?;
         for item in plugin.entrypoint() {
             sandbox.ensure_entrypoint_allowed(item)?;
         }
@@ -227,7 +235,7 @@ impl PluginManager {
             &plugin.manifest.name,
             plugin.capabilities(),
         );
-        sandbox.prepare()?;
+        sandbox.prepare_for_workspace_execution(&plugin.manifest.name)?;
         for item in plugin.entrypoint() {
             sandbox.ensure_entrypoint_allowed(item)?;
         }

@@ -107,7 +107,7 @@ must include it at the artifact root; local path plugins are validated in place.
   "hooks": ["pre-build", "post-codama"],
   "capabilities": {
     "filesystem": ["workspace", "scratch"],
-    "network": false
+    "network": true
   }
 }
 ```
@@ -162,7 +162,9 @@ The Phase 6 sandbox rules are:
 - Writes outside marker-managed scaffold targets still go through the same
   transactional planning rules used by core scaffolders.
 - Network access is denied unless the manifest sets `capabilities.network:
-  true`; enabling it requires explicit user confirmation for remote plugins.
+  true`; in the current Phase 6 host-process transports, `sunscreen` enforces
+  that by refusing to spawn plugins that omit the capability, because local
+  stdio/gRPC processes cannot have host networking disabled portably yet.
 - Signing is denied in Phase 6. Plugins must not read wallet files such as
   `~/.config/solana/id.json` directly; flows that require signatures must route
   through core `sunscreen wallet` / `sunscreen deploy` surfaces or a later ADR.

@@ -2,7 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::config::PluginCapabilities;
+use crate::config::{PluginCapabilities, PluginFilesystemScope};
 use crate::error::SunscreenError;
 
 #[derive(Debug, Clone)]
@@ -48,12 +48,49 @@ impl PluginSandbox {
         Ok(())
     }
 
-    pub fn prepare(&self) -> Result<(), SunscreenError> {
+    pub fn prepare_for_workspace_execution(&self, plugin_name: &str) -> Result<(), SunscreenError> {
+        self.require_filesystem_scope(plugin_name, PluginFilesystemScope::Workspace)?;
+        self.require_filesystem_scope(plugin_name, PluginFilesystemScope::Scratch)?;
+        self.require_network_capability(plugin_name)?;
+        self.prepare()
+    }
+
+    fn prepare(&self) -> Result<(), SunscreenError> {
         std::fs::create_dir_all(&self.scratch_dir).map_err(|err| {
             SunscreenError::PluginRuntime(format!(
                 "create plugin scratch dir {}: {err}",
                 self.scratch_dir.display()
             ))
         })
+    }
+
+    fn require_filesystem_scope(
+        &self,
+        plugin_name: &str,
+        scope: PluginFilesystemScope,
+    ) -> Result<(), SunscreenError> {
+        if self.capabilities.filesystem.contains(&scope) {
+            return Ok(());
+        }
+        Err(SunscreenError::UserInput(format!(
+            "plugin {plugin_name:?} cannot run without declaring filesystem capability `{}`",
+            filesystem_scope_name(scope)
+        )))
+    }
+
+    fn require_network_capability(&self, plugin_name: &str) -> Result<(), SunscreenError> {
+        if self.capabilities.network {
+            return Ok(());
+        }
+        Err(SunscreenError::UserInput(format!(
+            "plugin {plugin_name:?} cannot run without declaring capability `network`; current plugin transports run local processes and cannot disable host networking"
+        )))
+    }
+}
+
+fn filesystem_scope_name(scope: PluginFilesystemScope) -> &'static str {
+    match scope {
+        PluginFilesystemScope::Workspace => "workspace",
+        PluginFilesystemScope::Scratch => "scratch",
     }
 }

@@ -34,8 +34,11 @@ parts:
     stage-packages:
       - libssl3
 
+# App key must match the snap name so the command is exposed as
+# `sunscreen-cli` (not `sunscreen-cli.sunscreen`). See the snapd docs on
+# "command name = snap name" aliasing.
 apps:
-  sunscreen:
+  sunscreen-cli:
     command: bin/sunscreen
     environment:
       PATH: "$SNAP/bin:$PATH"

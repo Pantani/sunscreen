@@ -172,6 +172,7 @@ jobs:
           name: dist-global
           path: |
             target/distrib/*-installer.sh
+            target/distrib/*.rb
             target/distrib/source.tar.gz
             target/distrib/source.tar.gz.sha256
 

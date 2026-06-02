@@ -27,7 +27,7 @@ fn run_new<R: ProcessRunner>(
     json: bool,
     runner: &R,
 ) -> Result<i32, SunscreenError> {
-    let out = wallet_output_path(args);
+    let out = wallet_output_path(args)?;
     if args.dry_run {
         emit_wallet_new(json, &out, true, None);
         return Ok(0);
@@ -211,14 +211,18 @@ fn run_set_default(args: &WalletSetDefaultArgs, json: bool) -> Result<i32, Sunsc
     Ok(0)
 }
 
-fn wallet_output_path(args: &WalletNewArgs) -> PathBuf {
+fn wallet_output_path(args: &WalletNewArgs) -> Result<PathBuf, SunscreenError> {
     if let Some(out) = &args.out {
-        return expand_home(out);
+        return Ok(expand_home(out));
     }
     if let Some(name) = args.name.as_ref().filter(|value| !value.trim().is_empty()) {
-        return PathBuf::from(".sunscreen/wallets").join(format!("{name}.json"));
+        let ws = workspace::find_root(None)?;
+        return Ok(ws
+            .root
+            .join(".sunscreen/wallets")
+            .join(format!("{name}.json")));
     }
-    default_wallet_path()
+    Ok(default_wallet_path())
 }
 
 fn default_wallet_path() -> PathBuf {

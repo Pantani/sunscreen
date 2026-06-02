@@ -1,0 +1,19 @@
+---
+source: tests/onboarding_examples_learn.rs
+expression: describe
+---
+{
+  "example": {
+    "description": "Metaplex NFT collection starter for devnet demos.",
+    "est_minutes": 10,
+    "name": "nft-collection",
+    "tags": [
+      "nft",
+      "metaplex",
+      "devnet"
+    ],
+    "title": "NFT Collection"
+  },
+  "ok": true,
+  "readme": "# NFT Collection\n\nA Metaplex NFT collection starter for the Phase 5.5 devnet path.\n\n```sh\nsunscreen quickstart nft --name nft-collection --cluster devnet --non-interactive\n```\n"
+}

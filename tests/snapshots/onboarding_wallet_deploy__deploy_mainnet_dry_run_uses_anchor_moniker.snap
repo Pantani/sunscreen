@@ -1,0 +1,20 @@
+---
+source: tests/onboarding_wallet_deploy.rs
+expression: mainnet_payload
+---
+{
+  "argv": [
+    "anchor",
+    "deploy",
+    "--provider.cluster",
+    "mainnet",
+    "--program-name",
+    "deploy_app"
+  ],
+  "command": "deploy",
+  "dry_run": true,
+  "ok": true,
+  "program": "deploy_app",
+  "target": "mainnet",
+  "verify": false
+}

@@ -1,0 +1,10 @@
+---
+source: tests/onboarding_wallet_deploy.rs
+expression: payload
+---
+{
+  "error": "network operation failed: airdrop failed with exit 42: rate limited\n",
+  "exit_code": 8,
+  "kind": "network",
+  "next_step": "check your RPC URL, wallet balance, and network connectivity, then retry"
+}

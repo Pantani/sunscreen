@@ -50,6 +50,40 @@ fn chain_new_dry_run_lists_planned_files() {
 }
 
 #[test]
+fn chain_new_json_uses_stable_file_and_written_fields() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out_path = tmp.path().join("demo_json");
+
+    let out = Command::new(sunscreen_bin())
+        .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
+        .args([
+            "--json",
+            "chain",
+            "new",
+            "demo_json",
+            "--framework",
+            "anchor",
+            "--frontend",
+            "none",
+            "--path",
+        ])
+        .arg(&out_path)
+        .output()
+        .expect("invoke sunscreen");
+
+    assert!(
+        out.status.success(),
+        "exit={:?} stderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(payload["files"].is_array());
+    assert!(payload["written"].is_number());
+    assert_eq!(payload["dry_run"], false);
+}
+
+#[test]
 fn chain_new_writes_workspace() {
     let tmp = tempfile::tempdir().unwrap();
     let out_path = tmp.path().join("demo_app");
@@ -108,4 +142,23 @@ fn chain_new_refuses_invalid_name() {
         .output()
         .expect("invoke sunscreen");
     assert_eq!(out.status.code(), Some(4));
+}
+
+#[test]
+fn chain_new_reports_existing_non_empty_destination_as_path_conflict() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("occupied.txt"), "busy").unwrap();
+
+    let out = Command::new(sunscreen_bin())
+        .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
+        .args(["--json", "chain", "new", "demo", "--path"])
+        .arg(tmp.path())
+        .output()
+        .expect("invoke sunscreen");
+
+    assert_eq!(out.status.code(), Some(7));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let payload: serde_json::Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+    assert_eq!(payload["kind"], "path_conflict");
+    assert_eq!(payload["exit_code"], 7);
 }

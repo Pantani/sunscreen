@@ -1,0 +1,17 @@
+---
+source: tests/onboarding_examples_learn.rs
+expression: payload
+---
+{
+  "command": "examples_use",
+  "dry_run": false,
+  "example": "blog-crud",
+  "files": [
+    ".sunscreen/example/README.md",
+    ".sunscreen/example/sunscreen.example"
+  ],
+  "next_step": "cd [EXAMPLE_DEST] && sunscreen chain serve --headless",
+  "ok": true,
+  "path": "[EXAMPLE_DEST]",
+  "written": 16
+}

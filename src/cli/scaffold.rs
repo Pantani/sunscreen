@@ -203,28 +203,42 @@ pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
 }
 
 #[cfg(feature = "onboarding")]
-pub(crate) fn run_crud_quiet(args: &CrudArgs) -> Result<i32, SunscreenError> {
-    run_crud_impl(args, false, true)
+pub(crate) fn run_crud_quiet(
+    args: &CrudArgs,
+    workspace_root: &Path,
+) -> Result<i32, SunscreenError> {
+    run_crud_impl(args, false, true, Some(workspace_root))
 }
 
 #[cfg(feature = "onboarding")]
-pub(crate) fn run_spl_token_quiet(args: &BuiltinRecipeArgs) -> Result<i32, SunscreenError> {
-    run_spl_token_impl(args, false, true)
+pub(crate) fn run_spl_token_quiet(
+    args: &BuiltinRecipeArgs,
+    workspace_root: &Path,
+) -> Result<i32, SunscreenError> {
+    run_spl_token_impl(args, false, true, Some(workspace_root))
 }
 
 #[cfg(feature = "onboarding")]
-pub(crate) fn run_metaplex_nft_quiet(args: &BuiltinRecipeArgs) -> Result<i32, SunscreenError> {
-    run_metaplex_nft_impl(args, false, true)
+pub(crate) fn run_metaplex_nft_quiet(
+    args: &BuiltinRecipeArgs,
+    workspace_root: &Path,
+) -> Result<i32, SunscreenError> {
+    run_metaplex_nft_impl(args, false, true, Some(workspace_root))
 }
 
 fn run_crud(args: &CrudArgs, json: bool) -> Result<i32, SunscreenError> {
-    run_crud_impl(args, json, false)
+    run_crud_impl(args, json, false, None)
 }
 
-fn run_crud_impl(args: &CrudArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
+fn run_crud_impl(
+    args: &CrudArgs,
+    json: bool,
+    quiet: bool,
+    workspace_root: Option<&Path>,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "resource name")?;
     let _ = parse_fields(&args.fields)?;
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let frontend_root = if args.no_frontend || ws.config.workspace.frontend == Frontend::None {
         None
@@ -258,16 +272,17 @@ fn run_crud_impl(args: &CrudArgs, json: bool, quiet: bool) -> Result<i32, Sunscr
 }
 
 fn run_spl_token(args: &BuiltinRecipeArgs, json: bool) -> Result<i32, SunscreenError> {
-    run_spl_token_impl(args, json, false)
+    run_spl_token_impl(args, json, false, None)
 }
 
 fn run_spl_token_impl(
     args: &BuiltinRecipeArgs,
     json: bool,
     quiet: bool,
+    workspace_root: Option<&Path>,
 ) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "recipe name")?;
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let plan = build_spl_token_recipe(SplTokenRecipeOptions {
         name: args.name.clone(),
@@ -284,16 +299,17 @@ fn run_spl_token_impl(
 }
 
 fn run_metaplex_nft(args: &BuiltinRecipeArgs, json: bool) -> Result<i32, SunscreenError> {
-    run_metaplex_nft_impl(args, json, false)
+    run_metaplex_nft_impl(args, json, false, None)
 }
 
 fn run_metaplex_nft_impl(
     args: &BuiltinRecipeArgs,
     json: bool,
     quiet: bool,
+    workspace_root: Option<&Path>,
 ) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "recipe name")?;
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let plan = build_metaplex_nft_recipe(MetaplexNftRecipeOptions {
         name: args.name.clone(),
@@ -328,14 +344,14 @@ fn execute_recipe(
     // Preflight all primitive mutations first. This catches marker drift,
     // existing-name conflicts, and parse errors before any recipe step writes.
     for step in &plan.steps {
-        execute_recipe_step(program_arg, step, true)?;
+        execute_recipe_step(workspace_root, program_arg, step, true)?;
     }
     preflight_generated_files(workspace_root, &files)?;
 
     let before = snapshot_workspace(workspace_root)?;
     if !dry_run {
         for step in &plan.steps {
-            execute_recipe_step(program_arg, step, false)?;
+            execute_recipe_step(workspace_root, program_arg, step, false)?;
         }
         write_generated_files(workspace_root, &files)?;
     }
@@ -368,12 +384,13 @@ fn execute_recipe(
 }
 
 fn execute_recipe_step(
+    workspace_root: &Path,
     program: &str,
     step: &RecipeStep,
     dry_run: bool,
 ) -> Result<(), SunscreenError> {
     match step {
-        RecipeStep::Account { name, fields } => run_account(
+        RecipeStep::Account { name, fields } => run_account_in_workspace(
             &AccountArgs {
                 name: name.clone(),
                 program: program.to_string(),
@@ -382,9 +399,10 @@ fn execute_recipe_step(
             },
             false,
             true,
+            Some(workspace_root),
         )
         .map(|_| ()),
-        RecipeStep::Event { name, fields } => run_event(
+        RecipeStep::Event { name, fields } => run_event_in_workspace(
             &EventArgs {
                 name: name.clone(),
                 program: program.to_string(),
@@ -393,9 +411,10 @@ fn execute_recipe_step(
             },
             false,
             true,
+            Some(workspace_root),
         )
         .map(|_| ()),
-        RecipeStep::Error { name, message } => run_error(
+        RecipeStep::Error { name, message } => run_error_in_workspace(
             &ErrorArgs {
                 name: name.clone(),
                 program: program.to_string(),
@@ -404,6 +423,7 @@ fn execute_recipe_step(
             },
             false,
             true,
+            Some(workspace_root),
         )
         .map(|_| ()),
         RecipeStep::Instruction {
@@ -411,7 +431,7 @@ fn execute_recipe_step(
             args,
             accounts,
             emit,
-        } => run_instruction(
+        } => run_instruction_in_workspace(
             &InstructionArgs {
                 name: name.clone(),
                 program: program.to_string(),
@@ -422,6 +442,7 @@ fn execute_recipe_step(
             },
             false,
             true,
+            Some(workspace_root),
         )
         .map(|_| ()),
     }
@@ -612,6 +633,15 @@ fn emit_recipe_result(json: bool, result: &RecipeResult<'_>) {
 }
 
 fn run_instruction(args: &InstructionArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
+    run_instruction_in_workspace(args, json, quiet, None)
+}
+
+fn run_instruction_in_workspace(
+    args: &InstructionArgs,
+    json: bool,
+    quiet: bool,
+    workspace_root: Option<&Path>,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "instruction name")?;
     if let Some(emit) = &args.emit {
         validate_ident(emit, "--emit event name")?;
@@ -623,7 +653,7 @@ fn run_instruction(args: &InstructionArgs, json: bool, quiet: bool) -> Result<i3
     let parsed_accounts = parse_accounts(&args.accounts)?;
 
     // 1. Locate workspace.
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
     let emit_fields = if let Some(emit) = &args.emit {
         event_fields_for_emit(program, emit)?
@@ -1438,12 +1468,21 @@ fn parse_fields(raw: &str) -> Result<Vec<ParsedField>, SunscreenError> {
 // ---------------------------------------------------------------------------
 
 fn run_account(args: &AccountArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
+    run_account_in_workspace(args, json, quiet, None)
+}
+
+fn run_account_in_workspace(
+    args: &AccountArgs,
+    json: bool,
+    quiet: bool,
+    workspace_root: Option<&Path>,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "account name")?;
     let fields = parse_fields(&args.fields)?;
     let account_snake = args.name.to_snake_case();
     let program_snake = args.program.to_snake_case();
 
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
 
     let state_dir = program.src_dir.join("state");
@@ -1699,12 +1738,21 @@ fn build_segment_host(
 // ---------------------------------------------------------------------------
 
 fn run_event(args: &EventArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
+    run_event_in_workspace(args, json, quiet, None)
+}
+
+fn run_event_in_workspace(
+    args: &EventArgs,
+    json: bool,
+    quiet: bool,
+    workspace_root: Option<&Path>,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "event name")?;
     let fields = parse_fields(&args.fields)?;
     let event_pascal = args.name.to_pascal_case();
     let program_snake = args.program.to_snake_case();
 
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
 
     let events_abs = program.src_dir.join("events.rs");
@@ -2009,12 +2057,21 @@ fn normalize_entry(s: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn run_error(args: &ErrorArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
+    run_error_in_workspace(args, json, quiet, None)
+}
+
+fn run_error_in_workspace(
+    args: &ErrorArgs,
+    json: bool,
+    quiet: bool,
+    workspace_root: Option<&Path>,
+) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "error variant name")?;
     let variant_pascal = args.name.to_pascal_case();
     let program_snake = args.program.to_snake_case();
     let enum_name = format!("{}_error", program_snake).to_pascal_case();
 
-    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
 
     let errors_abs = program.src_dir.join("errors.rs");

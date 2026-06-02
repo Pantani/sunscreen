@@ -1,0 +1,10 @@
+---
+source: tests/onboarding_examples_learn.rs
+expression: payload
+---
+{
+  "error": "invalid input: unknown learn topic `missing-topic`; run `sunscreen learn`",
+  "exit_code": 4,
+  "kind": "user_input",
+  "next_step": "run the same command with `--help`"
+}

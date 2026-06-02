@@ -1,18 +1,23 @@
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+#[cfg(unix)]
 fn sunscreen_bin() -> &'static str {
     env!("CARGO_BIN_EXE_sunscreen")
 }
 
+#[cfg(unix)]
 struct FakeBins {
     dir: tempfile::TempDir,
     log: PathBuf,
 }
 
+#[cfg(unix)]
 impl FakeBins {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
@@ -73,6 +78,7 @@ echo "anchor ok"
     }
 }
 
+#[cfg(unix)]
 fn write_fake(path: PathBuf, body: &str) {
     std::fs::write(&path, body).unwrap();
     #[cfg(unix)]
@@ -83,6 +89,7 @@ fn write_fake(path: PathBuf, body: &str) {
     }
 }
 
+#[cfg(unix)]
 fn chain_new(path: &Path, name: &str) {
     let out = Command::new(sunscreen_bin())
         .env("SUNSCREEN_SKIP_PREFLIGHT", "1")
@@ -97,6 +104,27 @@ fn chain_new(path: &Path, name: &str) {
     );
 }
 
+#[cfg(unix)]
+fn normalize_json_strings(value: &mut serde_json::Value, from: &str, to: &str) {
+    match value {
+        serde_json::Value::String(text) => {
+            *text = text.replace(from, to);
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                normalize_json_strings(item, from, to);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for item in map.values_mut() {
+                normalize_json_strings(item, from, to);
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
+    }
+}
+
+#[cfg(unix)]
 #[test]
 fn wallet_new_uses_solana_keygen_boundary() {
     let fake = FakeBins::new();
@@ -120,11 +148,47 @@ fn wallet_new_uses_solana_keygen_boundary() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(wallet.exists());
-    let payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(payload["command"], "wallet_new");
+    let mut payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    normalize_json_strings(&mut payload, &wallet.display().to_string(), "[WALLET_PATH]");
+    insta::assert_json_snapshot!("wallet_new_outfile", payload);
     assert!(fake.log().contains("solana-keygen new --outfile"));
 }
 
+#[cfg(unix)]
+#[test]
+fn wallet_new_named_wallet_is_workspace_rooted() {
+    let fake = FakeBins::new();
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("wallet_app");
+    chain_new(&ws, "wallet_app");
+    let subdir = ws.join("programs/wallet_app/src");
+    let expected = ws.join(".sunscreen/wallets/treasury.json");
+
+    let out = fake
+        .command()
+        .current_dir(&subdir)
+        .args([
+            "--json",
+            "wallet",
+            "new",
+            "treasury",
+            "--no-bip39-passphrase",
+        ])
+        .output()
+        .expect("wallet new --name");
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(expected.exists());
+    let mut payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    payload["path"] =
+        serde_json::Value::String("[WORKSPACE]/.sunscreen/wallets/treasury.json".to_string());
+    insta::assert_json_snapshot!("wallet_new_named_workspace_rooted", payload);
+}
+
+#[cfg(unix)]
 #[test]
 fn wallet_airdrop_maps_rpc_failure_to_network_exit_8() {
     let fake = FakeBins::new();
@@ -136,10 +200,10 @@ fn wallet_airdrop_maps_rpc_failure_to_network_exit_8() {
         .expect("wallet airdrop");
     assert_eq!(out.status.code(), Some(8));
     let payload: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(payload["kind"], "network");
-    assert_eq!(payload["exit_code"], 8);
+    insta::assert_json_snapshot!("wallet_airdrop_network_error", payload);
 }
 
+#[cfg(unix)]
 #[test]
 fn deploy_guards_mainnet_and_uses_anchor_boundary() {
     let fake = FakeBins::new();
@@ -155,7 +219,32 @@ fn deploy_guards_mainnet_and_uses_anchor_boundary() {
         .expect("deploy mainnet");
     assert_eq!(denied.status.code(), Some(4));
     let denied_payload: serde_json::Value = serde_json::from_slice(&denied.stderr).unwrap();
-    assert_eq!(denied_payload["kind"], "user_input");
+    insta::assert_json_snapshot!("deploy_mainnet_requires_confirmation_error", denied_payload);
+
+    let mainnet_plan = fake
+        .command()
+        .current_dir(&ws)
+        .args([
+            "--json",
+            "deploy",
+            "mainnet",
+            "--program",
+            "deploy_app",
+            "--yes-i-understand-cost",
+            "--dry-run",
+        ])
+        .output()
+        .expect("deploy mainnet dry-run");
+    assert!(
+        mainnet_plan.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&mainnet_plan.stderr)
+    );
+    let mainnet_payload: serde_json::Value = serde_json::from_slice(&mainnet_plan.stdout).unwrap();
+    insta::assert_json_snapshot!(
+        "deploy_mainnet_dry_run_uses_anchor_moniker",
+        mainnet_payload
+    );
 
     let ok = fake
         .command()
@@ -176,8 +265,7 @@ fn deploy_guards_mainnet_and_uses_anchor_boundary() {
         String::from_utf8_lossy(&ok.stderr)
     );
     let payload: serde_json::Value = serde_json::from_slice(&ok.stdout).unwrap();
-    assert_eq!(payload["command"], "deploy");
-    assert_eq!(payload["verify"], true);
+    insta::assert_json_snapshot!("deploy_devnet_verify", payload);
     let log = fake.log();
     assert!(log.contains("anchor deploy"));
     assert!(log.contains("anchor verify deploy_app"));

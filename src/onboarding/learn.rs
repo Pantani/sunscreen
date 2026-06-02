@@ -119,20 +119,13 @@ struct ParsedTopic {
 }
 
 fn parse_markdown(raw: &str) -> ParsedTopic {
-    let Some(rest) = raw.strip_prefix("---\n") else {
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let Some((frontmatter, body)) = split_frontmatter(&normalized) else {
         return ParsedTopic {
             title: None,
             est_minutes: None,
             prereqs: Vec::new(),
-            body: raw.to_string(),
-        };
-    };
-    let Some((frontmatter, body)) = rest.split_once("\n---\n") else {
-        return ParsedTopic {
-            title: None,
-            est_minutes: None,
-            prereqs: Vec::new(),
-            body: raw.to_string(),
+            body: normalized,
         };
     };
     let mut title = None;
@@ -162,10 +155,49 @@ fn parse_markdown(raw: &str) -> ParsedTopic {
     }
 }
 
+fn split_frontmatter(source: &str) -> Option<(&str, &str)> {
+    let source = source.trim_start();
+    let open_end = source.find('\n').unwrap_or(source.len());
+    if source[..open_end].trim() != "---" {
+        return None;
+    }
+    if open_end == source.len() {
+        return None;
+    }
+    let rest = &source[open_end + 1..];
+    let mut cursor = 0;
+    for line in rest.split_inclusive('\n') {
+        let without_newline = line.strip_suffix('\n').unwrap_or(line);
+        if without_newline.trim() == "---" {
+            let body_start = cursor + line.len();
+            return Some((&rest[..cursor], &rest[body_start..]));
+        }
+        cursor += line.len();
+    }
+    None
+}
+
 fn topic_json(topic: &Topic) -> serde_json::Value {
     serde_json::json!({
         "topic": topic.slug,
         "title": topic.title,
         "est_minutes": topic.est_minutes,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_markdown;
+
+    #[test]
+    fn parse_markdown_accepts_crlf_frontmatter() {
+        let parsed = parse_markdown(
+            "  ---\r\ntitle: \"CRLF Topic\"\r\nest_minutes: 9\r\nprereqs: [\"pda\"]\r\n---\r\n# Body\r\n",
+        );
+
+        assert_eq!(parsed.title.as_deref(), Some("CRLF Topic"));
+        assert_eq!(parsed.est_minutes, Some(9));
+        assert_eq!(parsed.prereqs, vec!["pda"]);
+        assert_eq!(parsed.body, "# Body\n");
+    }
 }

@@ -80,7 +80,7 @@ fn cluster_url(cluster: ClusterArg) -> &'static str {
     match cluster {
         ClusterArg::Localnet => "localnet",
         ClusterArg::Devnet => "devnet",
-        ClusterArg::Mainnet => "mainnet-beta",
+        ClusterArg::Mainnet => "mainnet",
     }
 }
 

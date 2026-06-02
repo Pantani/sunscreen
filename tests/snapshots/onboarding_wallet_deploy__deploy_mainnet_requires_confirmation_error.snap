@@ -1,0 +1,10 @@
+---
+source: tests/onboarding_wallet_deploy.rs
+expression: denied_payload
+---
+{
+  "error": "invalid input: mainnet deploy requires --yes-i-understand-cost",
+  "exit_code": 4,
+  "kind": "user_input",
+  "next_step": "run the same command with `--help`"
+}

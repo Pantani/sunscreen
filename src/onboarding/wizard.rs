@@ -1,16 +1,19 @@
 //! `sunscreen init` wizard.
 
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::cli::chain::{self, Framework, NewArgs};
 use crate::cli::onboarding::{InitArgs, QuickstartRecipeArg};
 use crate::error::SunscreenError;
-use crate::onboarding::{recipes, tty};
+use crate::onboarding::{preflight_path, recipes, resolve_name};
 use crate::strings::en_US;
 
 pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
-    let name = resolve_name(args)?;
+    let name = resolve_name(
+        args.name.as_deref(),
+        args.non_interactive,
+        "`sunscreen init` needs a project name in non-interactive mode; try `sunscreen init my-app --non-interactive`",
+    )?;
     let preset = resolve_preset(args.from_preset.as_deref())?;
     let dest = args.path.clone().unwrap_or_else(|| PathBuf::from(&name));
     preflight_path(&dest, args.dry_run)?;
@@ -69,32 +72,6 @@ pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
     Ok(0)
 }
 
-fn resolve_name(args: &InitArgs) -> Result<String, SunscreenError> {
-    if let Some(name) = args.name.as_ref().filter(|value| !value.trim().is_empty()) {
-        return Ok(name.trim().to_string());
-    }
-    if !tty::is_interactive(args.non_interactive) {
-        return Err(SunscreenError::UserInput(
-            "`sunscreen init` needs a project name in non-interactive mode; try `sunscreen init my-app --non-interactive`".into(),
-        ));
-    }
-    print!("Project name: ");
-    io::stdout()
-        .flush()
-        .map_err(|err| SunscreenError::Other(anyhow::anyhow!("flush prompt: {err}")))?;
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .map_err(|err| SunscreenError::Other(anyhow::anyhow!("read prompt: {err}")))?;
-    let name = input.trim();
-    if name.is_empty() {
-        return Err(SunscreenError::UserInput(
-            "project name cannot be empty".into(),
-        ));
-    }
-    Ok(name.to_string())
-}
-
 fn resolve_preset(preset: Option<&str>) -> Result<Option<QuickstartRecipeArg>, SunscreenError> {
     let Some(preset) = preset else {
         return Ok(None);
@@ -109,23 +86,4 @@ fn resolve_preset(preset: Option<&str>) -> Result<Option<QuickstartRecipeArg>, S
             "unknown init preset `{other}`; expected token, nft, dao, blog, or empty"
         ))),
     }
-}
-
-fn preflight_path(path: &Path, dry_run: bool) -> Result<(), SunscreenError> {
-    if dry_run || !path.exists() {
-        return Ok(());
-    }
-    let mut entries = std::fs::read_dir(path).map_err(|err| {
-        SunscreenError::Other(anyhow::anyhow!(
-            "read output directory {}: {err}",
-            path.display()
-        ))
-    })?;
-    if entries.next().is_some() {
-        return Err(SunscreenError::PathConflict(format!(
-            "destination already exists and is not empty: {}",
-            path.display()
-        )));
-    }
-    Ok(())
 }

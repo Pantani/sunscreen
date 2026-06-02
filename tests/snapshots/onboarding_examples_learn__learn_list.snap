@@ -1,0 +1,34 @@
+---
+source: tests/onboarding_examples_learn.rs
+expression: list
+---
+{
+  "ok": true,
+  "topics": [
+    {
+      "est_minutes": 6,
+      "title": "Program Derived Addresses",
+      "topic": "pda"
+    },
+    {
+      "est_minutes": 7,
+      "title": "Cross-Program Invocation",
+      "topic": "cpi"
+    },
+    {
+      "est_minutes": 6,
+      "title": "Token-2022",
+      "topic": "token-2022"
+    },
+    {
+      "est_minutes": 5,
+      "title": "Anchor Accounts Model",
+      "topic": "accounts-model"
+    },
+    {
+      "est_minutes": 5,
+      "title": "Anchor vs Native Solana",
+      "topic": "anchor-vs-native"
+    }
+  ]
+}

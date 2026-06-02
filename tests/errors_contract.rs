@@ -8,51 +8,41 @@ fn sunscreen_bin() -> &'static str {
 
 #[test]
 fn all_sunscreen_errors_have_stable_exit_kind_and_next_step() {
-    let cases = vec![
-        (SunscreenError::Other(anyhow::anyhow!("boom")), 1, "other"),
-        (
-            SunscreenError::ToolchainMissing("anchor".into()),
-            2,
-            "toolchain_missing",
-        ),
-        (
-            SunscreenError::ConfigInvalid("bad yaml".into()),
-            3,
-            "config_invalid",
-        ),
-        (
-            SunscreenError::UserInput("bad flag".into()),
-            4,
-            "user_input",
-        ),
-        (
-            SunscreenError::WorkspaceMissing("no workspace".into()),
-            5,
-            "workspace_missing",
-        ),
-        (
-            SunscreenError::InstructionDrift {
-                path: "programs/demo/src/lib.rs".into(),
-                hint: "markers missing".into(),
-            },
-            6,
-            "instruction_drift",
-        ),
-        (
-            SunscreenError::PathConflict("target exists".into()),
-            7,
-            "path_conflict",
-        ),
-        (SunscreenError::Network("rpc failed".into()), 8, "network"),
+    let cases = [
+        SunscreenError::Other(anyhow::anyhow!("boom")),
+        SunscreenError::ToolchainMissing("anchor".into()),
+        SunscreenError::ConfigInvalid("bad yaml".into()),
+        SunscreenError::UserInput("bad flag".into()),
+        SunscreenError::WorkspaceMissing("no workspace".into()),
+        SunscreenError::InstructionDrift {
+            path: "programs/demo/src/lib.rs".into(),
+            hint: "markers missing".into(),
+        },
+        SunscreenError::PathConflict("target exists".into()),
+        SunscreenError::Network("rpc failed".into()),
     ];
 
-    for (err, code, kind) in cases {
+    for err in cases {
+        let (code, kind) = expected_contract(&err);
         assert_eq!(err.exit_code(), code, "{err}");
         assert_eq!(err.kind_str(), kind, "{err}");
         assert!(
             err.next_step().is_some_and(|step| !step.is_empty()),
             "{err} missing next_step"
         );
+    }
+}
+
+fn expected_contract(err: &SunscreenError) -> (i32, &'static str) {
+    match err {
+        SunscreenError::Other(_) => (1, "other"),
+        SunscreenError::ToolchainMissing(_) => (2, "toolchain_missing"),
+        SunscreenError::ConfigInvalid(_) => (3, "config_invalid"),
+        SunscreenError::UserInput(_) => (4, "user_input"),
+        SunscreenError::WorkspaceMissing(_) => (5, "workspace_missing"),
+        SunscreenError::InstructionDrift { .. } => (6, "instruction_drift"),
+        SunscreenError::PathConflict(_) => (7, "path_conflict"),
+        SunscreenError::Network(_) => (8, "network"),
     }
 }
 

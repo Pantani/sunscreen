@@ -1,0 +1,13 @@
+---
+source: tests/onboarding_wallet_deploy.rs
+expression: payload
+---
+{
+  "command": "wallet_new",
+  "dry_run": false,
+  "next_step": "sunscreen wallet airdrop 1 --cluster devnet",
+  "ok": true,
+  "path": "[WORKSPACE]/.sunscreen/wallets/treasury.json",
+  "stderr": "",
+  "stdout": "pubkey: Fake111111111111111111111111111111111111111\n"
+}

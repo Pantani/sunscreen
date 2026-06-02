@@ -1,0 +1,31 @@
+---
+source: tests/onboarding_examples_learn.rs
+expression: filtered
+---
+{
+  "examples": [
+    {
+      "description": "Proposal and voting starter for governance prototypes.",
+      "est_minutes": 10,
+      "name": "voting-dao",
+      "tags": [
+        "dao",
+        "governance",
+        "crud"
+      ],
+      "title": "Voting DAO"
+    },
+    {
+      "description": "CRUD dApp starter built from the Phase 5 blog recipe.",
+      "est_minutes": 7,
+      "name": "blog-crud",
+      "tags": [
+        "blog",
+        "crud",
+        "frontend"
+      ],
+      "title": "Blog CRUD"
+    }
+  ],
+  "ok": true
+}

@@ -123,7 +123,7 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 
 | Signature | Flags | Output | Exit codes |
 |-----------|-------|--------|-----------|
-| `sunscreen init [name]` | `--non-interactive`, `--from-preset <name>`, `--json` | Creates workspace; emits a summary of choices + next step | 0 ok; 4 user_input (prompt aborted); 7 path_conflict (path exists) |
+| `sunscreen init [name]` | `--non-interactive`, `--from-preset <name>`, `--frontend <vite\|next\|none>` (default: `vite`), `--json` | Creates workspace; emits a summary of choices + next step | 0 ok; 4 user_input (prompt aborted); 7 path_conflict (path exists) |
 | `sunscreen examples list` | `--json`, `--tag <tag>` | Table: name, short description, tags, estimated time | 0 ok |
 | `sunscreen examples describe <name>` | `--json` | Example README rendered via `termimad` | 0 ok; 4 user_input (unknown name) |
 | `sunscreen examples use <name> [path]` | `--non-interactive`, `--json` | Copies embedded example to `path` (default: `./<name>`) | 0 ok; 4 user_input (unknown name); 7 path_conflict |
@@ -140,6 +140,9 @@ This ADR formalizes a **surface layer** that does not exist in ADR-0001 and that
 `<recipe>` ∈ `{token, nft, dao, blog}` (extensible in a future ADR).
 `<target>` ∈ `{localnet, devnet, mainnet}`.
 `<topic>` MVP ∈ `{pda, cpi, token-2022, accounts-model, anchor-vs-native}`.
+`sunscreen init` defaults to the Vite frontend, and accepts `vite`, `next`, or
+`none`; for a non-interactive Vite project, use
+`sunscreen init my-app --non-interactive --frontend vite`.
 
 > **Exit code compatibility.** The canonical source of truth is `src/error.rs::SunscreenError::exit_code`, which already assigns `1`=Other, `2`=ToolchainMissing, `3`=ConfigInvalid, `4`=UserInput, `5`=WorkspaceMissing, `6`=InstructionDrift. ADR-0002 § 4.3 documents `1`–`4` but still describes `5`/`6` as "reserved" (loosely flagged for future network/conflict use); that section is **out of date** relative to the implementation and must be amended as part of Phase 5.5 to reflect the current `5`/`6` assignments and the additions below. Onboarding does **not** repurpose any existing code. It extends the canonical mapping with two new variants:
 >

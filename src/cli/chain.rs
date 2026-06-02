@@ -559,7 +559,7 @@ pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, Sun
             .keep()
     } else {
         if dest.exists() && dir_not_empty(&dest)? {
-            return Err(SunscreenError::UserInput(format!(
+            return Err(SunscreenError::PathConflict(format!(
                 "destination already exists and is not empty: {}",
                 dest.display()
             )));
@@ -629,11 +629,8 @@ fn run_new(args: &NewArgs, json: bool) -> Result<i32, SunscreenError> {
             "ok": true,
             "project": report.project,
             "path": report.path.display().to_string(),
-            "files": if report.dry_run {
-                serde_json::Value::Array(report.files.iter().cloned().map(serde_json::Value::String).collect())
-            } else {
-                serde_json::json!(report.written)
-            },
+            "files": report.files,
+            "written": report.written,
             "dry_run": report.dry_run,
         });
         println!("{payload}");
@@ -714,7 +711,7 @@ fn map_tx_err(e: TxError) -> SunscreenError {
     match e {
         TxError::PathEscape(p) => SunscreenError::UserInput(format!("invalid template path: {p}")),
         TxError::DestinationExists(p) => {
-            SunscreenError::UserInput(format!("destination already exists: {}", p.display()))
+            SunscreenError::PathConflict(format!("destination already exists: {}", p.display()))
         }
         TxError::DuplicateStage(p) => {
             SunscreenError::Other(anyhow::anyhow!("template emitted duplicate path: {p}"))

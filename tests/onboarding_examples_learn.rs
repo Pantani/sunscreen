@@ -19,30 +19,35 @@ fn json_stdout(args: &[&str]) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).expect("stdout json")
 }
 
+fn normalize_json_strings(value: &mut serde_json::Value, from: &str, to: &str) {
+    match value {
+        serde_json::Value::String(text) => {
+            *text = text.replace(from, to);
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                normalize_json_strings(item, from, to);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for item in map.values_mut() {
+                normalize_json_strings(item, from, to);
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
+    }
+}
+
 #[test]
 fn examples_list_describe_and_use_are_embedded_and_deterministic() {
     let list = json_stdout(&["--json", "examples", "list"]);
-    let examples = list["examples"].as_array().expect("examples array");
-    assert!(examples.len() >= 5);
-    assert!(examples.iter().any(|item| item["name"] == "nft-collection"));
+    insta::assert_json_snapshot!("examples_list", list);
 
     let filtered = json_stdout(&["--json", "examples", "list", "--tag", "crud"]);
-    let filtered_examples = filtered["examples"].as_array().unwrap();
-    assert!(filtered_examples
-        .iter()
-        .any(|item| item["name"] == "blog-crud"));
-    assert!(filtered_examples.iter().all(|item| item["tags"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|tag| tag == "crud")));
+    insta::assert_json_snapshot!("examples_list_tag_crud", filtered);
 
     let describe = json_stdout(&["--json", "examples", "describe", "nft-collection"]);
-    assert_eq!(describe["example"]["name"], "nft-collection");
-    assert!(describe["readme"]
-        .as_str()
-        .unwrap()
-        .contains("Metaplex NFT"));
+    insta::assert_json_snapshot!("examples_describe_nft_collection", describe);
 
     let tmp = tempfile::tempdir().unwrap();
     let dest = tmp.path().join("copied");
@@ -57,12 +62,9 @@ fn examples_list_describe_and_use_are_embedded_and_deterministic() {
         "stderr={}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(payload["example"], "blog-crud");
-    assert_eq!(
-        payload["next_step"],
-        format!("cd {} && sunscreen chain serve --headless", dest.display())
-    );
+    let mut payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    normalize_json_strings(&mut payload, &dest.display().to_string(), "[EXAMPLE_DEST]");
+    insta::assert_json_snapshot!("examples_use_blog_crud", payload);
     assert!(dest.join("README.md").exists());
     assert!(dest.join("sunscreen.yml").exists());
     assert!(dest.join("Anchor.toml").exists());
@@ -80,25 +82,22 @@ fn examples_use_reports_path_conflict_as_exit_7() {
         .output()
         .expect("invoke examples use");
     assert_eq!(out.status.code(), Some(7));
-    let payload: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(payload["kind"], "path_conflict");
-    assert_eq!(payload["exit_code"], 7);
+    let mut payload: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    normalize_json_strings(
+        &mut payload,
+        &tmp.path().display().to_string(),
+        "[EXAMPLE_DEST]",
+    );
+    insta::assert_json_snapshot!("examples_use_path_conflict_error", payload);
 }
 
 #[test]
 fn learn_lists_and_renders_topics_from_embedded_markdown() {
     let list = json_stdout(&["--json", "learn"]);
-    let topics = list["topics"].as_array().expect("topics");
-    assert_eq!(topics.len(), 5);
-    assert!(topics.iter().any(|topic| topic["topic"] == "pda"));
+    insta::assert_json_snapshot!("learn_list", list);
 
     let pda = json_stdout(&["--json", "learn", "pda"]);
-    assert_eq!(pda["topic"], "pda");
-    assert_eq!(pda["title"], "Program Derived Addresses");
-    assert!(pda["body"]
-        .as_str()
-        .unwrap()
-        .contains("deterministic seeds"));
+    insta::assert_json_snapshot!("learn_pda", pda);
 
     let out = Command::new(sunscreen_bin())
         .args(["--json", "learn", "missing-topic"])
@@ -106,5 +105,5 @@ fn learn_lists_and_renders_topics_from_embedded_markdown() {
         .expect("invoke learn");
     assert_eq!(out.status.code(), Some(4));
     let payload: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(payload["kind"], "user_input");
+    insta::assert_json_snapshot!("learn_missing_topic_error", payload);
 }

@@ -1,0 +1,10 @@
+---
+source: tests/onboarding_examples_learn.rs
+expression: payload
+---
+{
+  "error": "path conflict: destination already exists and is not empty: [EXAMPLE_DEST]",
+  "exit_code": 7,
+  "kind": "path_conflict",
+  "next_step": "choose a different output path or remove the existing file/directory"
+}

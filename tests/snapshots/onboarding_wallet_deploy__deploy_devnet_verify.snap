@@ -1,0 +1,19 @@
+---
+source: tests/onboarding_wallet_deploy.rs
+expression: payload
+---
+{
+  "command": "deploy",
+  "deploy": {
+    "stderr": "",
+    "stdout": "anchor ok\n"
+  },
+  "ok": true,
+  "program": "deploy_app",
+  "target": "devnet",
+  "verify": true,
+  "verify_output": {
+    "stderr": "",
+    "stdout": "anchor ok\n"
+  }
+}

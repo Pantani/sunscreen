@@ -131,7 +131,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-local-${{ matrix.target }}
-          path: target/distrib/*
+          path: |
+            target/distrib/*.tar.xz
+            target/distrib/*.sha256
 
   build-global:
     name: Build global installers
@@ -168,7 +170,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-global
-          path: target/distrib/*
+          path: |
+            target/distrib/*-installer.sh
+            target/distrib/source.tar.gz
+            target/distrib/source.tar.gz.sha256
 
   publish:
     name: Publish GitHub release
@@ -215,12 +220,26 @@ jobs:
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
         shell: bash
         run: |
+          release_assets=()
+          while IFS= read -r asset; do
+            release_assets+=("$asset")
+          done < <(
+            find target/distrib -type f \
+              \( -name '*.tar.xz' -o -name '*.tar.gz' -o -name '*.sha256' -o -name '*-installer.sh' \) \
+              -print | LC_ALL=C sort
+          )
+
+          if [[ "${#release_assets[@]}" -eq 0 ]]; then
+            echo "::error::No release assets found under target/distrib"
+            exit 1
+          fi
+
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file target/release-meta/release-notes.md
-            gh release upload "$RELEASE_TAG" target/distrib/* --clobber
+            gh release upload "$RELEASE_TAG" "${release_assets[@]}" --clobber
           else
             gh release create "$RELEASE_TAG" \
               --title "$RELEASE_TAG" \
               --notes-file target/release-meta/release-notes.md \
-              target/distrib/*
+              "${release_assets[@]}"
           fi

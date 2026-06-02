@@ -15,33 +15,39 @@ Sunscreen takes you from an empty folder to a working Solana program — Anchor 
 
 ## Pick your path
 
-::::{.cards}
+<div class="cards">
 
-:::{.card}
+<div class="card">
+
 ### 🌱 Learn
 
 New to Solana, Rust, or both? Start here. We assume zero prior knowledge.
 
 [Begin learning →](./learn/what-is-sunscreen.md)
-:::
 
-:::{.card}
+</div>
+
+<div class="card">
+
 ### 🛠 Guides
 
 Task-oriented walkthroughs. "How do I scaffold a CRUD?" "How do I deploy to devnet?"
 
 [Browse guides →](./guides/scaffolding-crud.md)
-:::
 
-:::{.card}
+</div>
+
+<div class="card">
+
 ### 📖 Reference
 
 Every command, every flag, every exit code. For when you know what you want.
 
 [Open reference →](./reference/cli/index.md)
-:::
 
-::::
+</div>
+
+</div>
 
 ---
 

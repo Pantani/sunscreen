@@ -222,11 +222,11 @@
 <p>You'll see progress output, then a summary similar to:</p>
 <pre><code>✓ workspace my-app/ created (anchor, no frontend)
 </code></pre>
-<p>::: tip
-<code>--frontend</code> accepts <code>none</code>, <code>vite</code>, or <code>next</code>. Pick <code>vite</code> if you want React + Vite scaffolded under <code>app/</code>; pick <code>next</code> for a Next.js scaffold. <code>none</code> keeps the workspace lean.
-:::</p>
-<h2 id="step-2--look-around"><a class="header" href="#step-2--look-around">Step 2 — Look around</a></h2>
-<pre><code class="language-bash">cd my-app
+<p>```admonish tip<code>--frontend</code> accepts <code>none</code>, <code>vite</code>, or <code>next</code>. Pick <code>vite</code> if you want React + Vite scaffolded under <code>app/</code>; pick <code>next</code> for a Next.js scaffold. <code>none</code> keeps the workspace lean.</p>
+<pre><code>## Step 2 — Look around
+
+```bash
+cd my-app
 tree -L 2 -I node_modules
 </code></pre>
 <pre><code>my-app/
@@ -249,11 +249,11 @@ tree -L 2 -I node_modules
 <li><code>programs/my_app/src/lib.rs</code> — the Anchor program. Has <code>// sunscreen:begin ... end</code> markers that sunscreen can edit on later commands without breaking what you wrote in between.</li>
 <li><code>Anchor.toml</code> — standard Anchor config, points at the program.</li>
 </ul>
-<p>::: tip
-The markers in <code>lib.rs</code> are how sunscreen does <em>incremental</em> edits. When you run <code>sunscreen scaffold instruction Foo</code> later, it injects code only into marked regions. Your hand-written code is left alone. Read more in <a href="../concepts/incremental-scaffolding.html">Incremental scaffolding</a>.
-:::</p>
-<h2 id="step-3--build"><a class="header" href="#step-3--build">Step 3 — Build</a></h2>
-<pre><code class="language-bash">sunscreen chain build
+<p>```admonish tipThe markers in <code>lib.rs</code> are how sunscreen does <em>incremental</em> edits. When you run <code>sunscreen scaffold instruction Foo</code> later, it injects code only into marked regions. Your hand-written code is left alone. Read more in <a href="../concepts/incremental-scaffolding.html">Incremental scaffolding</a>.</p>
+<pre><code>## Step 3 — Build
+
+```bash
+sunscreen chain build
 </code></pre>
 <p>This runs <code>anchor build</code> under the hood and reports progress as NDJSON lines (one event per line, useful for editor integrations). On success:</p>
 <pre><code>✓ anchor build

@@ -638,3 +638,54 @@ fn compile_multiple_accounts_same_program() {
     );
     cargo_check(&ws);
 }
+
+// ---------------------------------------------------------------------
+// 8. Phase 5 recipes.
+// ---------------------------------------------------------------------
+
+#[test]
+fn compile_scaffold_crud_recipe() {
+    let (_tmp, ws) = fresh_workspace("recipe_crud", "none");
+    let prog = discover_program(&ws);
+    scaffold(
+        &ws,
+        &[
+            "scaffold",
+            "crud",
+            "Post",
+            "--program",
+            &prog,
+            "--fields",
+            "authority:Pubkey,title:String,body:String",
+        ],
+    );
+    cargo_check(&ws);
+}
+
+#[test]
+fn compile_scaffold_spl_token_recipe() {
+    let (_tmp, ws) = fresh_workspace("recipe_token", "none");
+    let prog = discover_program(&ws);
+    scaffold(
+        &ws,
+        &["scaffold", "spl-token", "TokenVault", "--program", &prog],
+    );
+    cargo_check(&ws);
+}
+
+#[test]
+fn compile_scaffold_metaplex_nft_recipe() {
+    let (_tmp, ws) = fresh_workspace("recipe_nft", "none");
+    let prog = discover_program(&ws);
+    scaffold(
+        &ws,
+        &[
+            "scaffold",
+            "metaplex-nft",
+            "NftCollection",
+            "--program",
+            &prog,
+        ],
+    );
+    cargo_check(&ws);
+}

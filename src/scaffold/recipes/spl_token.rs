@@ -76,9 +76,7 @@ fn token_accounts(resource: &str, mutable_resource: bool) -> String {
     } else {
         "seeds=b\"token\";authority.key().as_ref()"
     };
-    format!(
-        "{resource}:{flags},authority:signer,mint:mut,token_program,associated_token_program"
-    )
+    format!("{resource}:{flags},authority:signer,mint:mut,token_program,associated_token_program")
 }
 
 fn recipe_test_file(recipe: &str, resource: &str) -> crate::scaffold::GeneratedFile {

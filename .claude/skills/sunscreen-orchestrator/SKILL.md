@@ -1,6 +1,6 @@
 ---
 name: sunscreen-orchestrator
-description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "R5", "Phase 2", "Phase 3", "chain serve", "chain build", "scaffold", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
+description: Orquestra o time de implementação do CLI sunscreen (Rust + Solana tooling). Use sempre que o usuário pedir para implementar, continuar, expandir, corrigir, refatorar, atualizar, revisar, reexecutar ou completar qualquer parte do sunscreen CLI — incluindo "próxima fase", "pendências", "Phase 3", "Phase 4", "Phase 5", "Phase 5.5", "chain serve", "chain build", "generate", "codama", "scaffold", "recipes", "crud", "spl-token", "metaplex-nft", "onboarding", "quickstart", "doctor", "markers", "rodar de novo", "corrigir", "atualizar roadmap" ou trabalho contínuo no projeto. Coordena cli-architect, config-engineer, toolchain-detector, template-engineer, docs-writer e qa-integrator. Não use para perguntas conceituais simples sobre Solana — só para mudanças concretas no codebase sunscreen.
 ---
 
 # Sunscreen Orchestrator
@@ -21,17 +21,19 @@ Antes de qualquer ação, determine o modo de execução:
 
 Identifique o escopo dentro de `ROADMAP.md`. Estado atual do projeto:
 
-- Phase 0 e Phase 1 estão concluídas.
+- Phase 0, Phase 1, Phase 2, Phase 3, Phase 4 e Phase 5 estão concluídas.
 - Phase 2 está concluída e sem carry-overs conhecidos.
-- Phase 3 está concluída neste PR: `chain build`, `chain serve`, watcher, runtime supervisionado, fallback Surfpool→test-validator, frontend notify, serve model e teardown Ctrl-C.
-- Phase 4 (Codegen & Frontend Hooks) é a próxima fase.
+- Phase 3 está concluída: `chain build`, `chain serve`, watcher, runtime supervisionado, fallback Surfpool→test-validator, frontend notify, serve model e teardown Ctrl-C.
+- Phase 4 está concluída: `generate {clients, idl, frontend-hooks}`, wrapper Codama, export IDL determinístico, React/Solid Query hooks e pipeline compartilhado.
+- Phase 5 está concluída: `scaffold {crud, spl-token, metaplex-nft}` como receitas compostas sobre os scaffolders Phase 2.
+- Phase 5.5 (Onboarding Layer) é a próxima fase.
 
 Escopo padrão para pedidos como "seguir próximos passos", "próxima fase" ou "pendências":
 
-1. Confirmar que Phase 2/3 continuam fechadas no `ROADMAP.md` e no `git status`.
-2. Implementar uma fatia testável de Phase 4 com TDD.
+1. Confirmar que Phase 2/3/4/5 continuam fechadas no `ROADMAP.md` e no `git status`.
+2. Implementar uma fatia testável de Phase 5.5 com TDD.
 3. Atualizar `ROADMAP.md` e `CLAUDE.md` quando o estado mudar.
-4. Manter os comandos `generate *` JSON-friendly e compatíveis com o pipeline Codama existente.
+4. Manter `quickstart` como wrapper sobre recipes Phase 5, sem duplicar scaffolders ou codegen.
 
 ## Phase 2: Execução
 
@@ -71,12 +73,27 @@ Phase 3 deve permanecer fechada quando estes itens estiverem verdes:
 9. `src/tui/serve_model.rs` cobre os painéis validator/build/faucet/frontend/logs e guarda 80x24.
 10. Ctrl-C para o runtime como process group Unix, com fallback SIGKILL depois de SIGTERM.
 
-### Phase 4 opening checklist
+### Phase 4 closure checklist
 
-1. Começar por `src/codegen/codama.rs` e `codama_config.rs`, reutilizando `CommandSpec`/`ProcessRunner`.
-2. Adicionar `sunscreen generate clients` e `generate idl` antes de hooks de frontend.
-3. Manter Codama como subprocesso fino (`pnpm exec codama run`) até a API exigir wrapper mais rico.
-4. Só depois adicionar `generate frontend-hooks`, com compile test em projeto Next.js/Vite gerado.
+- `src/codegen/{codama,codama_config,idl,frontend_hooks}.rs` existe e é usado pelo CLI.
+- `sunscreen generate clients`, `generate idl` e `generate frontend-hooks` estão implementados.
+- `chain build` e `chain serve` reutilizam o wrapper Codama compartilhado.
+- Hooks React Query e Solid Query são determinísticos e cobertos por testes.
+
+### Phase 5 closure checklist
+
+- `sunscreen scaffold crud <Resource> --program <p>` gera state, `create/read/update/delete`, events, errors, teste TS e hook opcional de frontend.
+- `sunscreen scaffold spl-token <Name> --program <p>` gera slice SPL token interno.
+- `sunscreen scaffold metaplex-nft <Name> --program <p>` gera slice Token Metadata interno.
+- Recipes fazem preflight dry-run dos primitives antes de escrever e mantêm um único objeto JSON sob `--json`.
+- `docs/reference/recipes.md`, `ROADMAP.md`, `AGENTS.md` e `CLAUDE.md` refletem Phase 5 fechada.
+
+### Phase 5.5 opening checklist
+
+1. Implementar `init`/wizard e `--non-interactive` sem duplicar `chain new`.
+2. Implementar `quickstart {token,nft,dao,blog}` como wrappers sobre recipes Phase 5.
+3. Adicionar `examples`, `wallet`, `deploy`, `learn` e contrato `next_step` em erros.
+4. Atualizar ADR-0002 exit-code table somente quando Phase 5.5 adicionar `PathConflict`/`Network`.
 
 ## Phase 3: Relatório
 
@@ -102,6 +119,6 @@ Resuma ao usuário:
 
 ## Test Scenarios
 
-**Normal**: usuário diz "seguir próximos passos e pendências" → auditar `ROADMAP.md`, fechar uma fatia R5, rodar QA e reportar se Phase 3 está desbloqueada.
+**Normal**: usuário diz "seguir próximos passos e pendências" → auditar `ROADMAP.md`, fechar uma fatia Phase 5.5, rodar QA e reportar o que ainda bloqueia v1.0.
 
-**Erro**: `rustfmt` não está disponível → teste R5 deve pular/relatar de forma explícita, e o relatório final deve dizer que a garantia de rustfmt não foi validada localmente.
+**Erro**: toolchain Solana/Anchor não está disponível → testes reais ignorados/gated devem pular ou relatar de forma explícita, e o relatório final deve dizer qual garantia não foi validada localmente.

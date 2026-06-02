@@ -192,5 +192,8 @@ fn crud_hook_file(
     contents.push_str(&format!(
         "\nexport const {camel}Recipe = {{ resource: \"{resource}\", hook: \"use{pascal}\" }} as const;\n"
     ));
-    generated_file(format!("{frontend_root}/src/hooks/use-{kebab}.ts"), contents)
+    generated_file(
+        format!("{frontend_root}/src/hooks/use-{kebab}.ts"),
+        contents,
+    )
 }

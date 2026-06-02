@@ -202,11 +202,354 @@ pub fn run(cmd: &ScaffoldCmd, json: bool) -> Result<i32, SunscreenError> {
     }
 }
 
-fn run_instruction(
-    args: &InstructionArgs,
+fn run_crud(args: &CrudArgs, json: bool) -> Result<i32, SunscreenError> {
+    validate_ident(&args.name, "resource name")?;
+    let _ = parse_fields(&args.fields)?;
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let frontend_root = if args.no_frontend || ws.config.workspace.frontend == Frontend::None {
+        None
+    } else {
+        Some(
+            ws.config
+                .workspace
+                .frontend_path
+                .clone()
+                .unwrap_or_else(|| "app".to_string()),
+        )
+    };
+    let plan = build_crud_recipe(CrudRecipeOptions {
+        resource: args.name.clone(),
+        fields: args.fields.clone(),
+        include_update: !args.no_update,
+        include_delete: !args.no_delete,
+        include_events: !args.no_events,
+        include_frontend: !args.no_frontend,
+        frontend_root,
+    });
+    execute_recipe(&ws.root, program, &args.program, plan, args.dry_run, json)
+}
+
+fn run_spl_token(args: &BuiltinRecipeArgs, json: bool) -> Result<i32, SunscreenError> {
+    validate_ident(&args.name, "recipe name")?;
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let plan = build_spl_token_recipe(SplTokenRecipeOptions {
+        name: args.name.clone(),
+    });
+    execute_recipe(&ws.root, program, &args.program, plan, args.dry_run, json)
+}
+
+fn run_metaplex_nft(args: &BuiltinRecipeArgs, json: bool) -> Result<i32, SunscreenError> {
+    validate_ident(&args.name, "recipe name")?;
+    let ws = workspace::find_root(None).map_err(map_ws_err)?;
+    let program = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let plan = build_metaplex_nft_recipe(MetaplexNftRecipeOptions {
+        name: args.name.clone(),
+    });
+    execute_recipe(&ws.root, program, &args.program, plan, args.dry_run, json)
+}
+
+fn execute_recipe(
+    workspace_root: &Path,
+    program: &ProgramView,
+    program_arg: &str,
+    plan: RecipePlan,
+    dry_run: bool,
     json: bool,
-    quiet: bool,
 ) -> Result<i32, SunscreenError> {
+    let program_dir_name = program
+        .root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&program.name);
+    let files = recipe_files(program_dir_name, &plan)?;
+
+    // Preflight all primitive mutations first. This catches marker drift,
+    // existing-name conflicts, and parse errors before any recipe step writes.
+    for step in &plan.steps {
+        execute_recipe_step(program_arg, step, true)?;
+    }
+    preflight_generated_files(workspace_root, &files)?;
+
+    let before = snapshot_workspace(workspace_root)?;
+    if !dry_run {
+        for step in &plan.steps {
+            execute_recipe_step(program_arg, step, false)?;
+        }
+        write_generated_files(workspace_root, &files)?;
+    }
+    let changed_files = if dry_run {
+        files
+            .iter()
+            .map(|file| file.relative_path.to_string_lossy().replace('\\', "/"))
+            .collect::<Vec<_>>()
+    } else {
+        let after = snapshot_workspace(workspace_root)?;
+        diff_snapshots(&before, &after)
+    };
+    let unchanged = !dry_run && changed_files.is_empty();
+
+    emit_recipe_result(
+        json,
+        &RecipeResult {
+            recipe: plan.kind.as_str(),
+            resource: &plan.resource,
+            program: program_arg,
+            dry_run,
+            unchanged,
+            files: &changed_files,
+            steps: plan.steps.len(),
+        },
+    );
+    Ok(0)
+}
+
+fn execute_recipe_step(
+    program: &str,
+    step: &RecipeStep,
+    dry_run: bool,
+) -> Result<(), SunscreenError> {
+    match step {
+        RecipeStep::Account { name, fields } => run_account(
+            &AccountArgs {
+                name: name.clone(),
+                program: program.to_string(),
+                fields: fields.clone(),
+                dry_run,
+            },
+            false,
+            true,
+        )
+        .map(|_| ()),
+        RecipeStep::Event { name, fields } => run_event(
+            &EventArgs {
+                name: name.clone(),
+                program: program.to_string(),
+                fields: fields.clone(),
+                dry_run,
+            },
+            false,
+            true,
+        )
+        .map(|_| ()),
+        RecipeStep::Error { name, message } => run_error(
+            &ErrorArgs {
+                name: name.clone(),
+                program: program.to_string(),
+                msg: message.clone(),
+                dry_run,
+            },
+            false,
+            true,
+        )
+        .map(|_| ()),
+        RecipeStep::Instruction {
+            name,
+            args,
+            accounts,
+            emit,
+        } => run_instruction(
+            &InstructionArgs {
+                name: name.clone(),
+                program: program.to_string(),
+                args: args.clone(),
+                accounts: accounts.clone(),
+                emit: emit.clone(),
+                dry_run,
+            },
+            false,
+            true,
+        )
+        .map(|_| ()),
+    }
+}
+
+fn recipe_files(
+    program_dir_name: &str,
+    plan: &RecipePlan,
+) -> Result<Vec<GeneratedFile>, SunscreenError> {
+    let mut files = Vec::with_capacity(plan.files.len());
+    for file in &plan.files {
+        let replaced = file
+            .relative_path
+            .to_string_lossy()
+            .replace("__PROGRAM__", program_dir_name);
+        ensure_safe_recipe_path(&replaced)?;
+        files.push(GeneratedFile {
+            relative_path: PathBuf::from(replaced),
+            contents: file.contents.clone(),
+        });
+    }
+    Ok(files)
+}
+
+fn preflight_generated_files(
+    workspace_root: &Path,
+    files: &[GeneratedFile],
+) -> Result<(), SunscreenError> {
+    for file in files {
+        let abs = workspace_root.join(&file.relative_path);
+        if abs.exists() {
+            let current = std::fs::read_to_string(&abs).map_err(|err| {
+                SunscreenError::Other(anyhow::anyhow!("read {}: {err}", abs.display()))
+            })?;
+            if current != file.contents {
+                return Err(SunscreenError::UserInput(format!(
+                    "recipe output {} already exists with different contents; edit it manually or remove it to regenerate",
+                    file.relative_path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_generated_files(
+    workspace_root: &Path,
+    files: &[GeneratedFile],
+) -> Result<(), SunscreenError> {
+    let mut tx = Transaction::new(workspace_root).map_err(map_tx_err)?;
+    for file in files {
+        let abs = workspace_root.join(&file.relative_path);
+        if abs.exists() {
+            continue;
+        }
+        tx.stage(
+            &file.relative_path.to_string_lossy().replace('\\', "/"),
+            file.contents.as_bytes(),
+        )
+        .map_err(map_tx_err)?;
+    }
+    tx.commit().map_err(map_tx_err)?;
+    Ok(())
+}
+
+fn ensure_safe_recipe_path(path: &str) -> Result<(), SunscreenError> {
+    let path = Path::new(path);
+    let unsafe_path = path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::Prefix(_)
+                    | std::path::Component::RootDir
+            )
+        });
+    if unsafe_path {
+        return Err(SunscreenError::UserInput(format!(
+            "recipe output path must stay inside the workspace: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn snapshot_workspace(workspace_root: &Path) -> Result<BTreeMap<String, Vec<u8>>, SunscreenError> {
+    let mut out = BTreeMap::new();
+    collect_snapshot(workspace_root, workspace_root, &mut out)?;
+    Ok(out)
+}
+
+fn collect_snapshot(
+    workspace_root: &Path,
+    dir: &Path,
+    out: &mut BTreeMap<String, Vec<u8>>,
+) -> Result<(), SunscreenError> {
+    let entries = std::fs::read_dir(dir)
+        .map_err(|err| SunscreenError::Other(anyhow::anyhow!("read {}: {err}", dir.display())))?;
+    for entry in entries {
+        let entry = entry.map_err(|err| SunscreenError::Other(anyhow::anyhow!(err)))?;
+        let path = entry.path();
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        if matches!(file_name, "target" | "node_modules" | ".git") {
+            continue;
+        }
+        if path.is_dir() {
+            collect_snapshot(workspace_root, &path, out)?;
+        } else if path.is_file() {
+            let rel = path
+                .strip_prefix(workspace_root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let bytes = std::fs::read(&path).map_err(|err| {
+                SunscreenError::Other(anyhow::anyhow!("read {}: {err}", path.display()))
+            })?;
+            out.insert(rel, bytes);
+        }
+    }
+    Ok(())
+}
+
+fn diff_snapshots(
+    before: &BTreeMap<String, Vec<u8>>,
+    after: &BTreeMap<String, Vec<u8>>,
+) -> Vec<String> {
+    let mut changed = Vec::new();
+    for (path, bytes) in after {
+        if before.get(path) != Some(bytes) {
+            changed.push(path.clone());
+        }
+    }
+    changed
+}
+
+struct RecipeResult<'a> {
+    recipe: &'a str,
+    resource: &'a str,
+    program: &'a str,
+    dry_run: bool,
+    unchanged: bool,
+    files: &'a [String],
+    steps: usize,
+}
+
+fn emit_recipe_result(json: bool, result: &RecipeResult<'_>) {
+    if json {
+        let payload = serde_json::json!({
+            "ok": true,
+            "recipe": result.recipe,
+            "resource": result.resource,
+            "program": result.program,
+            "dry_run": result.dry_run,
+            "unchanged": result.unchanged,
+            "steps": result.steps,
+            "files": result.files,
+            "written": if result.dry_run { 0 } else { result.files.len() },
+        });
+        println!("{payload}");
+    } else if result.dry_run {
+        println!(
+            "dry-run: would scaffold {} recipe `{}` in `{}`",
+            result.recipe, result.resource, result.program
+        );
+        for f in result.files {
+            println!("  {f}");
+        }
+    } else if result.unchanged {
+        println!(
+            "scaffold {} recipe `{}`: unchanged (idempotent no-op)",
+            result.recipe, result.resource
+        );
+    } else {
+        println!(
+            "scaffolded {recipe} recipe `{resource}` for program `{program}` ({} files changed)",
+            result.files.len(),
+            recipe = result.recipe,
+            resource = result.resource,
+            program = result.program
+        );
+        for f in result.files {
+            println!("  {f}");
+        }
+    }
+}
+
+fn run_instruction(args: &InstructionArgs, json: bool, quiet: bool) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "instruction name")?;
     if let Some(emit) = &args.emit {
         validate_ident(emit, "--emit event name")?;
@@ -314,6 +657,8 @@ fn run_instruction(
     if !all_instructions.contains(&ix_snake) {
         all_instructions.push(ix_snake.clone());
     }
+    all_instructions.sort();
+    all_instructions.dedup();
     let mod_segment_body = render_instructions_mod_segment(&all_instructions);
     let (new_mod_contents, mod_action) =
         build_mod_rs(&program.instructions_mod_rs, &mod_segment_body)?;

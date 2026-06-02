@@ -39,9 +39,18 @@ impl RecipeKind {
 /// One primitive scaffolder invocation.
 #[derive(Debug, Clone)]
 pub enum RecipeStep {
-    Account { name: String, fields: String },
-    Event { name: String, fields: String },
-    Error { name: String, message: String },
+    Account {
+        name: String,
+        fields: String,
+    },
+    Event {
+        name: String,
+        fields: String,
+    },
+    Error {
+        name: String,
+        message: String,
+    },
     Instruction {
         name: String,
         args: String,

@@ -19,6 +19,7 @@
 //!   3. `scaffold account` → IDL contains the account type.
 //!   4. `scaffold event` → IDL contains the event type.
 //!   5. `codama regen` is idempotent (second run produces identical output).
+//!   6. Phase 5 CRUD recipe builds and appears in the Anchor IDL.
 //!
 //! Owned by qa-integrator (R5).
 
@@ -284,6 +285,51 @@ fn codama_regen_is_idempotent() {
     assert_eq!(
         snapshot_1, snapshot_2,
         "codama regen produced different output on the second run (not idempotent)",
+    );
+}
+
+#[test]
+#[ignore]
+fn scaffold_crud_recipe_builds_and_emits_idl_methods() {
+    if skip_if_missing("anchor") {
+        return;
+    }
+    let tmp = tmp_workdir();
+    let name = "crud_recipe_demo";
+    chain_new(tmp.path(), name);
+    let project = tmp.path().join(name);
+
+    run_scaffold(
+        &project,
+        &[
+            "scaffold",
+            "crud",
+            "Post",
+            "--program",
+            name,
+            "--fields",
+            "authority:Pubkey,title:String,body:String",
+        ],
+    );
+
+    let out = anchor_build(&project);
+    assert!(
+        out.status.success(),
+        "anchor build after scaffold crud failed:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let idl = read_idl(&project, name).expect("IDL not produced by anchor build");
+    for method in ["createPost", "readPost", "updatePost", "deletePost"] {
+        assert!(
+            idl.contains(&format!("\"{method}\"")),
+            "IDL does not mention {method}:\n{idl}",
+        );
+    }
+    assert!(
+        idl.contains("\"Post\""),
+        "IDL does not mention the Post account:\n{idl}",
     );
 }
 

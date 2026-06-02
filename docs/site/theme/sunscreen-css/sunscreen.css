@@ -304,15 +304,15 @@ body {
 /* Card grid on landing */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0 3rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin: 1.75rem 0 3rem 0;
 }
 .card {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.4rem 1.5rem;
+  padding: 1.75rem 1.9rem;
   transition: border-color 120ms ease, transform 120ms ease;
 }
 .card:hover {
@@ -321,19 +321,20 @@ body {
 }
 .card h3 {
   margin-top: 0 !important;
-  margin-bottom: 0.5rem !important;
-  font-size: 1.15rem !important;
+  margin-bottom: 0.75rem !important;
+  font-size: 1.4rem !important;
 }
 .card p {
   color: var(--fg-muted);
-  font-size: 1rem;
-  margin-bottom: 0.8rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
 }
 .card a {
   color: var(--brand);
   font-weight: 500;
   border-bottom: none;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 .card a:hover {
   color: var(--brand-soft);

@@ -63,7 +63,7 @@ Positive:
 Negative:
 
 - Pinocchio does not yet have first-party instruction/account/event/error scaffolders.
-- `generate {idl,clients,frontend-hooks}` remains Anchor IDL based.
+- `generate {idl,clients,frontend-hooks}` remains Anchor-IDL-based.
 - Real `cargo build-sbf` validation still requires a Solana toolchain on the host.
 
 ## 5. Follow-ups

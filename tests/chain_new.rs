@@ -134,6 +134,10 @@ fn chain_new_pinocchio_writes_workspace() {
         cfg.scaffolding.default_template.as_deref(),
         Some("workspace/pinocchio-minimal")
     );
+    assert_eq!(
+        cfg.toolchain.required.get("cargo").map(String::as_str),
+        Some("1.89.0")
+    );
     cfg.validate().expect("generated sunscreen.yml validates");
 
     let stdout = String::from_utf8_lossy(&out.stdout);

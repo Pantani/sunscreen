@@ -587,7 +587,7 @@ pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, Sun
         .clone()
         .unwrap_or_else(|| PathBuf::from(&args.name));
 
-    let ctx = build_context(&args.name, args.framework, args.frontend);
+    let ctx = build_context(&args.name, args.frontend);
 
     // Stage everything into a temporary location. For dry-run we use a
     // throwaway tempdir so nothing inside `dest` is ever touched.
@@ -704,16 +704,14 @@ fn emit_dry_run(dest: &Path, plan: &[String]) {
     }
 }
 
-fn build_context(name: &str, framework: Framework, frontend: Frontend) -> serde_json::Value {
+fn build_context(name: &str, frontend: Frontend) -> serde_json::Value {
     use heck::ToSnakeCase;
     let frontend_str = match frontend {
         Frontend::Next => "next",
         Frontend::Vite => "vite",
         Frontend::None => "none",
     };
-    let rust_edition = match framework {
-        Framework::Anchor | Framework::Pinocchio => RUST_EDITION,
-    };
+    let rust_edition = RUST_EDITION;
     serde_json::json!({
         "project_name": name,
         "program_name": name.to_snake_case(),

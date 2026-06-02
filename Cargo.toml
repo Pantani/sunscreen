@@ -115,7 +115,9 @@ lto = "thin"
 [workspace.metadata.dist]
 cargo-dist-version = "0.22.1"
 ci = ["github"]
-installers = ["shell"]
+installers = ["shell", "homebrew"]
+tap = "Pantani/homebrew-sunscreen"
+formula = "sunscreen"
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
@@ -125,3 +127,20 @@ targets = [
 pr-run-mode = "plan"
 install-updater = false
 allow-dirty = ["ci"]
+
+# Debian packaging metadata consumed by `cargo deb`.
+# See https://github.com/kornelski/cargo-deb
+[package.metadata.deb]
+maintainer = "Pantani <noreply@github.com>"
+copyright = "2026 Pantani, Apache-2.0"
+extended-description = """\
+Sunscreen is a Rust CLI for scaffolding Anchor and Pinocchio programs on \
+Solana, orchestrating local validators, and generating frontend clients via \
+Codama. Inspired by Ignite CLI for Cosmos."""
+section = "devel"
+priority = "optional"
+assets = [
+    ["target/release/sunscreen", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/sunscreen/README.md", "644"],
+    ["CHANGELOG.md", "usr/share/doc/sunscreen/CHANGELOG.md", "644"],
+]

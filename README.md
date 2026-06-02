@@ -31,21 +31,35 @@ The full design rationale lives in [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/A
 
 ## Install
 
-Install the latest preview release:
+Pick the channel that matches your platform:
 
 ```bash
+# Homebrew (macOS + Linux)
+brew install Pantani/sunscreen/sunscreen
+
+# Snap (Linux, classic confinement)
+sudo snap install sunscreen-cli --classic
+
+# APT (Debian / Ubuntu via Cloudsmith)
+curl -1sLf 'https://dl.cloudsmith.io/public/pantani/sunscreen/setup.deb.sh' | sudo -E bash
+sudo apt-get install sunscreen
+
+# Universal shell installer (any POSIX)
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/Pantani/sunscreen/releases/download/v0.1.0/sunscreen-installer.sh \
+  https://github.com/Pantani/sunscreen/releases/latest/download/sunscreen-installer.sh \
   | sh
 ```
 
-Or install from source:
+Or build from source:
 
 ```bash
 git clone https://github.com/Pantani/sunscreen
 cd sunscreen
 cargo install --path .
 ```
+
+See [`docs/reference/distribution.md`](docs/reference/distribution.md) for
+channel internals, secrets, and re-publish procedure.
 
 Verify the binary:
 

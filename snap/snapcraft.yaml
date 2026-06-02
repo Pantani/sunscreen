@@ -1,0 +1,50 @@
+name: sunscreen-cli
+title: Sunscreen
+summary: Solana CLI scaffolding & orchestration tool
+description: |
+  Sunscreen is a Rust CLI for scaffolding Anchor and Pinocchio programs on
+  Solana, orchestrating local validators (Surfpool / solana-test-validator),
+  and generating frontend clients via Codama. Inspired by Ignite CLI for
+  Cosmos.
+
+  Documentation: https://github.com/Pantani/sunscreen
+
+# `version` is rewritten by the publish-snap workflow from the release tag.
+version: "0.0.0"
+
+# Classic confinement is required because sunscreen orchestrates external
+# tools (cargo, solana, anchor, pnpm) installed on the host and writes
+# into arbitrary user-chosen workspace directories.
+confinement: classic
+grade: stable
+
+base: core22
+
+# Sunscreen ships as a single static-ish binary; we build from source via
+# the cargo plugin so the snap is reproducible from snapcraft alone and
+# does not depend on cargo-dist artifacts being preserved.
+parts:
+  sunscreen:
+    plugin: rust
+    source: .
+    rust-channel: stable
+    build-packages:
+      - pkg-config
+      - libssl-dev
+    stage-packages:
+      - libssl3
+
+# App key must match the snap name so the command is exposed as
+# `sunscreen-cli` (not `sunscreen-cli.sunscreen`). See the snapd docs on
+# "command name = snap name" aliasing.
+apps:
+  sunscreen-cli:
+    command: bin/sunscreen
+    environment:
+      PATH: "$SNAP/bin:$PATH"
+
+# Both amd64 and arm64 are produced by the workflow matrix; the snapcraft
+# action picks the right runner per architecture.
+architectures:
+  - build-on: amd64
+  - build-on: arm64

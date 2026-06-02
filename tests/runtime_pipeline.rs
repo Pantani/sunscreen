@@ -52,7 +52,10 @@ fn no_frontend_notify() -> PipelineOptions {
 #[test]
 fn build_pipeline_runs_anchor_then_codama_in_workspace_root() {
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
-    let root = PathBuf::from("/tmp/sunscreen-workspace");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("sunscreen-workspace");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
 
     let report = BuildPipeline::new(&root)
         .run(&runner, no_frontend_notify())
@@ -63,9 +66,21 @@ fn build_pipeline_runs_anchor_then_codama_in_workspace_root() {
     let calls = runner.calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].display_argv(), ["anchor", "build"]);
-    assert_eq!(calls[1].display_argv(), ["pnpm", "exec", "codama", "run"]);
+    assert_eq!(
+        calls[1].display_argv(),
+        [
+            "pnpm",
+            "exec",
+            "codama",
+            "run",
+            "--all",
+            "--config",
+            "codama.json"
+        ]
+    );
     assert_eq!(calls[0].cwd.as_deref(), Some(root.as_path()));
     assert_eq!(calls[1].cwd.as_deref(), Some(root.as_path()));
+    assert!(root.join("codama.json").exists());
 
     let finished_steps: Vec<_> = report
         .events
@@ -134,7 +149,10 @@ fn build_pipeline_can_skip_codama() {
 #[test]
 fn build_pipeline_stops_before_codama_when_anchor_fails() {
     let runner = FakeRunner::with_outputs(vec![output(42, "anchor failed")]);
-    let root = PathBuf::from("/tmp/sunscreen-workspace");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("sunscreen-workspace");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
 
     let report = BuildPipeline::new(&root)
         .run(&runner, no_frontend_notify())
@@ -158,6 +176,8 @@ fn build_pipeline_notifies_scaffolded_frontend_after_codama_success() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
     std::fs::create_dir(root.join("app")).expect("create app dir");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
 
     let report = BuildPipeline::new(root)
@@ -193,6 +213,8 @@ fn build_pipeline_notifies_configured_frontend_path() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
     std::fs::create_dir(root.join("web")).expect("create custom frontend dir");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
 
     let report = BuildPipeline::new(root)
@@ -217,6 +239,8 @@ fn build_pipeline_rejects_absolute_frontend_path() {
     let outside = tmp.path().join("outside");
     std::fs::create_dir_all(&root).expect("create workspace dir");
     std::fs::create_dir_all(&outside).expect("create outside frontend dir");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
 
     let err = BuildPipeline::new(&root)
@@ -243,6 +267,8 @@ fn build_pipeline_rejects_parent_dir_frontend_path() {
     let outside = tmp.path().join("outside");
     std::fs::create_dir_all(&root).expect("create workspace dir");
     std::fs::create_dir_all(&outside).expect("create outside frontend dir");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
 
     let err = BuildPipeline::new(&root)
@@ -266,6 +292,8 @@ fn build_pipeline_rejects_parent_dir_frontend_path() {
 fn build_pipeline_rejects_empty_frontend_path() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
 
     let err = BuildPipeline::new(root)
@@ -291,6 +319,8 @@ fn build_pipeline_surfaces_frontend_notify_write_errors() {
     let root = tmp.path();
     std::fs::create_dir(root.join("app")).expect("create app dir");
     std::fs::write(root.join("app/.sunscreen"), "not a dir").expect("create blocking file");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
 
     let err = BuildPipeline::new(root)

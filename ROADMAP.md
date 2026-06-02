@@ -1,7 +1,7 @@
 # sunscreen — Roadmap
 
 **Status:** Live tracker
-**Last updated:** 2026-06-01 (Phase 3 closed in PR)
+**Last updated:** 2026-06-02 (Phase 4 closed in PR)
 **Supersedes (as the live source of truth):** the roadmap section of [`docs/adr/ADR-0001-solis-cli.md`](docs/adr/ADR-0001-solis-cli.md) §10 and the week-by-week checklist in [`IMPLEMENTATION-KICKOFF.md`](IMPLEMENTATION-KICKOFF.md). Those documents remain as historical context for the original Go-based design; this file is what changes as work lands.
 
 ## Legend
@@ -44,8 +44,8 @@ Total to **v1.0**: ~21 weeks of focused work (vs. 16 weeks in the original ADR-0
 | **1** | Workspace Bootstrap | ✅ DONE | 2 wk | 4 wk | `chain new` produces compilable Anchor workspace + frontend variants | ADR-0001 §10.3 |
 | **2** | Incremental Scaffolding | ✅ DONE | 4 wk | 8 wk | `scaffold {instruction, account, event, error, program}` + `chain doctor --fix-markers` | ADR-0001 §10.4, ADR-0004 |
 | **3** | Runtime Orchestration | ✅ DONE | 3 wk | 11 wk | `chain serve` (Surfpool/test-validator + watcher + codama + frontend notify + serve model), `chain build` | ADR-0001 §10.5 |
-| **4** | Codegen & Frontend Hooks | ⏳ NEXT | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, codama wrapper | ADR-0001 §10.6 |
-| **5** | Recipes | 📋 | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
+| **4** | Codegen & Frontend Hooks | ✅ DONE | 2 wk | 13 wk | `generate {clients, idl, frontend-hooks}`, Codama wrapper, IDL artifacts, React/Solid Query hooks | ADR-0001 §10.6 |
+| **5** | Recipes | ⏳ NEXT | 3 wk | 16 wk | `scaffold {crud, spl-token, metaplex-nft}` | ADR-0001 §10.7 |
 | **5.5** | Onboarding Layer | 📋 NEW | 4 wk | 20 wk | `init`, `quickstart`, `examples`, `wallet`, `deploy`, `learn`, `next_step` errors | ADR-0005 §6 |
 | **6** | Plugin System | 🔮 post-v1.0 | 4 wk | — | gRPC + stdio plugins, 2 reference plugins | ADR-0001 §10.8 |
 | **7** | Pinocchio support | 🔮 post-v1.0 | 3 wk | — | `--framework pinocchio` MVP | ADR-0001 §10.9 |
@@ -191,21 +191,24 @@ Shipped via PR #7.
 
 ---
 
-### Phase 4 — Codegen & Frontend Hooks 📋
+### Phase 4 — Codegen & Frontend Hooks ✅
+
+**Status.** ✅ DONE in this PR. `sunscreen generate` is no longer a stub: it exports deterministic IDL artifacts, writes a managed `codama.json`, runs Codama through the shared subprocess boundary, and generates React Query + Solid Query frontend hooks from Anchor IDLs. `chain build` and `chain serve` now reuse the same Codama wrapper.
 
 **Goal.** Wrap codama; emit framework-agnostic IDL artifacts and TanStack-Query hooks.
 
 **Deliverables.**
-- [ ] `src/codegen/codama.rs` + `codama_config.rs`
-- [ ] `src/codegen/frontend_hooks.rs` — TanStack / Solid Query wrappers derived from IDL
-- [ ] `sunscreen generate clients`, `generate idl`, `generate frontend-hooks`
-- [ ] Idempotent regeneration; generated hooks compile in a vanilla Next.js project against a local Surfpool
+- [x] `src/codegen/codama.rs` + `codama_config.rs` — writes stable `codama.json` and runs `pnpm exec codama run --all --config codama.json`
+- [x] `src/codegen/idl.rs` — exports `target/idl/*.json` into deterministic `clients/idl/*.json`
+- [x] `src/codegen/frontend_hooks.rs` — framework-agnostic IDL/core TypeScript plus TanStack React Query and Solid Query wrappers derived from IDL instructions
+- [x] `sunscreen generate clients`, `generate idl`, `generate frontend-hooks`
+- [x] Idempotent regeneration covered by CLI tests; generated Next.js hook typecheck is available as a gated ignored test for machines with the JS toolchain installed
 
-**DoD.** ADR-0001 §10.6.
+**DoD.** ADR-0001 §10.6. Operational details are documented in [`docs/reference/codegen.md`](docs/reference/codegen.md).
 
 ---
 
-### Phase 5 — Recipes 📋
+### Phase 5 — Recipes ⏳
 
 **Goal.** Composite scaffolders that produce working dApp slices in one command.
 
@@ -279,13 +282,13 @@ Explicitly deferred per ADR-0001 §10.9. Requires its own ADR before scoping; no
 Phase 2 R4 (program + doctor --fix-markers) ✅
    └─► Phase 2 R5 (polish, test counts)
          └─► Phase 3 (chain serve / build)
-               └─► Phase 4 (codegen, frontend hooks) ⏳ NEXT
-                     └─► Phase 5 (recipes: crud, spl-token, metaplex-nft)
+              └─► Phase 4 (codegen, frontend hooks) ✅
+                    └─► Phase 5 (recipes: crud, spl-token, metaplex-nft) ⏳ NEXT
                            └─► Phase 5.5 (onboarding: quickstart wraps recipes)
                                  └─► Phase 8 (cargo-dist + docs site) ─► v1.0
 ```
 
-- **Phase 4 is the immediate unblock.** Phase 2 and Phase 3 are closed; the next critical-path surface is Codama wrapping plus generated IDL/client/frontend-hook commands.
+- **Phase 5 is the immediate unblock.** Phase 2, Phase 3, and Phase 4 are closed; the next critical-path surface is composite recipe scaffolding that can consume the generated hooks/client surface.
 - **Phase 5.5 strictly follows Phase 5.** `quickstart nft` is a thin shell over `scaffold metaplex-nft`; without recipes there is nothing to wrap.
 - **Phase 6 (plugins) and Phase 7 (Pinocchio) are parallelisable and post-v1.0.** They do not gate v1.0 and should not pull engineering attention until v1.0 ships.
 - **Docs (Phase 8) can start drafting during Phase 5.5** — content for `learn/*.md` overlaps with the user-facing tutorial pages.

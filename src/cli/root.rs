@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use crate::cli::chain::{self, ChainCmd};
+use crate::cli::generate::{self, GenerateCmd};
 use crate::cli::scaffold::{self, ScaffoldCmd};
 use crate::cli::{doctor, version};
 use crate::error::SunscreenError;
@@ -61,8 +62,11 @@ pub enum Command {
         #[command(subcommand)]
         cmd: ChainCmd,
     },
-    /// Code generation utilities (stub).
-    Generate,
+    /// Code generation utilities (clients, IDL, frontend hooks).
+    Generate {
+        #[command(subcommand)]
+        cmd: GenerateCmd,
+    },
     /// Application lifecycle commands (stub).
     App,
 }
@@ -99,10 +103,7 @@ fn dispatch(cli: &Cli) -> Result<i32, SunscreenError> {
         }
         Command::Scaffold { cmd } => scaffold::run(cmd, cli.json),
         Command::Chain { cmd } => chain::run(cmd, cli.json),
-        Command::Generate => {
-            eprintln!("generate: TODO");
-            Ok(0)
-        }
+        Command::Generate { cmd } => generate::run(cmd, cli.json),
         Command::App => {
             eprintln!("app: TODO");
             Ok(0)

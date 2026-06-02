@@ -1,4 +1,4 @@
-//! Build pipeline orchestration for Phase 3.
+//! Build pipeline orchestration for Phase 3/4.
 
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -6,13 +6,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::render_event_path;
 use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
+use crate::codegen::codama;
 
 /// One step in the build pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStep {
     /// `anchor build`
     AnchorBuild,
-    /// `pnpm exec codama run`
+    /// `pnpm exec codama run --all --config codama.json`
     CodamaRun,
     /// Write the frontend reload sentinel after generated clients change.
     FrontendNotify,
@@ -32,13 +33,7 @@ impl PipelineStep {
     fn command(self, cwd: &Path) -> Option<CommandSpec> {
         match self {
             Self::AnchorBuild => Some(CommandSpec::new("anchor").arg("build").cwd(cwd)),
-            Self::CodamaRun => Some(
-                CommandSpec::new("pnpm")
-                    .arg("exec")
-                    .arg("codama")
-                    .arg("run")
-                    .cwd(cwd),
-            ),
+            Self::CodamaRun => Some(codama::codama_run_command(cwd)),
             Self::FrontendNotify => None,
         }
     }
@@ -47,7 +42,7 @@ impl PipelineStep {
 /// Build pipeline options.
 #[derive(Debug, Clone)]
 pub struct PipelineOptions {
-    /// Run `pnpm exec codama run` after a successful `anchor build`.
+    /// Run managed Codama client regeneration after a successful Anchor build.
     pub run_codama: bool,
     /// Notify a scaffolded frontend after successful Codama regeneration.
     pub notify_frontend: bool,
@@ -242,6 +237,17 @@ impl BuildPipeline {
         }
 
         for step in steps {
+            if step == PipelineStep::CodamaRun {
+                codama::ensure_codama_config(&self.workspace_root, None).map_err(|source| {
+                    PipelineError {
+                        step,
+                        source: ProcessError::from_io(
+                            "codama-config",
+                            io::Error::other(source.to_string()),
+                        ),
+                    }
+                })?;
+            }
             let command = step
                 .command(&self.workspace_root)
                 .expect("subprocess pipeline step must have a command");

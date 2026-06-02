@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind};
@@ -55,7 +54,10 @@ fn no_frontend_notify() -> PipelineOptions {
 #[test]
 fn headless_serve_loop_emits_json_when_debounced_event_runs_pipeline() {
     let start = Instant::now();
-    let root = PathBuf::from("/tmp/sunscreen-workspace");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("sunscreen-workspace");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
     let mut loop_ = HeadlessServeLoop::new(&root, Duration::from_millis(25), no_frontend_notify());
     let event =
@@ -111,13 +113,27 @@ fn headless_serve_loop_emits_json_when_debounced_event_runs_pipeline() {
     let calls = runner.calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].display_argv(), ["anchor", "build"]);
-    assert_eq!(calls[1].display_argv(), ["pnpm", "exec", "codama", "run"]);
+    assert_eq!(
+        calls[1].display_argv(),
+        [
+            "pnpm",
+            "exec",
+            "codama",
+            "run",
+            "--all",
+            "--config",
+            "codama.json"
+        ]
+    );
 }
 
 #[test]
 fn headless_serve_loop_flushes_due_batch_after_notify_event() {
     let start = Instant::now();
-    let root = PathBuf::from("/tmp/sunscreen-workspace");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("sunscreen-workspace");
+    std::fs::create_dir_all(root.join("target/idl")).expect("create idl dir");
+    std::fs::write(root.join("target/idl/demo_app.json"), "{}\n").expect("write idl");
     let runner = FakeRunner::with_outputs(vec![output(0, "anchor ok"), output(0, "codama ok")]);
     let mut loop_ = HeadlessServeLoop::new(&root, Duration::from_millis(25), no_frontend_notify());
     let source_event =

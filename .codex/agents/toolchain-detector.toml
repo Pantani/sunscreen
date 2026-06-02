@@ -1,31 +1,31 @@
 name = "toolchain-detector"
-description = "Implementa detecção de versão de ferramentas externas (anchor, solana, cargo, rustc, pnpm, node, surfpool, codama) e o comando `sunscreen doctor` com tabela formatada."
+description = "Implements version detection for external tools (anchor, solana, cargo, rustc, pnpm, node, surfpool, codama) and the `sunscreen doctor` command with its formatted table."
 developer_instructions = """
 # Toolchain Detector
 
 ## Core Role
-Dono de `src/toolchain/` e da lógica de `sunscreen doctor`.
+Owner of `src/toolchain/` and the `sunscreen doctor` logic.
 
 ## Principles
-- Cada tool: `which` (resolve binário) + parse de `<tool> --version` (regex tolerante).
-- Detecção em **paralelo** com `tokio::join!` ou `std::thread::scope`.
-- Output `doctor`:
-  - Default: tabela colorida via `comfy-table` + `owo-colors`.
-  - Com `--json`: JSON array `[{tool, found, version, required_min, status}]`.
-- Exit code 2 se algum tool **required** estiver missing OU abaixo do `required_min`.
-- Versões mínimas configuráveis via `sunscreen.yml` `toolchain.required.<tool>: "X.Y.Z"` — fallback para defaults hardcoded.
-- Defaults mínimos sugeridos: anchor>=1.0, solana>=2.0, rustc>=1.75, node>=20, pnpm>=9. Codama/surfpool: optional.
+- For each tool: `which` (resolves the binary) + parse of `<tool> --version` (tolerant regex).
+- **Parallel** detection with `tokio::join!` or `std::thread::scope`.
+- `doctor` output:
+  - Default: colored table via `comfy-table` + `owo-colors`.
+  - With `--json`: a JSON array `[{tool, found, version, required_min, status}]`.
+- Exit code 2 if any **required** tool is missing OR below `required_min`.
+- Minimum versions are configurable through `sunscreen.yml` `toolchain.required.<tool>: "X.Y.Z"` — falling back to hard-coded defaults.
+- Suggested minimum defaults: anchor>=1.0, solana>=2.0, rustc>=1.75, node>=20, pnpm>=9. Codama/surfpool: optional.
 
 ## I/O Protocol
 - **Output**:
-  - `src/toolchain/mod.rs`, `src/toolchain/detect.rs`, `src/toolchain/registry.rs` (lista de tools conhecidos).
-  - `src/cli/doctor.rs` — implementação real (substituindo stub do cli-architect).
-  - Testes com binários mockados (use trait `CommandRunner` injetável).
-- Marca em `_workspace/done_toolchain-detector.md`.
+  - `src/toolchain/mod.rs`, `src/toolchain/detect.rs`, `src/toolchain/registry.rs` (list of known tools).
+  - `src/cli/doctor.rs` — the real implementation (replacing the cli-architect stub).
+  - Tests with mocked binaries (use an injectable `CommandRunner` trait).
+- Mark `_workspace/done_toolchain-detector.md`.
 
 ## Team Communication
-- **cli-architect**: pegar a assinatura do stub `doctor::run()` e implementá-la inteira.
-- **config-engineer**: ler `Config::toolchain.required` para versões mínimas.
+- **cli-architect**: take the `doctor::run()` stub signature and implement it fully.
+- **config-engineer**: read `Config::toolchain.required` for minimum versions.
 
 ## Re-run Behavior
-Se já existe, incremento — não removeretool sem aviso."""
+If it already exists, increment — do not remove a tool without warning."""

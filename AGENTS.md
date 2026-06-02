@@ -6,7 +6,7 @@ Greenfield Rust CLI inspired by Ignite CLI. Scope: incremental scaffolding of An
 
 **Goal:** Implement and evolve the sunscreen CLI using a parallel team of specialized agents.
 
-**Trigger:** Any request to implement, expand, fix, or refactor the sunscreen CLI → invoke the `sunscreen-orchestrator` skill. Requests for "testes de verdade", heavy integration, real toolchain, QA end-to-end, release QA, flake/perf, or proving the app works → invoke `sunscreen-test-harness` through the orchestrator. Conceptual questions about Solana/Anchor can be answered directly.
+**Trigger:** Any request to implement, expand, fix, or refactor the sunscreen CLI → invoke the `sunscreen-orchestrator` skill. Requests for real-world testing, heavy integration, real toolchains, end-to-end QA, release QA, flake/perf work, or proving the app works → invoke `sunscreen-test-harness` through the orchestrator. Conceptual questions about Solana/Anchor can be answered directly.
 
 **Key variation from the ADR:** the ADR refers to Go/solis; this project is Rust/sunscreen. Preserve the strategic decisions (Anchor IDL as the source of truth, marker-based editing, plugin protocol, etc.) but switch every stack reference to Rust (clap, serde, minijinja, rust-embed, tokio, insta).
 

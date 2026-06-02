@@ -1,0 +1,104 @@
+/* Sunscreen — Eclipse palette
+ * Dark-first. Light variant inherits the same hue family,
+ * lifted by ~88% to keep the brand âmbar warm against paper.
+ */
+
+:root,
+.sunscreen-dark,
+.navy {
+  --bg: #0B0D12;
+  --bg-elevated: #13161D;
+  --bg-code: #13161D;
+  --bg-inline-code: #1A1E27;
+  --fg: #E8E6E1;
+  --fg-strong: #FFFFFF;
+  --fg-muted: #8A8B92;
+  --fg-faint: #5C5E66;
+
+  --brand: #F4A340;
+  --brand-soft: #FBD38D;
+  --brand-strong: #E08B1A;
+
+  --accent: #7AB7FF;
+  --accent-soft: #A8D0FF;
+
+  --border: #1F232C;
+  --border-strong: #2A2F3A;
+
+  --success: #6FCF97;
+  --warning: #F4C462;
+  --danger: #F47272;
+  --info: #7AB7FF;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-2: 0 8px 24px rgba(0,0,0,0.45);
+
+  /* mdBook variable bridge */
+  --bg: var(--bg);
+  --fg: var(--fg);
+  --sidebar-bg: var(--bg-elevated);
+  --sidebar-fg: var(--fg);
+  --sidebar-non-existant: var(--fg-faint);
+  --sidebar-active: var(--brand);
+  --sidebar-spacer: var(--border);
+  --scrollbar: var(--border-strong);
+  --icons: var(--fg-muted);
+  --icons-hover: var(--brand);
+  --links: var(--brand);
+  --inline-code-color: var(--brand-soft);
+  --theme-popup-bg: var(--bg-elevated);
+  --theme-popup-border: var(--border);
+  --theme-hover: var(--border);
+  --quote-bg: var(--bg-elevated);
+  --quote-border: var(--brand);
+  --warning-border: var(--warning);
+  --table-border-color: var(--border);
+  --table-header-bg: var(--bg-elevated);
+  --table-alternate-bg: var(--bg-elevated);
+  --searchbar-border-color: var(--border);
+  --searchbar-bg: var(--bg-elevated);
+  --searchbar-fg: var(--fg);
+  --searchbar-shadow-color: transparent;
+  --searchresults-header-fg: var(--fg-muted);
+  --searchresults-border-color: var(--border);
+  --searchresults-li-bg: var(--bg-elevated);
+  --search-mark-bg: var(--brand-soft);
+}
+
+/* Light fallback — kept on-brand, used if user toggles to "light" */
+.light,
+.rust,
+.ayu,
+.coal {
+  --bg: #FAF8F4;
+  --bg-elevated: #F2EFE8;
+  --bg-code: #1A1E27;
+  --bg-inline-code: #EEEAE0;
+  --fg: #1A1C22;
+  --fg-strong: #0B0D12;
+  --fg-muted: #6B6D75;
+  --fg-faint: #A8AAB0;
+
+  --brand: #B8761E;
+  --brand-soft: #D89A3A;
+  --brand-strong: #8B5A14;
+
+  --accent: #2E6FBF;
+  --accent-soft: #5A92D8;
+
+  --border: #E2DDD2;
+  --border-strong: #C9C3B5;
+
+  --sidebar-bg: var(--bg-elevated);
+  --sidebar-fg: var(--fg);
+  --sidebar-active: var(--brand);
+  --links: var(--brand);
+  --inline-code-color: var(--brand-strong);
+  --theme-popup-bg: var(--bg-elevated);
+  --quote-bg: var(--bg-elevated);
+  --quote-border: var(--brand);
+  --table-border-color: var(--border);
+  --table-header-bg: var(--bg-elevated);
+  --searchbar-bg: #FFFFFF;
+  --searchresults-li-bg: var(--bg-elevated);
+}

@@ -12,6 +12,7 @@ This project uses a tiered validation model so fast CI stays deterministic while
 | Pinocchio SBF | Real Solana SBF build for Pinocchio workspaces | `SUNSCREEN_PINOCCHIO_SBF=1 bash scripts/integration-heavy.sh` |
 | Serve runtime | Surfpool or `solana-test-validator`, watcher, NDJSON events, teardown | manual tier in `.claude/skills/sunscreen-test-harness/SKILL.md` |
 | Plugin runtime | Lifecycle, sandbox, stdio JSON-RPC, gRPC contract, marketplace | `cargo test --locked --test app_lifecycle -- --nocapture` |
+| Frontend codegen | Generated React/Solid hooks and typecheck when JS dependencies are installed | `SUNSCREEN_FRONTEND_COMPILE_TESTS=1 bash scripts/integration-heavy.sh` |
 | Release distribution | Release binary and `cargo dist plan` | `SUNSCREEN_DIST=1 bash scripts/integration-heavy.sh` |
 | Flake/perf | Repeat CLI smoke and run cold-start bench separately | `SUNSCREEN_FLAKE_RUNS=5 bash scripts/integration-heavy.sh` |
 
@@ -26,7 +27,7 @@ The fake-toolchain integration tests remain valuable: they prove CLI contracts, 
 Every `scripts/integration-heavy.sh` run writes:
 
 - `heavy-<timestamp>.log` with the full command stream.
-- `heavy-<timestamp>.summary.json` with top-level status, exit code, log path, and per-tier statuses.
+- `heavy-<timestamp>.summary.json` with top-level status, exit code, log path, and per-tier `owner`, `status`, `command`, `evidence`, and `next_action`.
 
 The `test-harness-orchestrator` must read the newest summary before reporting. This keeps the team honest about which tiers passed, skipped, failed, or were blocked by missing tools.
 

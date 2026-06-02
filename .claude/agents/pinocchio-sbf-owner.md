@@ -23,10 +23,11 @@ Provar que o caminho Pinocchio funciona com a toolchain Solana real, nao apenas 
 Use estes comandos como base:
 
 ```bash
-cargo build --locked
+ROOT="$(pwd)"
+cargo build --locked --release
 tmp="$(mktemp -d)"
-./target/debug/sunscreen chain new real_pin --framework pinocchio --frontend none --path "$tmp/real_pin"
-(cd "$tmp/real_pin" && ./target/debug/sunscreen --json chain build --headless)
+"$ROOT/target/release/sunscreen" chain new real_pin --framework pinocchio --frontend none --path "$tmp/real_pin"
+(cd "$tmp/real_pin" && "$ROOT/target/release/sunscreen" --json chain build --headless)
 ```
 
 ## Team Communication Protocol

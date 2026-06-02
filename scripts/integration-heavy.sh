@@ -16,10 +16,13 @@ SUMMARY_FILE="$LOG_DIR/heavy-$STAMP.summary.json"
 SUMMARY_TSV="$LOG_DIR/heavy-$STAMP.summary.tsv"
 REAL_TOOLCHAIN="${SUNSCREEN_REAL_TOOLCHAIN:-0}"
 COMPILE_TESTS="${SUNSCREEN_COMPILE_TESTS:-0}"
+FRONTEND_TESTS="${SUNSCREEN_FRONTEND_COMPILE_TESTS:-0}"
 DIST_TESTS="${SUNSCREEN_DIST:-0}"
 FLAKE_RUNS="${SUNSCREEN_FLAKE_RUNS:-0}"
 PINOCCHIO_SBF="${SUNSCREEN_PINOCCHIO_SBF:-0}"
 CURRENT_TIER=""
+CURRENT_OWNER=""
+CURRENT_COMMAND=""
 
 mkdir -p "$LOG_DIR"
 : > "$SUMMARY_TSV"
@@ -28,8 +31,11 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 record_tier() {
     local tier="$1"
     local status="$2"
-    local note="${3:-}"
-    printf '%s\t%s\t%s\n' "$tier" "$status" "$note" >> "$SUMMARY_TSV"
+    local owner="$3"
+    local command="$4"
+    local evidence="${5:-}"
+    local next_action="${6:-}"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$tier" "$status" "$owner" "$command" "$evidence" "$next_action" >> "$SUMMARY_TSV"
 }
 
 finalize() {
@@ -52,10 +58,19 @@ try:
             raw = raw.rstrip("\n")
             if not raw:
                 continue
-            parts = raw.split("\t", 2)
-            while len(parts) < 3:
+            parts = raw.split("\t", 5)
+            while len(parts) < 6:
                 parts.append("")
-            tiers.append({"tier": parts[0], "status": parts[1], "note": parts[2]})
+            tiers.append(
+                {
+                    "tier": parts[0],
+                    "status": parts[1],
+                    "owner": parts[2],
+                    "command": parts[3],
+                    "evidence": parts[4],
+                    "next_action": parts[5],
+                }
+            )
 except FileNotFoundError:
     pass
 
@@ -117,7 +132,7 @@ require_tool() {
         echo "missing required tool for real validation: $tool"
         echo "This is a blocked real-toolchain run, not a passing run."
         if [[ -n "$CURRENT_TIER" ]]; then
-            record_tier "$CURRENT_TIER" "blocked" "missing required tool: $tool"
+            record_tier "$CURRENT_TIER" "blocked" "$CURRENT_OWNER" "$CURRENT_COMMAND" "missing required tool: $tool" "install/provision $tool or rerun without this tier"
         fi
         exit 2
     fi
@@ -136,6 +151,7 @@ section "sunscreen heavy integration runner"
 echo "root=$ROOT"
 echo "log=$LOG_FILE"
 echo "SUNSCREEN_COMPILE_TESTS=$COMPILE_TESTS"
+echo "SUNSCREEN_FRONTEND_COMPILE_TESTS=$FRONTEND_TESTS"
 echo "SUNSCREEN_REAL_TOOLCHAIN=$REAL_TOOLCHAIN"
 echo "SUNSCREEN_DIST=$DIST_TESTS"
 echo "SUNSCREEN_FLAKE_RUNS=$FLAKE_RUNS"
@@ -143,6 +159,8 @@ echo "SUNSCREEN_PINOCCHIO_SBF=$PINOCCHIO_SBF"
 
 section "offline deterministic gate"
 CURRENT_TIER="offline_deterministic"
+CURRENT_OWNER="offline-ci-owner"
+CURRENT_COMMAND="bash scripts/integration-heavy.sh"
 run cargo fmt --all -- --check
 run cargo clippy --locked --all-targets --all-features -- -D warnings
 run cargo check --locked --no-default-features --all-targets
@@ -150,30 +168,37 @@ run cargo test --locked --all --all-features --no-fail-fast
 run cargo test --locked --test integration_chain --test integration_scaffold --test integration_generate --test integration_onboarding --test app_lifecycle
 run cargo test --locked --test compile_generated_workspace
 run cargo build --locked --release --all-features
-record_tier "$CURRENT_TIER" "passed" "fmt, clippy, no-default check, cargo test --all, command-group smokes, compile_generated_workspace, release build"
+record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "fmt, clippy, no-default check, cargo test --all, command-group smokes, compile_generated_workspace, release build" ""
 
 section "release binary smoke"
 CURRENT_TIER="release_binary_smoke"
+CURRENT_OWNER="release-distribution-qa"
+CURRENT_COMMAND="./target/release/sunscreen --help; version; doctor --json; app marketplace --json"
 run ./target/release/sunscreen --help
 run ./target/release/sunscreen version
 run_allow_exit "0 2" ./target/release/sunscreen doctor --json
 run ./target/release/sunscreen app marketplace --json
-record_tier "$CURRENT_TIER" "passed" "release binary help/version/doctor/app marketplace"
+record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "release binary help/version/doctor/app marketplace" ""
+record_tier "plugin_runtime" "passed" "plugin-runtime-qa" "cargo test --test app_lifecycle; ./target/release/sunscreen app marketplace --json" "app lifecycle ran in offline gate and marketplace JSON executed" ""
 
 if [[ "$COMPILE_TESTS" == "1" ]]; then
     section "generated workspace compile gate"
     CURRENT_TIER="generated_workspace_compile"
+    CURRENT_OWNER="real-anchor-codama-owner"
+    CURRENT_COMMAND="SUNSCREEN_COMPILE_TESTS=1 cargo test --locked --test compile_generated -- --nocapture"
     run_shell "SUNSCREEN_COMPILE_TESTS=1 cargo test --locked --test compile_generated -- --nocapture"
-    record_tier "$CURRENT_TIER" "passed" "SUNSCREEN_COMPILE_TESTS=1 compile_generated executed"
+    record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "SUNSCREEN_COMPILE_TESTS=1 compile_generated executed" ""
 else
     section "generated workspace compile gate skipped"
     echo "Set SUNSCREEN_COMPILE_TESTS=1 to run compile_generated."
-    record_tier "generated_workspace_compile" "skipped" "set SUNSCREEN_COMPILE_TESTS=1"
+    record_tier "generated_workspace_compile" "skipped" "real-anchor-codama-owner" "SUNSCREEN_COMPILE_TESTS=1 bash scripts/integration-heavy.sh" "compile_generated gated suite not requested" "rerun with SUNSCREEN_COMPILE_TESTS=1"
 fi
 
 if [[ "$REAL_TOOLCHAIN" == "1" ]]; then
     section "real Solana toolchain probes"
     CURRENT_TIER="real_anchor_codama"
+    CURRENT_OWNER="real-anchor-codama-owner"
+    CURRENT_COMMAND="SUNSCREEN_REAL_TOOLCHAIN=1 bash scripts/integration-heavy.sh"
     require_tool cargo
     require_tool rustc
     require_tool anchor
@@ -194,61 +219,82 @@ if [[ "$REAL_TOOLCHAIN" == "1" ]]; then
 
     section "real Anchor/Codama integration gate"
     run cargo test --locked --test integration_anchor -- --ignored --nocapture
-    record_tier "$CURRENT_TIER" "passed" "real toolchain probes passed and integration_anchor --ignored executed"
+    record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "real toolchain probes passed and integration_anchor --ignored executed" ""
 else
     section "real Solana toolchain gate skipped"
     echo "Set SUNSCREEN_REAL_TOOLCHAIN=1 to require real anchor/solana/solana-test-validator/pnpm/node/codama and run integration_anchor --ignored."
-    record_tier "real_anchor_codama" "skipped" "set SUNSCREEN_REAL_TOOLCHAIN=1"
+    record_tier "real_anchor_codama" "skipped" "real-anchor-codama-owner" "SUNSCREEN_REAL_TOOLCHAIN=1 bash scripts/integration-heavy.sh" "real Anchor/Codama tier not requested" "rerun with SUNSCREEN_REAL_TOOLCHAIN=1 on a provisioned machine"
 fi
 
 if [[ "$PINOCCHIO_SBF" == "1" ]]; then
     section "real Pinocchio SBF gate"
     CURRENT_TIER="pinocchio_sbf"
+    CURRENT_OWNER="pinocchio-sbf-owner"
+    CURRENT_COMMAND="SUNSCREEN_PINOCCHIO_SBF=1 bash scripts/integration-heavy.sh"
     require_tool cargo
     require_tool rustc
     require_tool solana
     pin_tmp="$(mktemp -d)"
     run ./target/release/sunscreen chain new real_pin --framework pinocchio --frontend none --path "$pin_tmp/real_pin"
     run_shell "cd '$pin_tmp/real_pin' && '$ROOT/target/release/sunscreen' --json chain build --headless"
-    record_tier "$CURRENT_TIER" "passed" "Pinocchio workspace built through real chain build --headless"
+    record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "Pinocchio workspace built through real chain build --headless" ""
 else
     section "real Pinocchio SBF gate skipped"
     echo "Set SUNSCREEN_PINOCCHIO_SBF=1 to require Solana/Cargo SBF and run a real Pinocchio chain build."
-    record_tier "pinocchio_sbf" "skipped" "set SUNSCREEN_PINOCCHIO_SBF=1"
+    record_tier "pinocchio_sbf" "skipped" "pinocchio-sbf-owner" "SUNSCREEN_PINOCCHIO_SBF=1 bash scripts/integration-heavy.sh" "Pinocchio SBF tier not requested" "rerun with SUNSCREEN_PINOCCHIO_SBF=1 on a Solana SBF machine"
+fi
+
+if [[ "$FRONTEND_TESTS" == "1" ]]; then
+    section "frontend codegen typecheck gate"
+    CURRENT_TIER="frontend_codegen"
+    CURRENT_OWNER="frontend-codegen-owner"
+    CURRENT_COMMAND="SUNSCREEN_FRONTEND_COMPILE_TESTS=1 cargo test --locked --test generate generated_frontend_hooks_typecheck_vanilla_next_project_when_dependencies_are_installed -- --ignored --nocapture"
+    require_tool node
+    require_tool pnpm
+    run_shell "SUNSCREEN_FRONTEND_COMPILE_TESTS=1 cargo test --locked --test generate generated_frontend_hooks_typecheck_vanilla_next_project_when_dependencies_are_installed -- --ignored --nocapture"
+    record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "generated frontend hooks typecheck executed" ""
+else
+    section "frontend codegen typecheck gate skipped"
+    echo "Set SUNSCREEN_FRONTEND_COMPILE_TESTS=1 to run generated frontend hook typecheck."
+    record_tier "frontend_codegen" "skipped" "frontend-codegen-owner" "SUNSCREEN_FRONTEND_COMPILE_TESTS=1 bash scripts/integration-heavy.sh" "frontend typecheck tier not requested" "rerun with SUNSCREEN_FRONTEND_COMPILE_TESTS=1 on a Node/pnpm machine"
 fi
 
 if [[ "$DIST_TESTS" == "1" ]]; then
     section "cargo-dist release gate"
     CURRENT_TIER="cargo_dist"
+    CURRENT_OWNER="release-distribution-qa"
+    CURRENT_COMMAND="SUNSCREEN_DIST=1 bash scripts/integration-heavy.sh"
     require_tool cargo
     if ! cargo dist --version >/dev/null 2>&1; then
         echo "missing required cargo subcommand for dist validation: cargo-dist"
         echo "Install cargo-dist or run without SUNSCREEN_DIST=1."
-        record_tier "$CURRENT_TIER" "blocked" "missing cargo-dist"
+        record_tier "$CURRENT_TIER" "blocked" "$CURRENT_OWNER" "$CURRENT_COMMAND" "missing cargo-dist" "install cargo-dist 0.22.1 or run without SUNSCREEN_DIST=1"
         exit 2
     fi
     run cargo dist --version
     run cargo dist plan
-    record_tier "$CURRENT_TIER" "passed" "cargo dist plan executed"
+    record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "cargo dist plan executed" ""
 else
     section "cargo-dist release gate skipped"
     echo "Set SUNSCREEN_DIST=1 to require cargo-dist and run cargo dist plan."
-    record_tier "cargo_dist" "skipped" "set SUNSCREEN_DIST=1"
+    record_tier "cargo_dist" "skipped" "release-distribution-qa" "SUNSCREEN_DIST=1 bash scripts/integration-heavy.sh" "cargo-dist tier not requested" "rerun with SUNSCREEN_DIST=1 and cargo-dist installed"
 fi
 
 require_number "SUNSCREEN_FLAKE_RUNS" "$FLAKE_RUNS"
 if (( FLAKE_RUNS > 0 )); then
     section "flake loop"
     CURRENT_TIER="flake_loop"
+    CURRENT_OWNER="flake-perf-auditor"
+    CURRENT_COMMAND="SUNSCREEN_FLAKE_RUNS=$FLAKE_RUNS bash scripts/integration-heavy.sh"
     for i in $(seq 1 "$FLAKE_RUNS"); do
         echo "flake iteration $i/$FLAKE_RUNS"
         run cargo test --locked --test integration_chain --test integration_scaffold --test integration_generate --test integration_onboarding --test app_lifecycle
     done
-    record_tier "$CURRENT_TIER" "passed" "command-group smoke repeated $FLAKE_RUNS times"
+    record_tier "$CURRENT_TIER" "passed" "$CURRENT_OWNER" "$CURRENT_COMMAND" "command-group smoke repeated $FLAKE_RUNS times" ""
 else
     section "flake loop skipped"
     echo "Set SUNSCREEN_FLAKE_RUNS=N to repeat CLI smoke integration tests."
-    record_tier "flake_loop" "skipped" "set SUNSCREEN_FLAKE_RUNS=N"
+    record_tier "flake_loop" "skipped" "flake-perf-auditor" "SUNSCREEN_FLAKE_RUNS=N bash scripts/integration-heavy.sh" "flake loop not requested" "rerun with SUNSCREEN_FLAKE_RUNS=N"
 fi
 
 section "complete"

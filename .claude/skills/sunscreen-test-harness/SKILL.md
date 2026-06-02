@@ -91,10 +91,11 @@ Aceite: `anchor`, `solana`, `pnpm`, `node`, `cargo`, `rustc` e `codama` foram en
 Valida Pinocchio com Solana SBF real.
 
 ```bash
-cargo build --locked
+ROOT="$(pwd)"
+cargo build --locked --release
 tmp="$(mktemp -d)"
-./target/debug/sunscreen chain new real_pin --framework pinocchio --frontend none --path "$tmp/real_pin"
-(cd "$tmp/real_pin" && "$OLDPWD/target/debug/sunscreen" --json chain build --headless)
+"$ROOT/target/release/sunscreen" chain new real_pin --framework pinocchio --frontend none --path "$tmp/real_pin"
+(cd "$tmp/real_pin" && "$ROOT/target/release/sunscreen" --json chain build --headless)
 ```
 
 Aceite: `cargo build-sbf` real executa no workspace Pinocchio e Anchor-only guards continuam sem mutacao.
@@ -155,7 +156,9 @@ Prefira o runner unico para rodadas locais:
 bash scripts/integration-heavy.sh
 SUNSCREEN_COMPILE_TESTS=1 bash scripts/integration-heavy.sh
 SUNSCREEN_REAL_TOOLCHAIN=1 SUNSCREEN_COMPILE_TESTS=1 bash scripts/integration-heavy.sh
-SUNSCREEN_REAL_TOOLCHAIN=1 SUNSCREEN_DIST=1 SUNSCREEN_FLAKE_RUNS=5 bash scripts/integration-heavy.sh
+SUNSCREEN_PINOCCHIO_SBF=1 bash scripts/integration-heavy.sh
+SUNSCREEN_FRONTEND_COMPILE_TESTS=1 bash scripts/integration-heavy.sh
+SUNSCREEN_REAL_TOOLCHAIN=1 SUNSCREEN_PINOCCHIO_SBF=1 SUNSCREEN_FRONTEND_COMPILE_TESTS=1 SUNSCREEN_DIST=1 SUNSCREEN_FLAKE_RUNS=5 bash scripts/integration-heavy.sh
 ```
 
 Variaveis:
@@ -163,6 +166,7 @@ Variaveis:
 - `SUNSCREEN_COMPILE_TESTS=1`: liga compile tests gated.
 - `SUNSCREEN_REAL_TOOLCHAIN=1`: exige toolchain real e roda `integration_anchor --ignored`.
 - `SUNSCREEN_PINOCCHIO_SBF=1`: exige Solana/Cargo SBF e roda build Pinocchio real.
+- `SUNSCREEN_FRONTEND_COMPILE_TESTS=1`: exige Node/pnpm e roda typecheck de hooks frontend gerados.
 - `SUNSCREEN_DIST=1`: exige `cargo dist` e roda `cargo dist plan`.
 - `SUNSCREEN_FLAKE_RUNS=N`: repete o smoke de CLI `N` vezes.
 - `SUNSCREEN_HEAVY_LOG_DIR=path`: muda o diretorio de logs.

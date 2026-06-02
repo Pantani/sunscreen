@@ -10,7 +10,20 @@ Greenfield Rust CLI inspired by Ignite CLI. Scope: incremental scaffolding of An
 
 **Key variation from the ADR:** the ADR refers to Go/solis; this project is Rust/sunscreen. Preserve the strategic decisions (Anchor IDL as the source of truth, marker-based editing, plugin protocol, etc.) but switch every stack reference to Rust (clap, serde, minijinja, rust-embed, tokio, insta).
 
+## Harness: sunscreen-publisher
+
+**Goal:** Publish releases across Homebrew tap, Snap Store, and APT (Cloudsmith) automatically on every `vX.Y.Z` tag, extending the existing cargo-dist `release.yml`.
+
+**Trigger:** Requests to "publish release", "distribute via homebrew/snap/apt", "expand release pipeline", "configure brew tap / snapcraft / cargo-deb / cloudsmith", "republish channel X" → invoke the `sunscreen-publisher` skill. Coordinates `release-orchestrator` + `homebrew-publisher` + `snap-publisher` + `apt-publisher`.
+
 **Variation log:**
+| Date | Change | Target | Reason |
+|------|--------|--------|--------|
+| 2026-06-02 | Publisher harness added | agents/{release-orchestrator,homebrew-publisher,snap-publisher,apt-publisher}.md + skills/sunscreen-publisher | multi-channel distribution from vX.Y.Z tags |
+
+---
+
+## Harness: sunscreen (implementation team) — variation log
 | Date | Change | Target | Reason |
 |------|--------|--------|--------|
 | 2026-05-31 | Initial harness configuration | agents/* + skills/sunscreen-orchestrator | bootstrap |

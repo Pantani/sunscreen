@@ -350,11 +350,19 @@
 <p>You'll see progress output, then a summary similar to:</p>
 <pre><code>✓ workspace my-app/ created (anchor, no frontend)
 </code></pre>
-<p>```admonish tip<code>--frontend</code> accepts <code>none</code>, <code>vite</code>, or <code>next</code>. Pick <code>vite</code> if you want React + Vite scaffolded under <code>app/</code>; pick <code>next</code> for a Next.js scaffold. <code>none</code> keeps the workspace lean.</p>
-<pre><code>## Step 2 — Look around
-
-```bash
-cd my-app
+<div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
+<div class="admonition-title">
+<div id="admonition-tip-title">
+<p>Tip</p>
+</div>
+<a class="admonition-anchor-link" href="learn/first-workspace.html#admonition-tip"></a>
+</div>
+<div>
+<p><code>--frontend</code> accepts <code>none</code>, <code>vite</code>, or <code>next</code>. Pick <code>vite</code> if you want React + Vite scaffolded under <code>app/</code>; pick <code>next</code> for a Next.js scaffold. <code>none</code> keeps the workspace lean.</p>
+</div>
+</div>
+## Step 2 — Look around
+<pre><code class="language-bash">cd my-app
 tree -L 2 -I node_modules
 </code></pre>
 <pre><code>my-app/
@@ -377,11 +385,19 @@ tree -L 2 -I node_modules
 <li><code>programs/my_app/src/lib.rs</code> — the Anchor program. Has <code>// sunscreen:begin ... end</code> markers that sunscreen can edit on later commands without breaking what you wrote in between.</li>
 <li><code>Anchor.toml</code> — standard Anchor config, points at the program.</li>
 </ul>
-<p>```admonish tipThe markers in <code>lib.rs</code> are how sunscreen does <em>incremental</em> edits. When you run <code>sunscreen scaffold instruction Foo</code> later, it injects code only into marked regions. Your hand-written code is left alone. Read more in <a href="learn/../concepts/incremental-scaffolding.html">Incremental scaffolding</a>.</p>
-<pre><code>## Step 3 — Build
-
-```bash
-sunscreen chain build
+<div id="admonition-tip-1" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-1-title">
+<div class="admonition-title">
+<div id="admonition-tip-1-title">
+<p>Tip</p>
+</div>
+<a class="admonition-anchor-link" href="learn/first-workspace.html#admonition-tip-1"></a>
+</div>
+<div>
+<p>The markers in <code>lib.rs</code> are how sunscreen does <em>incremental</em> edits. When you run <code>sunscreen scaffold instruction Foo</code> later, it injects code only into marked regions. Your hand-written code is left alone. Read more in <a href="learn/../concepts/incremental-scaffolding.html">Incremental scaffolding</a>.</p>
+</div>
+</div>
+## Step 3 — Build
+<pre><code class="language-bash">sunscreen chain build
 </code></pre>
 <p>This runs <code>anchor build</code> under the hood and reports progress as NDJSON lines (one event per line, useful for editor integrations). On success:</p>
 <pre><code>✓ anchor build
@@ -435,11 +451,19 @@ cd my-first-nft
 <li>Added a sample frontend hook for minting (TanStack Query).</li>
 </ol>
 <p>You'll see a summary table at the end listing files created.</p>
-<p>```admonish tip<code>quickstart</code> is a composition of more granular commands: <code>chain new</code>, <code>scaffold metaplex-nft</code>, <code>generate frontend-hooks</code>. You can run them individually for more control — quickstart is the beginner-friendly shortcut.</p>
-<pre><code>## Step 2 — Build
-
-```bash
-sunscreen chain build
+<div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
+<div class="admonition-title">
+<div id="admonition-tip-title">
+<p>Tip</p>
+</div>
+<a class="admonition-anchor-link" href="learn/your-first-nft.html#admonition-tip"></a>
+</div>
+<div>
+<p><code>quickstart</code> is a composition of more granular commands: <code>chain new</code>, <code>scaffold metaplex-nft</code>, <code>generate frontend-hooks</code>. You can run them individually for more control — quickstart is the beginner-friendly shortcut.</p>
+</div>
+</div>
+## Step 2 — Build
+<pre><code class="language-bash">sunscreen chain build
 </code></pre>
 <p>Successful build produces <code>target/idl/my_first_nft.json</code> and regenerates Codama clients into <code>app/src/clients/</code> (auto-wired because we picked the React frontend).</p>
 <h2 id="step-3--configure-a-devnet-wallet"><a class="header" href="#step-3--configure-a-devnet-wallet">Step 3 — Configure a devnet wallet</a></h2>
@@ -958,11 +982,19 @@ sunscreen wallet set-default prod --cluster mainnet
 <p>By default, the deploying keypair becomes the upgrade authority. For production, transfer it to a multisig (e.g. <a href="https://squads.so/">Squads</a>) or, if you don't want anyone to upgrade, set it to <code>None</code>:</p>
 <pre><code class="language-bash">solana program set-upgrade-authority &lt;program-id&gt; --final
 </code></pre>
-<p>```admonish warning<code>--final</code> is irreversible. The program can never be upgraded again. Only do this for programs that you've audited and tested exhaustively.</p>
-<pre><code>## Step 6 — Update clients
-
-```bash
-sunscreen generate clients
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
+<div class="admonition-title">
+<div id="admonition-warning-title">
+<p>Warning</p>
+</div>
+<a class="admonition-anchor-link" href="guides/deploying-to-mainnet.html#admonition-warning"></a>
+</div>
+<div>
+<p><code>--final</code> is irreversible. The program can never be upgraded again. Only do this for programs that you've audited and tested exhaustively.</p>
+</div>
+</div>
+## Step 6 — Update clients
+<pre><code class="language-bash">sunscreen generate clients
 </code></pre>
 <p>Commit the regenerated clients. Your frontend now points at mainnet program IDs.</p>
 <h2 id="common-pitfalls-1"><a class="header" href="#common-pitfalls-1">Common pitfalls</a></h2>
@@ -1548,11 +1580,19 @@ next_step: Try the web faucet at https://faucet.solana.com/ or wait 10 minutes.
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="sunscreenyml-schema"><a class="header" href="#sunscreenyml-schema"><code>sunscreen.yml</code> schema</a></h1>
 <p>Single source of truth for a workspace. Generated by <code>chain new</code>, read by every other command.</p>
-<p>```admonish warningThis page summarizes the schema. The authoritative shape lives in <a href="https://github.com/Pantani/sunscreen/blob/main/src/config/schema.rs"><code>src/config/schema.rs</code></a> and is emitted as JSON Schema via <code>schemars</code>. When in doubt, the Rust types win.</p>
-<pre><code>## Top-level shape
-
-```yaml
-version: 1
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
+<div class="admonition-title">
+<div id="admonition-warning-title">
+<p>Warning</p>
+</div>
+<a class="admonition-anchor-link" href="reference/config/schema.html#admonition-warning"></a>
+</div>
+<div>
+<p>This page summarizes the schema. The authoritative shape lives in <a href="https://github.com/Pantani/sunscreen/blob/main/src/config/schema.rs"><code>src/config/schema.rs</code></a> and is emitted as JSON Schema via <code>schemars</code>. When in doubt, the Rust types win.</p>
+</div>
+</div>
+## Top-level shape
+<pre><code class="language-yaml">version: 1
 
 project:
   name: my-app
@@ -2662,50 +2702,29 @@ flowchart LR
 <p>Avoid screenshots. Mermaid renders cleanly in dark and light, scales, and stays editable.</p>
 <h2 id="admonitions"><a class="header" href="#admonitions">Admonitions</a></h2>
 <p>Use sparingly. They draw attention; over-use teaches readers to skip them.</p>
-<pre><code>```admonish tipFor when there's a non-obvious helpful shortcut.
+<pre><code>```admonish tip
+For when there's a non-obvious helpful shortcut.
 </code></pre>
-<div id="admonition-error-rendering-admonishment" class="admonition admonish-bug" role="note" aria-labelledby="admonition-error-rendering-admonishment-title">
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
 <div class="admonition-title">
-<div id="admonition-error-rendering-admonishment-title">
-<p>Error rendering admonishment</p>
+<div id="admonition-warning-title">
+<p>Warning</p>
 </div>
-<a class="admonition-anchor-link" href="contributing/docs-style.html#admonition-error-rendering-admonishment"></a>
+<a class="admonition-anchor-link" href="contributing/docs-style.html#admonition-warning"></a>
 </div>
 <div>
-<p>Failed with:</p>
-<pre><code class="language-log">TOML parsing error: TOML parse error at line 1, column 17
-  |
-1 | config = { when something can damage state or burn money. }
-  |                 ^
-expected `.`, `=`
-
-</code></pre>
-<p>Original markdown input:</p>
-<pre><code class="language-markdown">```admonish warningFor when something can damage state or burn money.
-```
-</code></pre>
+<p>For when something can damage state or burn money.</p>
 </div>
 </div>
-<div id="admonition-error-rendering-admonishment-1" class="admonition admonish-bug" role="note" aria-labelledby="admonition-error-rendering-admonishment-1-title">
+<div id="admonition-danger" class="admonition admonish-danger" role="note" aria-labelledby="admonition-danger-title">
 <div class="admonition-title">
-<div id="admonition-error-rendering-admonishment-1-title">
-<p>Error rendering admonishment</p>
+<div id="admonition-danger-title">
+<p>Danger</p>
 </div>
-<a class="admonition-anchor-link" href="contributing/docs-style.html#admonition-error-rendering-admonishment-1"></a>
+<a class="admonition-anchor-link" href="contributing/docs-style.html#admonition-danger"></a>
 </div>
 <div>
-<p>Failed with:</p>
-<pre><code class="language-log">TOML parsing error: TOML parse error at line 1, column 25
-  |
-1 | config = { irreversible operations. }
-  |                         ^
-expected `.`, `=`
-
-</code></pre>
-<p>Original markdown input:</p>
-<pre><code class="language-markdown">```admonish dangerFor irreversible operations.
-``````
-</code></pre>
+<p>For irreversible operations.</p>
 </div>
 </div>
 <h2 id="links"><a class="header" href="#links">Links</a></h2>

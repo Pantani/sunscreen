@@ -49,11 +49,14 @@ Avoid screenshots. Mermaid renders cleanly in dark and light, scales, and stays 
 Use sparingly. They draw attention; over-use teaches readers to skip them.
 
 ```
-```admonish tipFor when there's a non-obvious helpful shortcut.
+```admonish tip
+For when there's a non-obvious helpful shortcut.
 ```
-```admonish warningFor when something can damage state or burn money.
+```admonish warning
+For when something can damage state or burn money.
 ```
-```admonish dangerFor irreversible operations.
+```admonish danger
+For irreversible operations.
 ``````
 
 ## Links

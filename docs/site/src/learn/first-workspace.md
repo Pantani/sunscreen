@@ -24,7 +24,8 @@ You'll see progress output, then a summary similar to:
 ✓ workspace my-app/ created (anchor, no frontend)
 ```
 
-```admonish tip`--frontend` accepts `none`, `vite`, or `next`. Pick `vite` if you want React + Vite scaffolded under `app/`; pick `next` for a Next.js scaffold. `none` keeps the workspace lean.
+```admonish tip
+`--frontend` accepts `none`, `vite`, or `next`. Pick `vite` if you want React + Vite scaffolded under `app/`; pick `next` for a Next.js scaffold. `none` keeps the workspace lean.
 ```
 ## Step 2 — Look around
 
@@ -55,7 +56,8 @@ The interesting files:
 - `programs/my_app/src/lib.rs` — the Anchor program. Has `// sunscreen:begin ... end` markers that sunscreen can edit on later commands without breaking what you wrote in between.
 - `Anchor.toml` — standard Anchor config, points at the program.
 
-```admonish tipThe markers in `lib.rs` are how sunscreen does *incremental* edits. When you run `sunscreen scaffold instruction Foo` later, it injects code only into marked regions. Your hand-written code is left alone. Read more in [Incremental scaffolding](../concepts/incremental-scaffolding.md).
+```admonish tip
+The markers in `lib.rs` are how sunscreen does *incremental* edits. When you run `sunscreen scaffold instruction Foo` later, it injects code only into marked regions. Your hand-written code is left alone. Read more in [Incremental scaffolding](../concepts/incremental-scaffolding.md).
 ```
 ## Step 3 — Build
 

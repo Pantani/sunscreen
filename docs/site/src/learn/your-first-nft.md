@@ -27,7 +27,8 @@ This single command:
 
 You'll see a summary table at the end listing files created.
 
-```admonish tip`quickstart` is a composition of more granular commands: `chain new`, `scaffold metaplex-nft`, `generate frontend-hooks`. You can run them individually for more control — quickstart is the beginner-friendly shortcut.
+```admonish tip
+`quickstart` is a composition of more granular commands: `chain new`, `scaffold metaplex-nft`, `generate frontend-hooks`. You can run them individually for more control — quickstart is the beginner-friendly shortcut.
 ```
 ## Step 2 — Build
 

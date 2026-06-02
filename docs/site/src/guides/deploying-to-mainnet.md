@@ -70,7 +70,8 @@ By default, the deploying keypair becomes the upgrade authority. For production,
 solana program set-upgrade-authority <program-id> --final
 ```
 
-```admonish warning`--final` is irreversible. The program can never be upgraded again. Only do this for programs that you've audited and tested exhaustively.
+```admonish warning
+`--final` is irreversible. The program can never be upgraded again. Only do this for programs that you've audited and tested exhaustively.
 ```
 ## Step 6 — Update clients
 

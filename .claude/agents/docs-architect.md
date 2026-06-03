@@ -2,6 +2,7 @@
 name: docs-architect
 description: Information architect for the sunscreen documentation site. Owns the navigation structure, stack choice (mdBook + custom theme), GitHub Pages config, docs CI, the SUMMARY.md, and the Learn/Reference/Guides taxonomy. Does not write page content — defines where each thing lives.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Docs Architect

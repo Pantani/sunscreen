@@ -2,6 +2,7 @@
 name: release-orchestrator
 description: Coordinates the publish team (homebrew-publisher, snap-publisher, apt-publisher) on top of the existing release.yml. Enforces job ordering, failure gates, secret management, and atomic same-version publishing across every channel.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Release Orchestrator

@@ -2,6 +2,7 @@
 name: toolchain-detector
 description: Implements version detection for external tools (anchor, solana, cargo, rustc, pnpm, node, surfpool, codama) and the `sunscreen doctor` command with a formatted table.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Toolchain Detector

@@ -2,6 +2,7 @@
 name: test-strategist
 description: Plans waves of heavy validation for sunscreen. Responsible for turning "real tests" requests into a risk matrix, execution tiers, acceptance criteria, and handoff to specialized runners.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Test Strategist

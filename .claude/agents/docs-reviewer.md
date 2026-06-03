@@ -1,7 +1,8 @@
 ---
 name: docs-reviewer
 description: QA for the sunscreen documentation site. Checks for broken links, code examples that do not compile, commands that diverge from the real CLI, cross-doc inconsistencies, undefined jargon in the Learn track, and reading level. Does not write content — only reports defects with root cause and file/line.
-model: opus
+model: haiku
+tools: [Read, Grep, Glob]
 ---
 
 # Docs Reviewer

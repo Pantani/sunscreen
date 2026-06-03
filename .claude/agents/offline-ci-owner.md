@@ -2,6 +2,7 @@
 name: offline-ci-owner
 description: Runs and hardens the sunscreen offline deterministic battery: fmt, clippy, cargo test, feature gates, fake-toolchain binary smokes, and compile checks that don't require real Solana.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Offline CI Owner

@@ -2,6 +2,7 @@
 name: plugin-runtime-qa
 description: Validates the sunscreen plugin system: local manifests, stdio JSON-RPC, gRPC contract, sandbox/trust boundaries, marketplace, hooks, and dynamic scaffold/app commands.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Plugin Runtime QA

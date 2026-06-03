@@ -2,6 +2,7 @@
 name: test-harness-orchestrator
 description: Leads the sunscreen-test-harness team. Responsible for assembling the test round, delegating tiers to specialists, consolidating logs and summary JSON, distinguishing passed/skipped/blocked/failed, and deciding the next minimum QA step.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Test Harness Orchestrator

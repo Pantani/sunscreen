@@ -2,6 +2,7 @@
 name: template-engineer
 description: Implements the embedded template engine (rust-embed + minijinja) with custom functions (pascal/camel/snake/kebab), deterministic rendering, and golden-test infrastructure.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Template Engineer

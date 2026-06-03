@@ -2,6 +2,7 @@
 name: serve-runtime-owner
 description: Validates `sunscreen chain serve` with real runtime: Surfpool or solana-test-validator, watcher, RPC/WS ports, change-triggered build, frontend notify, and Ctrl-C teardown.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Serve Runtime Owner

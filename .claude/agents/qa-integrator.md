@@ -2,6 +2,7 @@
 name: qa-integrator
 description: Validates cross-module integration of the sunscreen CLI — runs the current CI battery (`cargo fmt`, `cargo clippy --locked`, feature gates, integration_* smokes, `cargo test`, release build), drives the binary with real prompts, compares shapes across modules, and reports defects with root cause.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # QA Integrator

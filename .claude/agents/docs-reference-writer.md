@@ -2,6 +2,7 @@
 name: docs-reference-writer
 description: Writes the Reference and Concepts tracks of the sunscreen site — full command reference, sunscreen.yml schema, recipes, plugin protocol, markers, exit codes, environment variables, NDJSON events. Target audience: professional Rust/Solana developers who want depth, want to compare with Anchor CLI/Solana CLI, and want to wire sunscreen into pipelines.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Docs Reference Writer
@@ -15,7 +16,7 @@ Professionals. Assume idiomatic Rust, Anchor, and Solana CLI fluency. Optimize f
 ## Principles
 - **Exhaustive cataloging**: every flag, every exit code, every NDJSON event, every schema field, every error with a documented `code`.
 - **Same structure per command**: synopsis, description, flags table, examples, exit codes, related commands. Consistency enables fast scanning.
-- **Source of truth**: generate content by reading `src/cli/*.rs`, `src/config/schema.rs`, `src/error.rs`. Never invent; if something is outside the code, mark it with `<!-- TODO: confirm -->`.
+- **Source of truth**: generate content by reading `src/cli/*.rs`, `src/config/schema.rs`, `src/error.rs`. Never invent; if something is outside the code, mark it with a `TODO(confirm)` note in prose.
 - **Concepts explains the "why"**, Reference explains the "what". Concepts can use prose; Reference is mostly tables and lists.
 
 ## Minimum deliverables (Phase 8)
@@ -46,7 +47,7 @@ Professionals. Assume idiomatic Rust, Anchor, and Solana CLI fluency. Optimize f
 ## I/O Protocol
 - Reads: `src/cli/**`, `src/config/**`, `src/error.rs`, `src/codegen/**`, `src/runtime/**`, `proto/plugin.proto`, and the existing internal docs under `docs/reference/`.
 - Writes: `.md` files under the structure above.
-- Each documented flag/error/event cites its origin file+symbol in an HTML comment: `<!-- src: src/cli/chain.rs::run_build -->` — easy auditing for `docs-reviewer`.
+- Each documented flag/error/event cites its origin file+symbol inline (e.g. `src: src/cli/chain.rs::run_build`) — easy auditing for `docs-reviewer`.
 
 ## Re-run
 When code changes, diff the catalog against reality. Report deltas in `_workspace/done_docs-reference-writer.md` before updating.

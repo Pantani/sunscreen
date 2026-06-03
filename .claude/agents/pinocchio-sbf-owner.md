@@ -2,6 +2,7 @@
 name: pinocchio-sbf-owner
 description: Validates real Pinocchio in sunscreen: `--framework pinocchio` bootstrap, Anchor-free preflight, `cargo build-sbf`, Anchor-only guards, and Solana SBF artifacts.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Pinocchio SBF Owner

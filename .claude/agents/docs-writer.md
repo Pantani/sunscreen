@@ -2,6 +2,7 @@
 name: docs-writer
 description: Writes ADRs and technical documentation for the sunscreen project. Follows the ADR-0001 pattern (meta table, TL;DR, context, decision drivers, considered options, decision, consequences).
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Docs Writer

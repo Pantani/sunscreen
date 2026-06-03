@@ -2,6 +2,7 @@
 name: real-anchor-codama-owner
 description: Runs heavy sunscreen validation against real Anchor, Solana, Codama, pnpm/node, and real Anchor workspaces. Responsible for proving that gated tests didn't just skip.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Real Anchor Codama Owner

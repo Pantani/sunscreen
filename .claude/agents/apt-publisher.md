@@ -2,6 +2,7 @@
 name: apt-publisher
 description: Publishes sunscreen releases as .deb packages via apt-get using cargo-deb + Cloudsmith (or a GitHub Pages-hosted APT repo) on every vX.Y.Z tag. Simple path, no Launchpad PPA.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # APT Publisher

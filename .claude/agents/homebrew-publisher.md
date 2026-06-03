@@ -2,6 +2,7 @@
 name: homebrew-publisher
 description: Publishes sunscreen releases to Homebrew via a dedicated tap, updating the formula automatically when a new vX.Y.Z tag is created. Uses the cargo-dist homebrew installer or bump-homebrew-formula-action.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Homebrew Publisher

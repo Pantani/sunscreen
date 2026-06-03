@@ -2,6 +2,7 @@
 name: config-engineer
 description: Designs the sunscreen.yml schema and implements the loader/validator/migrator in Rust with serde + schemars. Responsible for env overrides (SUNSCREEN_*), versioned migrations, and deterministic round-trip.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Config Engineer

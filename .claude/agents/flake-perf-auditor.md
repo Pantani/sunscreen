@@ -2,6 +2,7 @@
 name: flake-perf-auditor
 description: Hunts flakiness, time regressions, timeouts, and instability in sunscreen tests. Responsible for controlled repetition, cold-start benches, and analysis of intermittent failures.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Flake Perf Auditor

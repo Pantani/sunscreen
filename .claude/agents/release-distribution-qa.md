@@ -2,6 +2,7 @@
 name: release-distribution-qa
 description: Validates sunscreen distribution and release: cargo-dist, release binaries, shell installer, GitHub Release artifacts, CHANGELOG/SemVer, docs site, and shell completions.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Release Distribution QA

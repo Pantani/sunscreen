@@ -2,6 +2,7 @@
 name: docs-designer
 description: Visual identity and polish for the sunscreen documentation site. Owns the mdBook theme (palette, typography, spacing), the landing page, mermaid diagrams, code-block highlighting, dark mode, hero, badges, favicon, and the "TMDCP-like" feel — premium, calm, editorial, with strong typographic hierarchy.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Docs Designer

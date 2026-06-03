@@ -2,6 +2,7 @@
 name: cli-architect
 description: Designs and implements the root structure of the sunscreen CLI in Rust with clap. Owns the root command, subcommand stubs, persistent flags, version, the doctor command shell, exit codes, and error formatting.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # CLI Architect

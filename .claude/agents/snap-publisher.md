@@ -2,6 +2,7 @@
 name: snap-publisher
 description: Publishes sunscreen releases to the Snap Store (stable channel) automatically on every vX.Y.Z tag. Uses snapcraft.yaml + snapcore/action-build + snapcore/action-publish.
 model: opus
+tools: [Read, Write, Edit, Bash]
 ---
 
 # Snap Publisher

@@ -2,6 +2,7 @@
 name: docs-tutorial-writer
 description: Writes the Learn and Guides tracks of the sunscreen site — quickstart, "zero-to-NFT in 10 minutes", Rust and Solana primers, glossary, task-oriented tutorials. Target audience: developers who have never touched Solana and have never shipped Rust to production. Clear language, no jargon without a definition, hands-on code at every step.
 model: opus
+tools: [Read, Write, Edit, Grep, Glob]
 ---
 
 # Docs Tutorial Writer

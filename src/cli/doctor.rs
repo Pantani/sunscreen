@@ -99,6 +99,7 @@ pub fn run(
                     fix.status,
                     ToolFixStatus::Failed
                         | ToolFixStatus::NeedsShellReload
+                        | ToolFixStatus::NeedsInspection
                         | ToolFixStatus::Unsupported
                 )
         });
@@ -222,6 +223,7 @@ fn fix_status_label(status: ToolFixStatus) -> &'static str {
         ToolFixStatus::Skipped => "skipped",
         ToolFixStatus::Fixed => "fixed",
         ToolFixStatus::NeedsShellReload => "needs_shell_reload",
+        ToolFixStatus::NeedsInspection => "needs_inspection",
         ToolFixStatus::Unsupported => "unsupported",
         ToolFixStatus::Failed => "failed",
         ToolFixStatus::Attempted => "attempted",
@@ -315,6 +317,9 @@ fn print_fix_table(fixes: &[ToolFixResult]) {
             }
             ToolFixStatus::NeedsShellReload => {
                 Cell::new(format!("{}", "reload-shell".yellow())).fg(Color::Yellow)
+            }
+            ToolFixStatus::NeedsInspection => {
+                Cell::new(format!("{}", "inspect".yellow())).fg(Color::Yellow)
             }
             ToolFixStatus::Unsupported => {
                 Cell::new(format!("{}", "unsupported".yellow())).fg(Color::Yellow)

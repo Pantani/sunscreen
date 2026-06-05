@@ -41,7 +41,9 @@ codama            (not found)     missing
 surfpool          (not found)     missing
 ```
 
-With `--fix`, sunscreen prints a before table, progress logs, a fix summary, then an after table. Some upstream installers update shell profiles instead of the current process environment; in that case the fix result is `reload-shell` and sunscreen prints the exact PATH reload command or inspection command to try next.
+With `--fix`, sunscreen prints a before table, progress logs, a fix summary, then an after table. Some upstream installers update shell profiles instead of the current process environment; in that case the fix result is `reload-shell` and sunscreen prints the exact PATH reload command to try next. If the installer ran but the binary still reports an unparsable or stale version, the result is `inspect`. If a downloader command fails, the result is `failed` and the curl/agave error is preserved in the logs.
+
+The Solana/Agave repair recipe downloads the official installer with curl retries and HTTP/1.1 forced, which avoids a common transient `HTTP/2 stream ... INTERNAL_ERROR` failure mode while still surfacing a real download failure when the CDN or network is unavailable.
 
 ## `--json` output
 

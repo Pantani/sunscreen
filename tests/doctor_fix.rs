@@ -111,6 +111,50 @@ exit 0
     }
 
     #[test]
+    fn doctor_fix_anchor_unparseable_after_repair_needs_inspection() {
+        let env = CliEnv::new();
+        let fake_bin = env.path("bin");
+        write_exe(
+            &fake_bin,
+            "cargo",
+            r#"#!/bin/sh
+if [ "${1:-}" = "install" ]; then
+  cat > "$SUNSCREEN_FAKE_BIN/avm" <<'AVM'
+#!/bin/sh
+if [ "${1:-}" = "use" ]; then
+  cat > "$SUNSCREEN_FAKE_BIN/anchor" <<'ANCHOR'
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  echo "anchor from a custom wrapper"
+fi
+ANCHOR
+  chmod +x "$SUNSCREEN_FAKE_BIN/anchor"
+fi
+exit 0
+AVM
+  chmod +x "$SUNSCREEN_FAKE_BIN/avm"
+fi
+exit 0
+"#,
+        );
+
+        let mut cmd = env.sunscreen();
+        cmd.env("SUNSCREEN_FAKE_BIN", &fake_bin);
+        cmd.args(["--json", "doctor", "--component", "anchor", "--fix"]);
+        let out = env.err("doctor --fix anchor unparseable", &mut cmd, 2);
+        let stdout: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("stdout should remain JSON");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+
+        assert_eq!(stdout["fixes"][0]["status"], "needs_inspection");
+        assert!(stdout["fixes"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("anchor --version"));
+        assert!(stderr.contains("doctor fix: anchor needs_inspection"));
+    }
+
+    #[test]
     fn doctor_fix_component_codama_repairs_optional_tool_when_targeted() {
         let env = CliEnv::new();
         let fake_bin = env.path("bin");
@@ -174,5 +218,39 @@ exit 0
             stderr.contains("doctor fix: codama fixed"),
             "missing final status log: {stderr}"
         );
+    }
+
+    #[test]
+    fn doctor_fix_solana_reports_downloader_failure_instead_of_reload_shell() {
+        let env = CliEnv::new();
+        let fake_bin = env.path("bin");
+        write_exe(
+            &fake_bin,
+            "curl",
+            r#"#!/bin/sh
+echo "curl $@" >> "$SUNSCREEN_FAKE_LOG"
+echo "curl: (92) HTTP/2 stream 1 was not closed cleanly: INTERNAL_ERROR (err 2)" >&2
+exit 92
+"#,
+        );
+
+        let mut cmd = env.sunscreen();
+        cmd.args(["--json", "doctor", "--component", "solana", "--fix"]);
+        let out = env.err("doctor --fix solana failed curl", &mut cmd, 2);
+        let stdout: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("stdout should remain JSON");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+
+        assert_eq!(stdout["fixes"][0]["name"], "solana");
+        assert_eq!(stdout["fixes"][0]["status"], "failed");
+        assert_ne!(stdout["fixes"][0]["status"], "needs_shell_reload");
+        assert_eq!(stdout["fixes"][0]["exit_code"], 92);
+        assert!(stdout["fixes"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("HTTP/2 stream 1 was not closed cleanly"));
+        assert!(stderr.contains("doctor fix: failed `sh -c"));
+        assert!(stderr.contains("HTTP/2 stream 1 was not closed cleanly"));
+        assert!(env.fake_log().contains("curl --http1.1"));
     }
 }

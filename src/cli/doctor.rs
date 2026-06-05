@@ -9,14 +9,24 @@ use std::path::Path;
 
 use comfy_table::{Cell, Color, ContentArrangement, Table};
 use owo_colors::OwoColorize;
+use serde::Serialize;
 
-use crate::toolchain::{detect_all, known, RealRunner, Status, ToolReport};
+use crate::runtime::subprocess::SubprocessRunner;
+use crate::toolchain::{
+    detect_all, finalize_fix_results, fix_reports, known, RealRunner, Status, ToolFixResult,
+    ToolFixStatus, ToolReport,
+};
 
 /// Run doctor diagnostics. `config_path` overrides automatic config discovery.
 /// When `component` is `Some`, only that tool is probed; if the name is
 /// unknown, an `anyhow` error is returned (mapped by the caller to a
 /// non-zero exit).
-pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> anyhow::Result<i32> {
+pub fn run(
+    json: bool,
+    config_path: Option<&Path>,
+    component: Option<&str>,
+    fix: bool,
+) -> anyhow::Result<i32> {
     let cfg = crate::config::load(config_path).unwrap_or_default();
     let runner = RealRunner;
     let specs = match component {
@@ -39,6 +49,44 @@ pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> a
     };
     let reports = detect_all(&runner, &specs, &cfg.toolchain.required);
 
+    if fix {
+        let failed_before = any_required_failed(&reports);
+        let process_runner = SubprocessRunner;
+        let mut fixes = fix_reports(&runner, &process_runner, &reports, component.is_some());
+        let reports_after = detect_all(&runner, &specs, &cfg.toolchain.required);
+        finalize_fix_results(&mut fixes, &reports_after);
+        let failed_after = any_required_failed(&reports_after);
+
+        if json {
+            let payload = FixPayload {
+                ok_before: !failed_before,
+                ok_after: !failed_after,
+                reports_before: &reports,
+                fixes: &fixes,
+                reports_after: &reports_after,
+            };
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        } else {
+            println!("{}", "Before".bold());
+            print_table(&reports);
+            println!("{}", "Fixes".bold());
+            print_fix_table(&fixes);
+            println!("{}", "After".bold());
+            print_table(&reports_after);
+        }
+
+        let failed_fix = fixes.iter().any(|fix| {
+            (fix.required || component.is_some())
+                && matches!(
+                    fix.status,
+                    ToolFixStatus::Failed
+                        | ToolFixStatus::NeedsShellReload
+                        | ToolFixStatus::Unsupported
+                )
+        });
+        return Ok(if failed_after || failed_fix { 2 } else { 0 });
+    }
+
     if json {
         // Stable machine-readable schema: a JSON array of `ToolReport`
         // (each entry carries `name`, `version`, `found`, `available`,
@@ -51,20 +99,33 @@ pub fn run(json: bool, config_path: Option<&Path>, component: Option<&str>) -> a
         print_table(&reports);
     }
 
-    let failed = reports.iter().any(|r| {
-        r.required
-            && matches!(
-                r.status,
-                Status::MissingRequired | Status::BelowMin | Status::UnknownVersion
-            )
-    });
+    let failed = any_required_failed(&reports);
     Ok(if failed { 2 } else { 0 })
 }
 
 /// Back-compat shim for the existing single-argument call site in
 /// `cli::root` until that file is updated to pass `--config`.
 pub fn run_compat(json: bool) -> anyhow::Result<i32> {
-    run(json, None, None)
+    run(json, None, None, false)
+}
+
+#[derive(Serialize)]
+struct FixPayload<'a> {
+    ok_before: bool,
+    ok_after: bool,
+    reports_before: &'a [ToolReport],
+    fixes: &'a [ToolFixResult],
+    reports_after: &'a [ToolReport],
+}
+
+fn any_required_failed(reports: &[ToolReport]) -> bool {
+    reports.iter().any(|r| {
+        r.required
+            && matches!(
+                r.status,
+                Status::MissingRequired | Status::BelowMin | Status::UnknownVersion
+            )
+    })
 }
 
 fn print_table(reports: &[ToolReport]) {
@@ -102,6 +163,37 @@ fn print_table(reports: &[ToolReport]) {
             Cell::new(version),
             Cell::new(min),
             status_cell,
+        ]);
+    }
+
+    println!("{table}");
+}
+
+fn print_fix_table(fixes: &[ToolFixResult]) {
+    let mut table = Table::new();
+    table
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec!["Tool", "Status", "Message"]);
+
+    for fix in fixes {
+        let status_cell = match fix.status {
+            ToolFixStatus::Fixed => Cell::new(format!("{}", "fixed".green())).fg(Color::Green),
+            ToolFixStatus::Skipped => {
+                Cell::new(format!("{}", "skipped".dimmed())).fg(Color::DarkGrey)
+            }
+            ToolFixStatus::NeedsShellReload => {
+                Cell::new(format!("{}", "reload-shell".yellow())).fg(Color::Yellow)
+            }
+            ToolFixStatus::Unsupported => {
+                Cell::new(format!("{}", "unsupported".yellow())).fg(Color::Yellow)
+            }
+            ToolFixStatus::Failed => Cell::new(format!("{}", "failed".red())).fg(Color::Red),
+            ToolFixStatus::Attempted => Cell::new(format!("{}", "attempted".yellow())),
+        };
+        table.add_row(vec![
+            Cell::new(&fix.name),
+            status_cell,
+            Cell::new(&fix.message),
         ]);
     }
 

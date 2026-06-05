@@ -3,26 +3,28 @@
 Detect installed toolchain versions.
 
 ```
-sunscreen doctor [--json]
+sunscreen doctor [--json] [--component <NAME>] [--fix]
 ```
 
-Outputs a table of tools sunscreen knows how to detect, with their installed version and availability flag.
+Outputs a table of tools sunscreen knows how to detect, with their installed version and availability flag. Use `--component <NAME>` to inspect a single tool.
+
+`--fix` attempts automatic repairs for unavailable tools with known recipes, then runs detection again. Without `--component`, it repairs required tools only and skips optional tools. With `--component`, it targets that tool even when the tool is optional.
 
 ## Detected tools
 
 | Tool | Detected via |
 |------|--------------|
-| `rustc` | `rustc --version` |
-| `cargo` | `cargo --version` |
 | `anchor` | `anchor --version` |
 | `solana` | `solana --version` |
-| `cargo-build-sbf` | `cargo build-sbf --help` |
-| `pnpm` | `pnpm --version` |
+| `rustc` | `rustc --version` |
+| `cargo` | `cargo --version` |
 | `node` | `node --version` |
-| `codama` | from local `node_modules/.bin/codama` |
+| `pnpm` | `pnpm --version` |
+| `codama` | `codama --version` |
 | `surfpool` | `surfpool --version` |
+| `rustfmt` | `rustfmt --version` |
 
-If a tool is missing, sunscreen reports `available: false` and a `next_step` hinting installation. Missing tools are only blocking when you actually run a command that needs them.
+If a tool is missing or below its minimum version, sunscreen reports `available: false`. Missing optional tools do not fail the plain diagnostic. Missing required tools make `doctor` exit `2`.
 
 ## Human output
 
@@ -39,6 +41,8 @@ codama            (not found)     missing
 surfpool          (not found)     missing
 ```
 
+With `--fix`, sunscreen prints a before table, a fix summary, then an after table. Some upstream installers update shell profiles instead of the current process environment; in that case the fix result is `reload-shell` and you should open a new terminal or source the path update printed by the installer.
+
 ## `--json` output
 
 A flat array of `ToolReport` objects:
@@ -53,10 +57,31 @@ A flat array of `ToolReport` objects:
 
 Use this in CI to assert your runner has the expected toolchain.
 
+With `--fix`, `--json` emits an object so callers can compare before/after state:
+
+```json
+{
+  "ok_before": false,
+  "ok_after": true,
+  "reports_before": [],
+  "fixes": [
+    {
+      "name": "anchor",
+      "required": true,
+      "status": "fixed",
+      "message": "tool is available after repair",
+      "commands": [["cargo", "install", "--git", "https://github.com/solana-foundation/anchor", "avm", "--force"]]
+    }
+  ],
+  "reports_after": []
+}
+```
+
 ## Exit codes
 
 | Code | When |
 |------|------|
-| `0` | always — `doctor` reports, it does not fail on missing tools. Inspect `available` per row. |
+| `0` | all required tools are available; for `--fix`, requested repairs succeeded |
+| `2` | a required tool remains unavailable, or a requested repair failed |
 
 For workspace-marker diagnostics, see [`chain doctor`](./chain.md#doctor).

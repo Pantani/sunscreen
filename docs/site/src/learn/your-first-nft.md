@@ -11,11 +11,12 @@ We'll go from empty folder to a mintable NFT program using sunscreen's quickstar
 - A Solana keypair (we'll create one if you don't have it).
 
 Run `sunscreen doctor` to confirm. Anything missing will be flagged.
+Do not continue until `anchor`, `solana`, and `pnpm` are available: the default quickstart creates an Anchor workspace with a Vite app and preflights those tools before writing files.
 
 ## Step 1 — Quickstart
 
 ```bash
-sunscreen quickstart nft my-first-nft
+sunscreen quickstart nft --name my-first-nft --cluster devnet --non-interactive
 cd my-first-nft
 ```
 

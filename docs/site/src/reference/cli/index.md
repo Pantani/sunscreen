@@ -11,11 +11,11 @@ sunscreen [GLOBAL_FLAGS] <COMMAND> [ARGS] [FLAGS]
 | [`chain new`](./chain.md#new) | Create a new workspace (Anchor or Pinocchio) |
 | [`chain build`](./chain.md#build) | Run anchor build + Codama regeneration |
 | [`chain serve`](./chain.md#serve) | Supervised dev loop with local validator |
-| [`chain doctor`](./chain.md#doctor) | Diagnose toolchain + workspace markers |
+| [`chain doctor`](./chain.md#doctor) | Diagnose and repair workspace markers |
 | [`scaffold`](./scaffold.md) | Add instruction, account, event, error, program, or recipe |
 | [`generate`](./generate.md) | Generate IDL, Codama clients, frontend hooks |
 | [`app`](./app.md) | Manage plugins (install, list, run, hook, marketplace) |
-| [`doctor`](./doctor.md) | Detect installed toolchain versions |
+| [`doctor`](./doctor.md) | Detect and optionally repair installed toolchain versions |
 | [`init`](./onboarding.md#init) | Interactive wizard for new users |
 | [`examples`](./onboarding.md#examples) | Browse embedded example projects |
 | [`quickstart`](./onboarding.md#quickstart) | Composite recipe shortcuts (token, nft, dao, blog) |

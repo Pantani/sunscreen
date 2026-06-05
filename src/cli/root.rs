@@ -57,6 +57,9 @@ pub enum Command {
         /// Only probe a single tool by name (e.g. `anchor`, `solana`).
         #[arg(long, value_name = "NAME")]
         component: Option<String>,
+        /// Attempt automatic repairs for missing or outdated tools.
+        #[arg(long, default_value_t = false)]
+        fix: bool,
     },
     /// Scaffold Anchor program artifacts (instruction, account, event, ...).
     Scaffold {
@@ -137,8 +140,8 @@ fn dispatch(cli: &Cli) -> Result<i32, SunscreenError> {
             version::run();
             Ok(0)
         }
-        Command::Doctor { component } => {
-            doctor::run(cli.json, cli.config.as_deref(), component.as_deref())
+        Command::Doctor { component, fix } => {
+            doctor::run(cli.json, cli.config.as_deref(), component.as_deref(), *fix)
                 .map_err(SunscreenError::from)
         }
         Command::Scaffold { cmd } => scaffold::run(cmd, cli.json),

@@ -162,8 +162,8 @@ fn plan_for(
         en_US::QUICKSTART_SERVE_STEP.to_string(),
     ];
     if cluster == ClusterArg::Devnet {
-        next_steps.insert(1, en_US::WALLET_NEW_STEP.to_string());
-        next_steps.insert(2, en_US::DEPLOY_DEVNET_STEP.replace("{program}", &program));
+        next_steps.insert(2, en_US::WALLET_NEW_STEP.to_string());
+        next_steps.insert(3, en_US::DEPLOY_DEVNET_STEP.replace("{program}", &program));
     }
     QuickstartPlan {
         recipe: recipe_name,

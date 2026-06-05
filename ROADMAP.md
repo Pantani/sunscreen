@@ -66,7 +66,7 @@ Total to **v1.0**: ~28 weeks of focused work (vs. 16 weeks in the original ADR-0
 **Deliverables (Week 1).**
 - [x] `src/cli/` clap-based root + persistent flags (`--verbose`, `--workdir`, `--config`)
 - [x] `sunscreen version` with build-injected semver
-- [x] `sunscreen doctor` — detects `anchor`, `solana`, `cargo`, `rustc`, `pnpm`, `node`, `surfpool`, `codama`
+- [x] `sunscreen doctor` — detects `anchor`, `solana`, `cargo`, `rustc`, `pnpm`, `node`, `surfpool`, `codama`; `--fix` can repair known missing/outdated tools and re-run detection
 - [x] `src/config/` — `sunscreen.yml` v1 parser, JSON Schema embedded & validated
 - [x] `src/toolchain/` — version detection with cached results
 - [x] `src/templates/` — rust-embed + minijinja render pipeline

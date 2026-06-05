@@ -182,6 +182,45 @@ fn quickstart_recipes_compose_phase_5_scaffolders() {
 }
 
 #[test]
+fn quickstart_devnet_next_steps_build_before_deploy() {
+    let out = run_ok(
+        &[
+            "--json",
+            "quickstart",
+            "nft",
+            "--name",
+            "my-first-nft",
+            "--cluster",
+            "devnet",
+            "--non-interactive",
+            "--frontend",
+            "none",
+            "--dry-run",
+        ],
+        None,
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let next_steps = payload["next_steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|step| step.as_str().unwrap())
+        .collect::<Vec<_>>();
+
+    assert_eq!(next_steps[0], "cd my-first-nft");
+    assert_eq!(next_steps[1], "sunscreen chain build --headless");
+    assert_eq!(
+        next_steps[2],
+        "sunscreen wallet new --out ~/.config/solana/id.json"
+    );
+    assert_eq!(
+        next_steps[3],
+        "sunscreen deploy devnet --program my_first_nft"
+    );
+    assert_eq!(next_steps[4], "sunscreen chain serve --headless");
+}
+
+#[test]
 fn quickstart_reports_path_conflict_as_exit_7() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("occupied.txt"), "busy").unwrap();

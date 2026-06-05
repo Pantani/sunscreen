@@ -82,6 +82,7 @@ Verify the binary:
 ```bash
 sunscreen --version
 sunscreen doctor
+sunscreen doctor --fix   # optional: install/repair missing required tools where sunscreen has a recipe
 ```
 
 ---
@@ -170,7 +171,7 @@ Most scaffold commands also support `--dry-run` and `--json`, so you can preview
 | Command | Description |
 |---------|-------------|
 | `version` | Print sunscreen version (text or JSON) |
-| `doctor` | Diagnose toolchain & environment |
+| `doctor` | Diagnose toolchain & environment (`--fix` can repair known missing/outdated tools) |
 | `chain new` | Bootstrap a compilable Anchor or Pinocchio workspace (+ frontend variants) |
 | `chain doctor --fix-markers` | Repair drifted scaffolder markers in appendable hosts |
 | `chain build --headless` | Run the headless build pipeline (`anchor build` + optional Codama, or Pinocchio `cargo build-sbf`) |

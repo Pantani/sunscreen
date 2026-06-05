@@ -65,6 +65,16 @@ fn prepend_path(bin_dir: &Path) -> std::ffi::OsString {
     std::env::join_paths(paths).expect("join PATH")
 }
 
+fn fake_only_path(bin_dir: &Path) -> std::ffi::OsString {
+    let mut paths = vec![bin_dir.to_path_buf()];
+    #[cfg(unix)]
+    {
+        paths.push(PathBuf::from("/bin"));
+        paths.push(PathBuf::from("/usr/bin"));
+    }
+    std::env::join_paths(paths).expect("join PATH")
+}
+
 #[cfg(unix)]
 fn write_fake_anchor(bin_dir: &Path, exit_code: i32) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
@@ -399,7 +409,7 @@ fn chain_build_missing_pnpm_exits_2_after_successful_anchor_build() {
 
     let out = Command::new(sunscreen_bin())
         .current_dir(&ws)
-        .env("PATH", prepend_path(&fake_bin))
+        .env("PATH", fake_only_path(&fake_bin))
         .env("ANCHOR_CWD_FILE", &cwd_file)
         .env("ANCHOR_ARGS_FILE", &args_file)
         .args(["--json", "chain", "build", "--headless"])

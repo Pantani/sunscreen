@@ -8,7 +8,7 @@ sunscreen doctor [--json] [--component <NAME>] [--fix]
 
 Outputs a table of tools sunscreen knows how to detect, with their installed version and availability flag. Use `--component <NAME>` to inspect a single tool.
 
-`--fix` attempts automatic repairs for unavailable tools with known recipes, then runs detection again. Without `--component`, it repairs required tools only and skips optional tools. With `--component`, it targets that tool even when the tool is optional.
+`--fix` attempts automatic repairs for unavailable tools with known recipes, then runs detection again. Without `--component`, it repairs required tools only and skips optional tools. With `--component`, it targets that tool even when the tool is optional. Progress logs are printed to stderr, including each command sunscreen runs and the final re-check result.
 
 ## Detected tools
 
@@ -41,7 +41,7 @@ codama            (not found)     missing
 surfpool          (not found)     missing
 ```
 
-With `--fix`, sunscreen prints a before table, a fix summary, then an after table. Some upstream installers update shell profiles instead of the current process environment; in that case the fix result is `reload-shell` and you should open a new terminal or source the path update printed by the installer.
+With `--fix`, sunscreen prints a before table, progress logs, a fix summary, then an after table. Some upstream installers update shell profiles instead of the current process environment; in that case the fix result is `reload-shell` and sunscreen prints the exact PATH reload command or inspection command to try next.
 
 ## `--json` output
 
@@ -57,7 +57,7 @@ A flat array of `ToolReport` objects:
 
 Use this in CI to assert your runner has the expected toolchain.
 
-With `--fix`, `--json` emits an object so callers can compare before/after state:
+With `--fix`, `--json` emits an object so callers can compare before/after state. Progress logs still go to stderr so stdout remains parseable JSON:
 
 ```json
 {

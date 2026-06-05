@@ -6,7 +6,7 @@
 
 use crate::runtime::subprocess::{CommandSpec, ProcessRunner};
 
-use super::{CommandRunner, ToolReport};
+use super::{CommandRunner, Status, ToolReport};
 
 /// Status of a toolchain repair attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -41,6 +41,38 @@ pub struct ToolFixResult {
     pub exit_code: Option<i32>,
 }
 
+/// Progress events emitted while `doctor --fix` runs repair recipes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolFixLogEvent {
+    /// A tool is being considered for repair.
+    ToolStatus {
+        name: String,
+        status: Status,
+        required: bool,
+    },
+    /// No command will be run for this tool.
+    ToolSkipped { name: String, message: String },
+    /// No automatic repair recipe exists for this tool.
+    ToolUnsupported { name: String, message: String },
+    /// A repair command is about to start.
+    CommandStarted { name: String, command: Vec<String> },
+    /// A repair command exited successfully.
+    CommandSucceeded {
+        name: String,
+        command: Vec<String>,
+        duration_ms: u128,
+        stdout: String,
+        stderr: String,
+    },
+    /// A repair command failed or could not be spawned.
+    CommandFailed {
+        name: String,
+        command: Vec<String>,
+        message: String,
+        exit_code: Option<i32>,
+    },
+}
+
 /// Execute fix recipes for the provided reports.
 #[must_use = "fix results should be reported to users"]
 pub fn fix_reports<R, P>(
@@ -53,12 +85,43 @@ where
     R: CommandRunner,
     P: ProcessRunner,
 {
+    fix_reports_with_logger(
+        detector_runner,
+        process_runner,
+        reports,
+        include_optional,
+        |_| {},
+    )
+}
+
+/// Execute fix recipes and emit progress events as commands run.
+#[must_use = "fix results should be reported to users"]
+pub fn fix_reports_with_logger<R, P, F>(
+    detector_runner: &R,
+    process_runner: &P,
+    reports: &[ToolReport],
+    include_optional: bool,
+    mut log: F,
+) -> Vec<ToolFixResult>
+where
+    R: CommandRunner,
+    P: ProcessRunner,
+    F: FnMut(ToolFixLogEvent),
+{
     let mut ordered = reports.iter().collect::<Vec<_>>();
     ordered.sort_by_key(|report| fix_order(&report.name));
 
     ordered
         .into_iter()
-        .map(|report| fix_one(detector_runner, process_runner, report, include_optional))
+        .map(|report| {
+            fix_one(
+                detector_runner,
+                process_runner,
+                report,
+                include_optional,
+                &mut log,
+            )
+        })
         .collect()
 }
 
@@ -78,37 +141,58 @@ pub fn finalize_fix_results(results: &mut [ToolFixResult], reports_after: &[Tool
             result.message = "tool is available after repair".to_string();
         } else {
             result.status = ToolFixStatus::NeedsShellReload;
-            result.message =
-                "repair commands succeeded, but the tool is still not visible on PATH; reload your shell and run `sunscreen doctor` again"
-                    .to_string();
+            result.message = reports_after
+                .iter()
+                .find(|report| report.name == result.name)
+                .map_or_else(|| reload_hint(&result.name), post_repair_hint);
         }
     }
 }
 
-fn fix_one<R, P>(
+fn fix_one<R, P, F>(
     detector_runner: &R,
     process_runner: &P,
     report: &ToolReport,
     include_optional: bool,
+    log: &mut F,
 ) -> ToolFixResult
 where
     R: CommandRunner,
     P: ProcessRunner,
+    F: FnMut(ToolFixLogEvent),
 {
+    log(ToolFixLogEvent::ToolStatus {
+        name: report.name.clone(),
+        status: report.status,
+        required: report.required,
+    });
+
     if report.available {
+        log(ToolFixLogEvent::ToolSkipped {
+            name: report.name.clone(),
+            message: "already available".to_string(),
+        });
         return skipped(report, "already available");
     }
 
     if !report.required && !include_optional {
-        return skipped(
-            report,
-            "optional tool was not targeted; run with `--component <tool> --fix` to install it",
-        );
+        let message =
+            "optional tool was not targeted; run with `--component <tool> --fix` to install it"
+                .to_string();
+        log(ToolFixLogEvent::ToolSkipped {
+            name: report.name.clone(),
+            message: message.clone(),
+        });
+        return skipped(report, message);
     }
 
     let steps = match recipe(detector_runner, report) {
         Ok(steps) => steps,
         Err(message) => {
+            log(ToolFixLogEvent::ToolUnsupported {
+                name: report.name.clone(),
+                message: message.clone(),
+            });
             return ToolFixResult {
                 name: report.name.clone(),
                 required: report.required,
@@ -124,11 +208,29 @@ where
     let commands = steps.iter().map(FixStep::argv).collect::<Vec<_>>();
     for step in steps {
         let command = step.argv();
+        log(ToolFixLogEvent::CommandStarted {
+            name: report.name.clone(),
+            command: command.clone(),
+        });
         match process_runner.run(step.command_spec()) {
-            Ok(output) if output.success() => {}
+            Ok(output) if output.success() => {
+                log(ToolFixLogEvent::CommandSucceeded {
+                    name: report.name.clone(),
+                    command,
+                    duration_ms: output.duration_ms,
+                    stdout: output.stdout,
+                    stderr: output.stderr,
+                });
+            }
             Ok(output) => {
                 let message = first_non_empty(&output.stderr, &output.stdout)
                     .unwrap_or_else(|| format!("repair command exited {}", output.exit_code));
+                log(ToolFixLogEvent::CommandFailed {
+                    name: report.name.clone(),
+                    command: command.clone(),
+                    message: message.clone(),
+                    exit_code: Some(output.exit_code),
+                });
                 return ToolFixResult {
                     name: report.name.clone(),
                     required: report.required,
@@ -140,11 +242,18 @@ where
                 };
             }
             Err(err) => {
+                let message = err.to_string();
+                log(ToolFixLogEvent::CommandFailed {
+                    name: report.name.clone(),
+                    command: command.clone(),
+                    message: message.clone(),
+                    exit_code: None,
+                });
                 return ToolFixResult {
                     name: report.name.clone(),
                     required: report.required,
                     status: ToolFixStatus::Failed,
-                    message: err.to_string(),
+                    message,
                     commands,
                     failed_command: Some(command),
                     exit_code: None,
@@ -302,6 +411,34 @@ fn first_non_empty(stderr: &str, stdout: &str) -> Option<String> {
         .into_iter()
         .find(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+fn post_repair_hint(report: &ToolReport) -> String {
+    match report.status {
+        Status::MissingRequired | Status::MissingOptional => reload_hint(&report.name),
+        Status::UnknownVersion => format!(
+            "repair commands succeeded, but `{}` still reports an unparsable version; run `which {}` and `{} --version` to inspect the binary on PATH",
+            report.name, report.name, report.name
+        ),
+        Status::BelowMin => format!(
+            "repair commands succeeded, but `{}` is still below the required version; inspect the installer output and run `sunscreen doctor --component {}` again",
+            report.name, report.name
+        ),
+        Status::Ok => "tool is available after repair".to_string(),
+    }
+}
+
+fn reload_hint(name: &str) -> String {
+    match name {
+        "solana" => "repair commands succeeded, but `solana` is still not visible on PATH; open a new shell or run `export PATH=\"$HOME/.local/share/solana/install/active_release/bin:$PATH\"`, then run `sunscreen doctor --component solana` again".to_string(),
+        "anchor" | "rustc" | "cargo" | "rustfmt" => format!(
+            "repair commands succeeded, but `{name}` is still not visible on PATH; open a new shell or run `. \"$HOME/.cargo/env\"`, then run `sunscreen doctor --component {name}` again"
+        ),
+        "pnpm" => "repair commands succeeded, but `pnpm` is still not visible on PATH; open a new shell or run `corepack enable pnpm`, then run `sunscreen doctor --component pnpm` again".to_string(),
+        other => format!(
+            "repair commands succeeded, but `{other}` is still not visible on PATH; reload your shell and run `sunscreen doctor --component {other}` again"
+        ),
+    }
 }
 
 #[derive(Debug, Clone)]

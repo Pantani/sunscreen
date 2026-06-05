@@ -18,6 +18,29 @@ mod unix {
         fs::set_permissions(&path, permissions).expect("chmod fake executable");
     }
 
+    fn write_pnpm_that_installs_codama(fake_bin: &Path) {
+        write_exe(
+            fake_bin,
+            "pnpm",
+            r#"#!/bin/sh
+echo "pnpm $@" >> "$SUNSCREEN_FAKE_LOG"
+if [ "${1:-}" = "add" ] && [ "${2:-}" = "--global" ] && [ "${3:-}" = "codama" ]; then
+  cat > "$SUNSCREEN_FAKE_BIN/codama" <<'CODAMA'
+#!/bin/sh
+echo "codama $@" >> "$SUNSCREEN_FAKE_LOG"
+if [ "${1:-}" = "--version" ]; then
+  echo "0.1.0"
+else
+  echo "fake codama $@"
+fi
+CODAMA
+  chmod +x "$SUNSCREEN_FAKE_BIN/codama"
+fi
+exit 0
+"#,
+        );
+    }
+
     #[test]
     fn doctor_fix_component_anchor_installs_anchor_through_avm() {
         let env = CliEnv::new();
@@ -91,26 +114,7 @@ exit 0
     fn doctor_fix_component_codama_repairs_optional_tool_when_targeted() {
         let env = CliEnv::new();
         let fake_bin = env.path("bin");
-        write_exe(
-            &fake_bin,
-            "pnpm",
-            r#"#!/bin/sh
-echo "pnpm $@" >> "$SUNSCREEN_FAKE_LOG"
-if [ "${1:-}" = "add" ] && [ "${2:-}" = "--global" ] && [ "${3:-}" = "codama" ]; then
-  cat > "$SUNSCREEN_FAKE_BIN/codama" <<'CODAMA'
-#!/bin/sh
-echo "codama $@" >> "$SUNSCREEN_FAKE_LOG"
-if [ "${1:-}" = "--version" ]; then
-  echo "0.1.0"
-else
-  echo "fake codama $@"
-fi
-CODAMA
-  chmod +x "$SUNSCREEN_FAKE_BIN/codama"
-fi
-exit 0
-"#,
-        );
+        write_pnpm_that_installs_codama(&fake_bin);
 
         let mut cmd = env.sunscreen();
         cmd.env("SUNSCREEN_FAKE_BIN", &fake_bin);
@@ -128,6 +132,47 @@ exit 0
         assert_eq!(
             env.fake_log_lines(),
             ["pnpm add --global codama", "codama --version"]
+        );
+    }
+
+    #[test]
+    fn doctor_fix_logs_each_step_to_stderr_without_polluting_json_stdout() {
+        let env = CliEnv::new();
+        let fake_bin = env.path("bin");
+        write_pnpm_that_installs_codama(&fake_bin);
+
+        let mut cmd = env.sunscreen();
+        cmd.env("SUNSCREEN_FAKE_BIN", &fake_bin);
+        cmd.args(["--json", "doctor", "--component", "codama", "--fix"]);
+        let out = env.ok("doctor --fix codama logs", &mut cmd);
+        let stdout: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("stdout should remain JSON");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+
+        assert_eq!(stdout["fixes"][0]["status"], "fixed");
+        assert!(
+            stderr.contains("doctor fix: scanning 1 tool"),
+            "missing scan log: {stderr}"
+        );
+        assert!(
+            stderr.contains("doctor fix: codama is missing_optional"),
+            "missing per-tool status log: {stderr}"
+        );
+        assert!(
+            stderr.contains("doctor fix: running `pnpm add --global codama`"),
+            "missing command start log: {stderr}"
+        );
+        assert!(
+            stderr.contains("doctor fix: completed `pnpm add --global codama`"),
+            "missing command completion log: {stderr}"
+        );
+        assert!(
+            stderr.contains("doctor fix: re-checking 1 tool"),
+            "missing re-check log: {stderr}"
+        );
+        assert!(
+            stderr.contains("doctor fix: codama fixed"),
+            "missing final status log: {stderr}"
         );
     }
 }

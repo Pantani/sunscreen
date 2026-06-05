@@ -17,7 +17,10 @@ pub use detect::{
     detect_all, detect_anchor, detect_codama, detect_one, detect_rustfmt, detect_solana,
     detect_surfpool, is_available, CommandRunner, RealRunner, Status, ToolReport,
 };
-pub use fix::{finalize_fix_results, fix_reports, ToolFixResult, ToolFixStatus};
+pub use fix::{
+    finalize_fix_results, fix_reports, fix_reports_with_logger, ToolFixLogEvent, ToolFixResult,
+    ToolFixStatus,
+};
 pub use preflight::{
     preflight_chain_new, preflight_chain_new_with, Frontend, PreflightError, PreflightReport,
 };

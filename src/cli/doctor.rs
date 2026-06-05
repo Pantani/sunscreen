@@ -13,8 +13,8 @@ use serde::Serialize;
 
 use crate::runtime::subprocess::SubprocessRunner;
 use crate::toolchain::{
-    detect_all, finalize_fix_results, fix_reports, known, RealRunner, Status, ToolFixResult,
-    ToolFixStatus, ToolReport,
+    detect_all, finalize_fix_results, fix_reports_with_logger, known, RealRunner, Status,
+    ToolFixLogEvent, ToolFixResult, ToolFixStatus, ToolReport,
 };
 
 /// Run doctor diagnostics. `config_path` overrides automatic config discovery.
@@ -51,10 +51,30 @@ pub fn run(
 
     if fix {
         let failed_before = any_required_failed(&reports);
+        if !json {
+            println!("{}", "Before".bold());
+            print_table(&reports);
+        }
         let process_runner = SubprocessRunner;
-        let mut fixes = fix_reports(&runner, &process_runner, &reports, component.is_some());
+        eprintln!("doctor fix: scanning {}", plural_tools(reports.len()));
+        let mut fixes = fix_reports_with_logger(
+            &runner,
+            &process_runner,
+            &reports,
+            component.is_some(),
+            log_fix_event,
+        );
+        eprintln!("doctor fix: re-checking {}", plural_tools(reports.len()));
         let reports_after = detect_all(&runner, &specs, &cfg.toolchain.required);
         finalize_fix_results(&mut fixes, &reports_after);
+        for fix in &fixes {
+            eprintln!(
+                "doctor fix: {} {} - {}",
+                fix.name,
+                fix_status_label(fix.status),
+                fix.message
+            );
+        }
         let failed_after = any_required_failed(&reports_after);
 
         if json {
@@ -67,8 +87,6 @@ pub fn run(
             };
             println!("{}", serde_json::to_string_pretty(&payload)?);
         } else {
-            println!("{}", "Before".bold());
-            print_table(&reports);
             println!("{}", "Fixes".bold());
             print_fix_table(&fixes);
             println!("{}", "After".bold());
@@ -128,6 +146,110 @@ fn any_required_failed(reports: &[ToolReport]) -> bool {
     })
 }
 
+fn log_fix_event(event: ToolFixLogEvent) {
+    match event {
+        ToolFixLogEvent::ToolStatus {
+            name,
+            status,
+            required,
+        } => {
+            let kind = if required { "required" } else { "optional" };
+            eprintln!("doctor fix: {name} is {} ({kind})", status_label(status));
+        }
+        ToolFixLogEvent::ToolSkipped { name, message } => {
+            eprintln!("doctor fix: skipping {name} - {message}");
+        }
+        ToolFixLogEvent::ToolUnsupported { name, message } => {
+            eprintln!("doctor fix: cannot auto-fix {name} - {message}");
+        }
+        ToolFixLogEvent::CommandStarted { name, command } => {
+            eprintln!(
+                "doctor fix: running `{}` for {name}",
+                display_command(&command)
+            );
+        }
+        ToolFixLogEvent::CommandSucceeded {
+            name,
+            command,
+            duration_ms,
+            stdout,
+            stderr,
+        } => {
+            eprintln!(
+                "doctor fix: completed `{}` for {name} in {duration_ms}ms",
+                display_command(&command)
+            );
+            log_stream_summary("stdout", &stdout);
+            log_stream_summary("stderr", &stderr);
+        }
+        ToolFixLogEvent::CommandFailed {
+            name,
+            command,
+            message,
+            exit_code,
+        } => {
+            let code = exit_code
+                .map(|code| format!("exit {code}"))
+                .unwrap_or_else(|| "spawn failed".to_string());
+            eprintln!(
+                "doctor fix: failed `{}` for {name} ({code}) - {message}",
+                display_command(&command)
+            );
+        }
+    }
+}
+
+fn plural_tools(count: usize) -> String {
+    if count == 1 {
+        "1 tool".to_string()
+    } else {
+        format!("{count} tools")
+    }
+}
+
+fn status_label(status: Status) -> &'static str {
+    match status {
+        Status::Ok => "ok",
+        Status::MissingRequired => "missing_required",
+        Status::MissingOptional => "missing_optional",
+        Status::BelowMin => "below_min",
+        Status::UnknownVersion => "unknown_version",
+    }
+}
+
+fn fix_status_label(status: ToolFixStatus) -> &'static str {
+    match status {
+        ToolFixStatus::Skipped => "skipped",
+        ToolFixStatus::Fixed => "fixed",
+        ToolFixStatus::NeedsShellReload => "needs_shell_reload",
+        ToolFixStatus::Unsupported => "unsupported",
+        ToolFixStatus::Failed => "failed",
+        ToolFixStatus::Attempted => "attempted",
+    }
+}
+
+fn display_command(command: &[String]) -> String {
+    command.join(" ")
+}
+
+fn log_stream_summary(label: &str, value: &str) {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    let lines = trimmed.lines().collect::<Vec<_>>();
+    let start = lines.len().saturating_sub(8);
+    if start > 0 {
+        eprintln!("doctor fix: {label} (last 8 of {} lines):", lines.len());
+    } else {
+        eprintln!("doctor fix: {label}:");
+    }
+    for line in &lines[start..] {
+        eprintln!("doctor fix:   {line}");
+    }
+}
+
 fn print_table(reports: &[ToolReport]) {
     let mut table = Table::new();
     table
@@ -170,12 +292,22 @@ fn print_table(reports: &[ToolReport]) {
 }
 
 fn print_fix_table(fixes: &[ToolFixResult]) {
+    let visible = fixes
+        .iter()
+        .filter(|fix| fix.status != ToolFixStatus::Skipped || fix.message != "already available")
+        .collect::<Vec<_>>();
+
+    if visible.is_empty() {
+        println!("doctor fix: no repairs were needed");
+        return;
+    }
+
     let mut table = Table::new();
     table
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec!["Tool", "Status", "Message"]);
 
-    for fix in fixes {
+    for fix in visible {
         let status_cell = match fix.status {
             ToolFixStatus::Fixed => Cell::new(format!("{}", "fixed".green())).fg(Color::Green),
             ToolFixStatus::Skipped => {

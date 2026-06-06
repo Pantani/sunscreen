@@ -19,6 +19,9 @@ pub enum ToolFixStatus {
     /// Commands ran successfully, but the current process still cannot see the
     /// fixed tool. This usually means PATH needs to be reloaded.
     NeedsShellReload,
+    /// Commands ran successfully, but the detected binary still needs manual
+    /// inspection (for example an unparsable wrapper or stale version).
+    NeedsInspection,
     /// Sunscreen does not know a safe automatic recipe for this tool.
     Unsupported,
     /// A repair command failed or could not be spawned.
@@ -140,11 +143,13 @@ pub fn finalize_fix_results(results: &mut [ToolFixResult], reports_after: &[Tool
             result.status = ToolFixStatus::Fixed;
             result.message = "tool is available after repair".to_string();
         } else {
-            result.status = ToolFixStatus::NeedsShellReload;
-            result.message = reports_after
+            let after = reports_after
                 .iter()
-                .find(|report| report.name == result.name)
-                .map_or_else(|| reload_hint(&result.name), post_repair_hint);
+                .find(|report| report.name == result.name);
+            result.status = after.map_or(ToolFixStatus::NeedsShellReload, |report| {
+                post_repair_status(report)
+            });
+            result.message = after.map_or_else(|| reload_hint(&result.name), post_repair_hint);
         }
     }
 }
@@ -308,9 +313,10 @@ fn recipe<R: CommandRunner>(runner: &R, report: &ToolReport) -> Result<Vec<FixSt
             } else if runner.which("agave-install").is_some() {
                 Ok(vec![FixStep::new("agave-install").arg("update")])
             } else {
-                Ok(vec![FixStep::shell(
-                    r#"sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)""#,
-                )])
+                Ok(vec![FixStep::shell(download_then_run_shell(
+                    "https://release.anza.xyz/stable/install",
+                    "",
+                ))])
             }
         }
         "rustc" | "cargo" => {
@@ -319,9 +325,10 @@ fn recipe<R: CommandRunner>(runner: &R, report: &ToolReport) -> Result<Vec<FixSt
             } else if cfg!(windows) {
                 Err("install Rust with rustup, then run `sunscreen doctor` again".to_string())
             } else {
-                Ok(vec![FixStep::shell(
-                    "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
-                )])
+                Ok(vec![FixStep::shell(download_then_run_shell(
+                    "https://sh.rustup.rs",
+                    "-y",
+                ))])
             }
         }
         "node" => {
@@ -413,6 +420,18 @@ fn first_non_empty(stderr: &str, stdout: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn download_then_run_shell(url: &str, shell_args: &str) -> String {
+    let shell_args = shell_args.trim();
+    let run = if shell_args.is_empty() {
+        "sh \"$tmp\"".to_string()
+    } else {
+        format!("sh \"$tmp\" {shell_args}")
+    };
+    format!(
+        "tmp=\"$(mktemp)\"; trap 'rm -f \"$tmp\"' EXIT; curl --http1.1 --retry 3 --retry-delay 2 --retry-all-errors -sSfL {url} -o \"$tmp\" && {run}"
+    )
+}
+
 fn post_repair_hint(report: &ToolReport) -> String {
     match report.status {
         Status::MissingRequired | Status::MissingOptional => reload_hint(&report.name),
@@ -425,6 +444,14 @@ fn post_repair_hint(report: &ToolReport) -> String {
             report.name, report.name
         ),
         Status::Ok => "tool is available after repair".to_string(),
+    }
+}
+
+fn post_repair_status(report: &ToolReport) -> ToolFixStatus {
+    match report.status {
+        Status::MissingRequired | Status::MissingOptional => ToolFixStatus::NeedsShellReload,
+        Status::UnknownVersion | Status::BelowMin => ToolFixStatus::NeedsInspection,
+        Status::Ok => ToolFixStatus::Fixed,
     }
 }
 

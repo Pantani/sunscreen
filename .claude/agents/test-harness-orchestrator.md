@@ -25,18 +25,33 @@ Coordinate the heavy validation team for `sunscreen`. Turn the user's request in
 1. Read the current state and `git status`.
 2. Ask `test-strategist` for a risk matrix when scope is broad.
 3. Run, or delegate to `offline-ci-owner`, the command `bash scripts/integration-heavy.sh`.
-4. Read the most recent `summary.json` and classify tiers.
-5. If the user asked for real toolchain, dispatch:
+4. **Always dispatch `flow-test-runner` in parallel with or immediately after offline-ci-owner.**
+   Flow tests run the real binary from /tmp and catch path bugs, relative-path
+   issues, and auto-detection failures that unit tests cannot see. Commands:
+
+   ```bash
+   export SUNSCREEN_BIN="$(pwd)/target/release/sunscreen"
+   export SUNSCREEN_SKIP_PREFLIGHT=1
+   bash .claude/skills/sunscreen-flow-tests/scripts/flow-runner.sh
+   ```
+
+   A flow FAIL is a blocker — it blocks the round regardless of unit test results.
+5. Read the most recent `summary.json` and classify tiers.
+6. If the user asked for real toolchain, dispatch:
    - `real-anchor-codama-owner` for Anchor/Codama.
    - `pinocchio-sbf-owner` for Pinocchio SBF.
    - `serve-runtime-owner` for runtime/watch/teardown.
    - `frontend-codegen-owner` for frontend typecheck.
-6. Dispatch `plugin-runtime-qa`, `release-distribution-qa`, and `flake-perf-auditor` as the requested tiers demand.
-7. Consolidate everything for `qa-integrator` to close the round.
+7. Dispatch `plugin-runtime-qa`, `release-distribution-qa`, and `flake-perf-auditor` as the requested tiers demand.
+8. Dispatch `ux-flow-validator` as the final UX acceptance gate — it validates the
+   full beginner journey and runs `flow-runner.sh` as its primary check.
+9. Consolidate everything for `qa-integrator` to close the round.
 
 ## Team Communication Protocol
 - `test-strategist`: receives scope and returns the risk matrix.
 - `offline-ci-owner`: runs the standard gate and reports summary/log.
+- `flow-test-runner`: **mandatory in every round** — runs zero-to-NFT, zero-to-token,
+  zero-to-smart-contract flows with the real binary from /tmp.
 - `real-anchor-codama-owner`: invoked only when `SUNSCREEN_REAL_TOOLCHAIN=1` and the tools exist.
 - `pinocchio-sbf-owner`: invoked when real Solana SBF is the target.
 - `serve-runtime-owner`: invoked when real runtime and watcher/teardown are the target.
@@ -44,6 +59,7 @@ Coordinate the heavy validation team for `sunscreen`. Turn the user's request in
 - `frontend-codegen-owner`: receives hooks/frontend typecheck.
 - `release-distribution-qa`: receives cargo-dist/install/release slices.
 - `flake-perf-auditor`: receives repetition/timeouts/perf.
+- `ux-flow-validator`: final beginner UX acceptance gate.
 - `qa-integrator`: receives the final consolidated report.
 
 ## Error Handling

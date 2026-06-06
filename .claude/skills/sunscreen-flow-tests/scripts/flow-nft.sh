@@ -99,8 +99,9 @@ assert_cmd 0 "scaffold error InvalidMint (no --program)" \
 assert_file "programs/${WORKSPACE_NAME}/src/errors.rs" \
   "errors.rs created"
 
-# Step 8: idempotency — scaffolding the same name again must exit 0 (no-op), not crash
-assert_cmd 0 "duplicate instruction mint → exit 0 (idempotent no-op)" \
+# Step 8: idempotency — re-running scaffold for an existing name with identical content must exit 0
+# (same content = silent no-op; a conflict with different content would be exit 4)
+assert_cmd 0 "duplicate instruction mint → exit 0 (idempotent, same content)" \
   "$SUNSCREEN_BIN" scaffold instruction mint
 
 # Step 9: learn (basic sanity)
@@ -113,9 +114,17 @@ assert_cmd 0 "learn list" \
 assert_cmd 0 "learn pda" \
   "$SUNSCREEN_BIN" learn pda
 
-# Step 10: doctor (offline — may report missing tools, must not crash)
-assert_cmd 0 "doctor exits 0 (reports tool status)" \
-  "$SUNSCREEN_BIN" doctor || true  # doctor may exit non-zero if tools missing — accept both
+# Step 10: doctor (offline — may report missing tools; exit 0=ok, 1=partial, 2=missing required)
+dr_exit=0
+dr_out=$("$SUNSCREEN_BIN" doctor 2>&1) || dr_exit=$?
+if [[ "$dr_exit" -eq 0 || "$dr_exit" -eq 1 || "$dr_exit" -eq 2 ]]; then
+  echo "[PASS] doctor exits without crash (exit $dr_exit)"
+  PASS=$((PASS + 1))
+else
+  echo "[FAIL] doctor unexpected exit $dr_exit"
+  echo "       output: $(echo "$dr_out" | head -5)"
+  FAIL=$((FAIL + 1))
+fi
 
 echo ""
 echo "━━━ zero-to-NFT: PASS=$PASS FAIL=$FAIL ━━━"

@@ -25,7 +25,7 @@ Run complete user journeys, not isolated commands. A "journey" means:
 2. Create a workspace (via `quickstart` or `chain new`)
 3. Add scaffolding (instruction, account, event, error)
 4. Verify every generated file exists on disk
-5. Run build (expect exit 0 with real Anchor, exit 2 without)
+5. Run build (expect exit 0 with real Anchor, exit 0/1/2 without — all are valid offline outcomes)
 6. Clean up the temp dir
 
 If a step fails, capture the exact output and exit code — that is the bug report.
@@ -80,7 +80,8 @@ For each PASS flow, spot-check:
 ## Bug reporting format
 
 When a step fails, report:
-```
+
+```text
 FLOW: zero-to-NFT
 STEP: scaffold instruction mint
 CMD:  sunscreen scaffold instruction mint

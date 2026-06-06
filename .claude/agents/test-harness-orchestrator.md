@@ -28,11 +28,13 @@ Coordinate the heavy validation team for `sunscreen`. Turn the user's request in
 4. **Always dispatch `flow-test-runner` in parallel with or immediately after offline-ci-owner.**
    Flow tests run the real binary from /tmp and catch path bugs, relative-path
    issues, and auto-detection failures that unit tests cannot see. Commands:
+
    ```bash
    export SUNSCREEN_BIN="$(pwd)/target/release/sunscreen"
    export SUNSCREEN_SKIP_PREFLIGHT=1
    bash .claude/skills/sunscreen-flow-tests/scripts/flow-runner.sh
    ```
+
    A flow FAIL is a blocker — it blocks the round regardless of unit test results.
 5. Read the most recent `summary.json` and classify tiers.
 6. If the user asked for real toolchain, dispatch:

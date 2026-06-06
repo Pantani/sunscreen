@@ -327,7 +327,7 @@ fn recipe<R: CommandRunner>(runner: &R, report: &ToolReport) -> Result<Vec<FixSt
             } else {
                 Ok(vec![FixStep::shell(download_then_run_shell(
                     "https://sh.rustup.rs",
-                    "-s -- -y",
+                    "-y",
                 ))])
             }
         }

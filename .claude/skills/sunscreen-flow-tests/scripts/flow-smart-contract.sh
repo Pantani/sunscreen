@@ -134,8 +134,14 @@ else
     if echo "$output" | grep -q "thread 'main' panicked"; then
       echo "[FAIL] chain build output contains Rust panic"
       FAIL=$((FAIL + 1))
-    else
+    elif echo "$output" | grep -q '"event":"chain_build_started"' && \
+         echo "$output" | grep -q '"event":"chain_build_finished"'; then
+      echo "[PASS] chain build NDJSON contract intact (chain_build_started + chain_build_finished)"
       PASS=$((PASS + 1))
+    else
+      echo "[FAIL] chain build NDJSON events missing (chain_build_started or chain_build_finished absent)"
+      echo "       first 5 lines: $(echo "$output" | head -5)"
+      FAIL=$((FAIL + 1))
     fi
   else
     echo "[FAIL] chain build unexpected exit $build_exit"
@@ -146,8 +152,8 @@ fi
 
 # Step 7: doctor (must not crash)
 dr_exit=0
-"$SUNSCREEN_BIN" doctor 2>&1 >/dev/null || dr_exit=$?
-if [[ "$dr_exit" -eq 0 || "$dr_exit" -eq 1 ]]; then
+"$SUNSCREEN_BIN" doctor >/dev/null 2>&1 || dr_exit=$?
+if [[ "$dr_exit" -eq 0 || "$dr_exit" -eq 1 || "$dr_exit" -eq 2 ]]; then
   echo "[PASS] doctor exits without crash (exit $dr_exit)"
   PASS=$((PASS + 1))
 else

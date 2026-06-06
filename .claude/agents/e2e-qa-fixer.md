@@ -64,7 +64,7 @@ bash .claude/skills/sunscreen-flow-tests/scripts/flow-smart-contract.sh
 
 ## Bug report format (when filing, not fixing)
 
-```
+```text
 FLOW: zero-to-NFT
 STEP: scaffold instruction mint
 CMD:  sunscreen scaffold instruction mint

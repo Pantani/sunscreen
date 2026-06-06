@@ -15,7 +15,7 @@ fi
 
 FLOW_DIR="${FLOW_TMPDIR:-/tmp}/sunscreen-flow-token-$(date +%s)"
 WORKSPACE_NAME="testtoken$(date +%s)"
-trap 'rm -rf "$FLOW_DIR"' EXIT
+trap 'if [[ ${FAIL:-0} -eq 0 ]]; then rm -rf "$FLOW_DIR"; else echo "[INFO] Preserving failed flow dir: $FLOW_DIR"; fi' EXIT
 
 mkdir -p "$FLOW_DIR"
 

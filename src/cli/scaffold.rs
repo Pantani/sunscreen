@@ -123,9 +123,9 @@ pub struct AccountArgs {
     /// Account struct name (PascalCased in source; folded to snake_case for
     /// the file/module name).
     pub name: String,
-    /// Parent program (must exist in `sunscreen.yml`).
+    /// Parent program (must exist in `sunscreen.yml`). Auto-detected when only one program exists.
     #[arg(long, value_name = "NAME")]
-    pub program: String,
+    pub program: Option<String>,
     /// Comma-separated struct fields, e.g. `"owner:Pubkey,total:u64"`.
     #[arg(long, value_name = "LIST", default_value = "")]
     pub fields: String,
@@ -139,9 +139,9 @@ pub struct AccountArgs {
 pub struct EventArgs {
     /// Event struct name.
     pub name: String,
-    /// Parent program (must exist in `sunscreen.yml`).
+    /// Parent program (must exist in `sunscreen.yml`). Auto-detected when only one program exists.
     #[arg(long, value_name = "NAME")]
-    pub program: String,
+    pub program: Option<String>,
     /// Comma-separated struct fields, e.g. `"amount:u64,user:Pubkey"`.
     #[arg(long, value_name = "LIST", default_value = "")]
     pub fields: String,
@@ -155,9 +155,9 @@ pub struct EventArgs {
 pub struct ErrorArgs {
     /// Error variant name.
     pub name: String,
-    /// Parent program (must exist in `sunscreen.yml`).
+    /// Parent program (must exist in `sunscreen.yml`). Auto-detected when only one program exists.
     #[arg(long, value_name = "NAME")]
-    pub program: String,
+    pub program: Option<String>,
     /// Human-readable message bound to `#[msg("…")]`.
     #[arg(long, value_name = "STRING", default_value = "")]
     pub msg: String,
@@ -171,9 +171,9 @@ pub struct ErrorArgs {
 pub struct InstructionArgs {
     /// Instruction name. Must start with a letter and contain only `[a-zA-Z0-9_]`.
     pub name: String,
-    /// Parent program (must exist in `sunscreen.yml`).
+    /// Parent program (must exist in `sunscreen.yml`). Auto-detected when only one program exists.
     #[arg(long, value_name = "NAME")]
-    pub program: String,
+    pub program: Option<String>,
     /// Comma-separated handler args, e.g. `"amount:u64,memo:String"`.
     #[arg(long, value_name = "LIST", default_value = "")]
     pub args: String,
@@ -430,7 +430,7 @@ fn execute_recipe_step(
         RecipeStep::Account { name, fields } => run_account_in_workspace(
             &AccountArgs {
                 name: name.clone(),
-                program: program.to_string(),
+                program: Some(program.to_string()),
                 fields: fields.clone(),
                 dry_run,
             },
@@ -442,7 +442,7 @@ fn execute_recipe_step(
         RecipeStep::Event { name, fields } => run_event_in_workspace(
             &EventArgs {
                 name: name.clone(),
-                program: program.to_string(),
+                program: Some(program.to_string()),
                 fields: fields.clone(),
                 dry_run,
             },
@@ -454,7 +454,7 @@ fn execute_recipe_step(
         RecipeStep::Error { name, message } => run_error_in_workspace(
             &ErrorArgs {
                 name: name.clone(),
-                program: program.to_string(),
+                program: Some(program.to_string()),
                 msg: message.clone(),
                 dry_run,
             },
@@ -471,7 +471,7 @@ fn execute_recipe_step(
         } => run_instruction_in_workspace(
             &InstructionArgs {
                 name: name.clone(),
-                program: program.to_string(),
+                program: Some(program.to_string()),
                 args: args.clone(),
                 accounts: accounts.clone(),
                 emit: emit.clone(),
@@ -683,8 +683,6 @@ fn run_instruction_in_workspace(
     if let Some(emit) = &args.emit {
         validate_ident(emit, "--emit event name")?;
     }
-    let ix_snake = args.name.to_snake_case();
-    let program_snake = args.program.to_snake_case();
 
     let parsed_args = parse_args(&args.args)?;
     let parsed_accounts = parse_accounts(&args.accounts)?;
@@ -692,7 +690,10 @@ fn run_instruction_in_workspace(
     // 1. Locate workspace.
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     ensure_anchor_scaffolding(&ws)?;
-    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let program_name = resolve_program(args.program.as_deref(), &ws)?;
+    let ix_snake = args.name.to_snake_case();
+    let program_snake = program_name.to_snake_case();
+    let program: &ProgramView = workspace::find_program(&ws, &program_name).map_err(map_ws_err)?;
     let emit_fields = if let Some(emit) = &args.emit {
         event_fields_for_emit(program, emit)?
     } else {
@@ -859,7 +860,7 @@ fn run_instruction_in_workspace(
 
     if args.dry_run {
         if !quiet {
-            emit_dry_run(json, &args.name, &args.program, &plan_files, &lib_status);
+            emit_dry_run(json, &args.name, &program_name, &plan_files, &lib_status);
         }
         return Ok(0);
     }
@@ -911,7 +912,7 @@ fn run_instruction_in_workspace(
         let payload = serde_json::json!({
             "ok": true,
             "instruction": ix_snake,
-            "program": args.program,
+            "program": program_name,
             "files": plan_files,
             "lib_rs_patched": lib_status.patched,
             "unchanged": unchanged,
@@ -931,7 +932,7 @@ fn run_instruction_in_workspace(
     } else {
         println!(
             "scaffolded instruction `{ix_snake}` for program `{}` ({} files)",
-            args.program,
+            program_name,
             plan_files.len()
         );
         for f in &plan_files {
@@ -1435,6 +1436,32 @@ fn relative_to(root: &std::path::Path, target: &std::path::Path) -> PathBuf {
         .unwrap_or_else(|_| target.to_path_buf())
 }
 
+/// Resolve the program name from an optional CLI flag.
+/// When `--program` is omitted and there is exactly one program in the workspace,
+/// that program is used automatically (with a note printed to stderr).
+/// When omitted and there are 0 or 2+ programs, a clear error is returned.
+fn resolve_program(
+    explicit: Option<&str>,
+    ws: &workspace::WorkspaceRoot,
+) -> Result<String, SunscreenError> {
+    if let Some(name) = explicit {
+        return Ok(name.to_string());
+    }
+    match ws.programs.as_slice() {
+        [] => Err(SunscreenError::UserInput(
+            "workspace has no programs; run `sunscreen scaffold program <name>` first".to_string(),
+        )),
+        [single] => {
+            eprintln!("note: using program `{}`", single.name);
+            Ok(single.name.clone())
+        }
+        _ => Err(SunscreenError::UserInput(format!(
+            "workspace has {} programs; specify one with `--program <NAME>`",
+            ws.programs.len()
+        ))),
+    }
+}
+
 fn map_ws_err(e: WorkspaceError) -> SunscreenError {
     match e {
         WorkspaceError::NotFound => SunscreenError::WorkspaceMissing(e.to_string()),
@@ -1537,11 +1564,12 @@ fn run_account_in_workspace(
     validate_ident(&args.name, "account name")?;
     let fields = parse_fields(&args.fields)?;
     let account_snake = args.name.to_snake_case();
-    let program_snake = args.program.to_snake_case();
 
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     ensure_anchor_scaffolding(&ws)?;
-    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let program_name = resolve_program(args.program.as_deref(), &ws)?;
+    let program_snake = program_name.to_snake_case();
+    let program: &ProgramView = workspace::find_program(&ws, &program_name).map_err(map_ws_err)?;
 
     let state_dir = program.src_dir.join("state");
     let account_abs = state_dir.join(format!("{account_snake}.rs"));
@@ -1653,7 +1681,7 @@ fn run_account_in_workspace(
 
     if args.dry_run {
         if !quiet {
-            emit_noun_dry_run(json, "account", &args.name, &args.program, &plan_files);
+            emit_noun_dry_run(json, "account", &args.name, &program_name, &plan_files);
         }
         return Ok(0);
     }
@@ -1687,7 +1715,7 @@ fn run_account_in_workspace(
             json,
             "account",
             &args.name,
-            &args.program,
+            &program_name,
             &plan_files,
             &segments_patched,
             unchanged,
@@ -1808,11 +1836,12 @@ fn run_event_in_workspace(
     validate_ident(&args.name, "event name")?;
     let fields = parse_fields(&args.fields)?;
     let event_pascal = args.name.to_pascal_case();
-    let program_snake = args.program.to_snake_case();
 
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     ensure_anchor_scaffolding(&ws)?;
-    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let program_name = resolve_program(args.program.as_deref(), &ws)?;
+    let program_snake = program_name.to_snake_case();
+    let program: &ProgramView = workspace::find_program(&ws, &program_name).map_err(map_ws_err)?;
 
     let events_abs = program.src_dir.join("events.rs");
     let events_rel = relative_to(&ws.root, &events_abs);
@@ -1913,7 +1942,7 @@ fn run_event_in_workspace(
 
     if args.dry_run {
         if !quiet {
-            emit_noun_dry_run(json, "event", &args.name, &args.program, &plan_files);
+            emit_noun_dry_run(json, "event", &args.name, &program_name, &plan_files);
         }
         return Ok(0);
     }
@@ -1944,7 +1973,7 @@ fn run_event_in_workspace(
             json,
             "event",
             &args.name,
-            &args.program,
+            &program_name,
             &plan_files,
             &segments_patched,
             unchanged,
@@ -2127,12 +2156,13 @@ fn run_error_in_workspace(
 ) -> Result<i32, SunscreenError> {
     validate_ident(&args.name, "error variant name")?;
     let variant_pascal = args.name.to_pascal_case();
-    let program_snake = args.program.to_snake_case();
-    let enum_name = format!("{}_error", program_snake).to_pascal_case();
 
     let ws = workspace::find_root(workspace_root).map_err(map_ws_err)?;
     ensure_anchor_scaffolding(&ws)?;
-    let program: &ProgramView = workspace::find_program(&ws, &args.program).map_err(map_ws_err)?;
+    let program_name = resolve_program(args.program.as_deref(), &ws)?;
+    let program_snake = program_name.to_snake_case();
+    let enum_name = format!("{}_error", program_snake).to_pascal_case();
+    let program: &ProgramView = workspace::find_program(&ws, &program_name).map_err(map_ws_err)?;
 
     let errors_abs = program.src_dir.join("errors.rs");
     let errors_rel = relative_to(&ws.root, &errors_abs);
@@ -2220,7 +2250,7 @@ fn run_error_in_workspace(
 
     if args.dry_run {
         if !quiet {
-            emit_noun_dry_run(json, "error", &args.name, &args.program, &plan_files);
+            emit_noun_dry_run(json, "error", &args.name, &program_name, &plan_files);
         }
         return Ok(0);
     }
@@ -2251,7 +2281,7 @@ fn run_error_in_workspace(
             json,
             "error",
             &args.name,
-            &args.program,
+            &program_name,
             &plan_files,
             &segments_patched,
             unchanged,

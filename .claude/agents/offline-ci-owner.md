@@ -33,6 +33,25 @@ cargo test --locked --test integration_chain --test integration_scaffold --test 
 cargo test --locked --test compile_generated_workspace
 ```
 
+## Mandatory: full flow tests after offline gate passes
+
+Unit tests and compile checks are necessary but not sufficient. After the commands
+above all pass, run the bundled flow tests against the real binary:
+
+```bash
+export SUNSCREEN_BIN="$(pwd)/target/release/sunscreen"
+export SUNSCREEN_SKIP_PREFLIGHT=1
+bash .claude/skills/sunscreen-flow-tests/scripts/flow-runner.sh
+```
+
+If `flow-runner.sh` reports any FAIL, the offline gate is NOT green — even if
+every `cargo test` passed. Route the failure to `flow-test-runner` or `e2e-qa-fixer`.
+
+The reason: unit tests run with fake toolchains, injected runners, and controlled
+paths. Flow tests exercise the binary from a real temp directory with user-level
+inputs — the only way to catch path bugs, relative-vs-absolute mistakes, and
+missing auto-detection that unit tests structurally cannot see.
+
 ## Team Communication Protocol
 - Route Anchor/Codama gaps to `real-anchor-codama-owner`.
 - Route real Pinocchio gaps to `pinocchio-sbf-owner`.

@@ -46,8 +46,8 @@ const TOPICS: &[Topic] = &[
 
 pub fn run(args: &LearnArgs, json: bool) -> Result<i32, SunscreenError> {
     match args.topic.as_deref() {
+        Some("list") | None => list_topics(json),
         Some(topic) => render_topic(topic, json),
-        None => list_topics(json),
     }
 }
 

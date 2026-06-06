@@ -586,6 +586,17 @@ pub(crate) fn create_workspace(args: &NewArgs) -> Result<NewWorkspaceReport, Sun
         .path
         .clone()
         .unwrap_or_else(|| PathBuf::from(&args.name));
+    // Always resolve to an absolute path so downstream code (Transaction,
+    // WorkspaceRoot, ProgramView) never mixes relative roots with relative
+    // sub-paths, which would produce double-prefix paths like
+    // "my-app/my-app/programs/..." and fail with ENOENT.
+    let dest = if dest.is_absolute() {
+        dest
+    } else {
+        std::env::current_dir()
+            .map_err(|e| SunscreenError::Other(anyhow::anyhow!(e)))?
+            .join(&dest)
+    };
 
     let ctx = build_context(&args.name, args.frontend);
 

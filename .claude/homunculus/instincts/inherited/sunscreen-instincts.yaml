@@ -1,0 +1,279 @@
+# Instincts generated from https://github.com/Pantani/sunscreen
+# Generated: 2026-06-06T04:50:41.656Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: sunscreen-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/Pantani/sunscreen
+---
+
+# Sunscreen Commit Length
+
+## Action
+
+Keep commit messages concise (~38 characters)
+
+## Evidence
+
+- Average commit message length: 38 chars
+- Based on 2 commits
+
+---
+id: sunscreen-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Pantani/sunscreen
+---
+
+# Sunscreen Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: sunscreen-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Pantani/sunscreen
+---
+
+# Sunscreen Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: sunscreen-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Pantani/sunscreen
+---
+
+# Sunscreen Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: sunscreen-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/Pantani/sunscreen
+---
+
+# Sunscreen Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: sunscreen-instinct-camelcase-files
+trigger: "When creating or renaming a source file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Camelcase Files
+
+## Action
+
+Name the file using camelCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.files
+
+---
+id: sunscreen-instinct-camelcase-functions
+trigger: "When defining a function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Camelcase Functions
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+
+---
+id: sunscreen-instinct-pascalcase-classes
+trigger: "When defining a class or struct"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Pascalcase Classes
+
+## Action
+
+Name the class/struct using PascalCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: sunscreen-instinct-screaming-constants
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Screaming Constants
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: sunscreen-instinct-relative-imports
+trigger: "When importing modules within the project"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Relative Imports
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+
+---
+id: sunscreen-instinct-named-exports
+trigger: "When exporting functions, classes, or constants"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Named Exports
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: sunscreen-instinct-tests-separate-folder
+trigger: "When adding or locating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Tests Separate Folder
+
+## Action
+
+Place test files in the separate 'tests' folder
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+
+---
+id: sunscreen-instinct-commit-freeform
+trigger: "When writing a commit message"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Commit Freeform
+
+## Action
+
+Use a short, freeform message without a prefix, ideally under 40 characters
+
+## Evidence
+
+- Pattern in commits.examples
+- Pattern in commits.averageLength
+
+---
+id: sunscreen-instinct-single-package-structure
+trigger: "When adding new modules or folders"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: Pantani/sunscreen
+---
+
+# Sunscreen Instinct Single Package Structure
+
+## Action
+
+Organize them within the existing single-package structure under 'src'
+
+## Evidence
+
+- Pattern in architecture.folderStructure.type
+- Pattern in architecture.folderStructure.srcLayout
+

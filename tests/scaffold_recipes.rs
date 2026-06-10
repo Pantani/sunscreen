@@ -65,19 +65,33 @@ fn assert_recipe_snapshot(name: &str, contents: String) {
 
 #[test]
 fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("blog_app");
-    run_chain_new(&ws, "blog_app", "none");
-    let program_name = discover_program(&ws);
+    let (_tmp, ws, program_name) = recipe_workspace("blog_app", "none");
 
+    scaffold_crud_post(&ws, &program_name);
+    let program_dir = ws.join("programs").join(&program_name);
+    assert_crud_program_files(&program_dir);
+    assert_crud_recipe_test(&ws, &program_name);
+    assert_crud_full_snapshot(&ws);
+    assert_crud_rerun(&ws, &program_name);
+}
+
+fn recipe_workspace(name: &str, frontend: &str) -> (tempfile::TempDir, std::path::PathBuf, String) {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join(name);
+    run_chain_new(&ws, name, frontend);
+    let program_name = discover_program(&ws);
+    (tmp, ws, program_name)
+}
+
+fn scaffold_crud_post(ws: &Path, program_name: &str) {
     let out = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "crud",
             "Post",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "authority:Pubkey,title:String,body:String",
             "--json",
@@ -96,13 +110,22 @@ fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
     assert_eq!(payload["recipe"], "crud");
     assert_eq!(payload["resource"], "post");
     assert_eq!(payload["unchanged"], false);
+}
 
-    let program_dir = ws.join("programs").join(&program_name);
+fn assert_crud_program_files(program_dir: &Path) {
+    assert_crud_state(program_dir);
+    assert_crud_instructions(program_dir);
+    assert_crud_events_and_errors(program_dir);
+}
+
+fn assert_crud_state(program_dir: &Path) {
     let state = std::fs::read_to_string(program_dir.join("src/state/post.rs")).unwrap();
     assert!(state.contains("pub struct Post"));
     assert!(state.contains("pub authority: Pubkey,"));
     assert!(state.contains("pub title: String,"));
+}
 
+fn assert_crud_instructions(program_dir: &Path) {
     for ix in ["create_post", "read_post", "update_post", "delete_post"] {
         assert!(
             program_dir
@@ -116,7 +139,9 @@ fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
     for wrapper in ["create_post", "read_post", "update_post", "delete_post"] {
         assert!(lib_rs.contains(&format!("pub fn {wrapper}(")));
     }
+}
 
+fn assert_crud_events_and_errors(program_dir: &Path) {
     let events = std::fs::read_to_string(program_dir.join("src/events.rs")).unwrap();
     for event in ["PostCreated", "PostUpdated", "PostDeleted"] {
         assert!(events.contains(&format!("pub struct {event}")));
@@ -124,16 +149,21 @@ fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
     let errors = std::fs::read_to_string(program_dir.join("src/errors.rs")).unwrap();
     assert!(errors.contains("PostNotFound,"));
     assert!(errors.contains("PostUnauthorized,"));
+}
 
-    let recipe_test = ws.join("tests").join(&program_name).join("post.test.ts");
+fn assert_crud_recipe_test(ws: &Path, program_name: &str) {
+    let recipe_test = ws.join("tests").join(program_name).join("post.test.ts");
     assert!(recipe_test.exists(), "recipe TS test missing");
     let recipe_test_contents = std::fs::read_to_string(&recipe_test).unwrap();
     assert!(recipe_test_contents.contains("createPost"));
     assert!(recipe_test_contents.contains("deletePost"));
+}
+
+fn assert_crud_full_snapshot(ws: &Path) {
     assert_recipe_snapshot(
         "scaffold_recipes_crud_full_slice",
         generated_corpus(
-            &ws,
+            ws,
             &[
                 "programs/blog_app/src/state/post.rs",
                 "programs/blog_app/src/instructions/create_post.rs",
@@ -147,15 +177,17 @@ fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
             ],
         ),
     );
+}
 
+fn assert_crud_rerun(ws: &Path, program_name: &str) {
     let again = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "crud",
             "Post",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "authority:Pubkey,title:String,body:String",
             "--json",
@@ -175,19 +207,24 @@ fn scaffold_crud_composes_resource_slice_and_is_idempotent() {
 
 #[test]
 fn scaffold_crud_writes_frontend_hook_and_honors_feature_flags() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("blog_frontend_app");
-    run_chain_new(&ws, "blog_frontend_app", "vite");
-    let program_name = discover_program(&ws);
+    let (_tmp, ws, program_name) = recipe_workspace("blog_frontend_app", "vite");
 
+    scaffold_crud_frontend_post(&ws, &program_name);
+    let program_dir = ws.join("programs").join(&program_name);
+    assert_frontend_crud_program_files(&program_dir);
+    assert_frontend_hook(&ws);
+    assert_frontend_crud_snapshot(&ws);
+}
+
+fn scaffold_crud_frontend_post(ws: &Path, program_name: &str) {
     let out = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "crud",
             "Post",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "authority:Pubkey,title:String",
             "--no-delete",
@@ -201,8 +238,9 @@ fn scaffold_crud_writes_frontend_hook_and_honors_feature_flags() {
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
+}
 
-    let program_dir = ws.join("programs").join(&program_name);
+fn assert_frontend_crud_program_files(program_dir: &Path) {
     assert!(program_dir.join("src/instructions/create_post.rs").exists());
     assert!(program_dir.join("src/instructions/read_post.rs").exists());
     assert!(program_dir.join("src/instructions/update_post.rs").exists());
@@ -211,7 +249,9 @@ fn scaffold_crud_writes_frontend_hook_and_honors_feature_flags() {
         !program_dir.join("src/events.rs").exists(),
         "--no-events should skip event scaffolding"
     );
+}
 
+fn assert_frontend_hook(ws: &Path) {
     let hook = ws.join("app/src/hooks/use-post.ts");
     assert!(hook.exists(), "frontend recipe hook missing");
     let hook_contents = std::fs::read_to_string(&hook).unwrap();
@@ -219,10 +259,13 @@ fn scaffold_crud_writes_frontend_hook_and_honors_feature_flags() {
     assert!(hook_contents.contains("useCreatePost"));
     assert!(hook_contents.contains("useUpdatePost"));
     assert!(!hook_contents.contains("useDeletePost"));
+}
+
+fn assert_frontend_crud_snapshot(ws: &Path) {
     assert_recipe_snapshot(
         "scaffold_recipes_crud_frontend_no_delete_no_events",
         generated_corpus(
-            &ws,
+            ws,
             &[
                 "programs/blog_frontend_app/src/state/post.rs",
                 "programs/blog_frontend_app/src/instructions/create_post.rs",
@@ -238,19 +281,24 @@ fn scaffold_crud_writes_frontend_hook_and_honors_feature_flags() {
 
 #[test]
 fn scaffold_spl_token_and_metaplex_nft_create_recipe_slices() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("asset_app");
-    run_chain_new(&ws, "asset_app", "none");
-    let program_name = discover_program(&ws);
+    let (_tmp, ws, program_name) = recipe_workspace("asset_app", "none");
 
+    scaffold_spl_token(&ws, &program_name);
+    scaffold_metaplex_nft(&ws, &program_name);
+    let program_dir = ws.join("programs").join(&program_name);
+    assert_asset_recipe_files(&program_dir);
+    assert_asset_recipe_snapshot(&ws);
+}
+
+fn scaffold_spl_token(ws: &Path, program_name: &str) {
     let spl = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "spl-token",
             "TokenVault",
             "--program",
-            &program_name,
+            program_name,
             "--json",
         ],
     );
@@ -260,15 +308,17 @@ fn scaffold_spl_token_and_metaplex_nft_create_recipe_slices() {
         spl.status.code(),
         String::from_utf8_lossy(&spl.stderr)
     );
+}
 
+fn scaffold_metaplex_nft(ws: &Path, program_name: &str) {
     let nft = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "metaplex-nft",
             "NftCollection",
             "--program",
-            &program_name,
+            program_name,
             "--json",
         ],
     );
@@ -278,8 +328,9 @@ fn scaffold_spl_token_and_metaplex_nft_create_recipe_slices() {
         nft.status.code(),
         String::from_utf8_lossy(&nft.stderr)
     );
+}
 
-    let program_dir = ws.join("programs").join(&program_name);
+fn assert_asset_recipe_files(program_dir: &Path) {
     assert!(program_dir.join("src/state/token_vault.rs").exists());
     assert!(program_dir.join("src/state/nft_collection.rs").exists());
 
@@ -318,10 +369,13 @@ fn scaffold_spl_token_and_metaplex_nft_create_recipe_slices() {
     ] {
         assert!(errors.contains(&format!("{variant},")));
     }
+}
+
+fn assert_asset_recipe_snapshot(ws: &Path) {
     assert_recipe_snapshot(
         "scaffold_recipes_spl_token_and_metaplex_nft",
         generated_corpus(
-            &ws,
+            ws,
             &[
                 "programs/asset_app/src/state/token_vault.rs",
                 "programs/asset_app/src/state/nft_collection.rs",

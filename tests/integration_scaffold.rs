@@ -1,5 +1,7 @@
 mod support;
 
+use std::path::Path;
+
 use support::CliEnv;
 
 #[test]
@@ -7,7 +9,19 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
     let env = CliEnv::new();
     let workspace = env.chain_new("scaffold_walk", "vite");
 
-    let mut account = env.sunscreen_in(&workspace);
+    scaffold_account(&env, &workspace);
+    scaffold_event(&env, &workspace);
+    scaffold_error(&env, &workspace);
+    scaffold_instruction(&env, &workspace);
+
+    let program_dir = workspace.join("programs/scaffold_walk/src");
+    assert_primitive_files(&program_dir);
+    scaffold_crud_recipe(&env, &workspace, &program_dir);
+    assert_account_rerun(&env, &workspace);
+}
+
+fn scaffold_account(env: &CliEnv, workspace: &Path) {
+    let mut account = env.sunscreen_in(workspace);
     account.args([
         "--json",
         "scaffold",
@@ -29,8 +43,10 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
         account_report["segments_patched"],
         serde_json::json!(["accounts"])
     );
+}
 
-    let mut event = env.sunscreen_in(&workspace);
+fn scaffold_event(env: &CliEnv, workspace: &Path) {
+    let mut event = env.sunscreen_in(workspace);
     event.args([
         "--json",
         "scaffold",
@@ -49,8 +65,10 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
         event_report["segments_patched"],
         serde_json::json!(["events"])
     );
+}
 
-    let mut error = env.sunscreen_in(&workspace);
+fn scaffold_error(env: &CliEnv, workspace: &Path) {
+    let mut error = env.sunscreen_in(workspace);
     error.args([
         "--json",
         "scaffold",
@@ -69,8 +87,10 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
         error_report["segments_patched"],
         serde_json::json!(["error_variants"])
     );
+}
 
-    let mut instruction = env.sunscreen_in(&workspace);
+fn scaffold_instruction(env: &CliEnv, workspace: &Path) {
+    let mut instruction = env.sunscreen_in(workspace);
     instruction.args([
         "--json",
         "scaffold",
@@ -92,8 +112,15 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
     assert_eq!(instruction_report["mod_file"], "updated");
     assert_eq!(instruction_report["lib_file"], "updated");
     assert_eq!(instruction_report["lib_rs_patched"], true);
+}
 
-    let program_dir = workspace.join("programs/scaffold_walk/src");
+fn assert_primitive_files(program_dir: &Path) {
+    assert_primitive_paths_exist(program_dir);
+    assert_primitive_lib(program_dir);
+    assert_primitive_generated_sources(program_dir);
+}
+
+fn assert_primitive_paths_exist(program_dir: &Path) {
     for rel in [
         "state/vault.rs",
         "events.rs",
@@ -102,11 +129,17 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
     ] {
         assert!(program_dir.join(rel).exists(), "missing {rel}");
     }
+}
+
+fn assert_primitive_lib(program_dir: &Path) {
     let lib_rs = std::fs::read_to_string(program_dir.join("lib.rs")).unwrap();
     assert!(lib_rs.contains("pub fn deposit("));
     assert!(lib_rs.contains("pub mod events;"));
     assert!(lib_rs.contains("pub mod errors;"));
     assert!(lib_rs.contains("pub mod state;"));
+}
+
+fn assert_primitive_generated_sources(program_dir: &Path) {
     let vault_rs = std::fs::read_to_string(program_dir.join("state/vault.rs")).unwrap();
     assert!(vault_rs.contains("pub owner: Pubkey,"));
     assert!(vault_rs.contains("pub total: u64,"));
@@ -118,8 +151,10 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
     let deposit_rs = std::fs::read_to_string(program_dir.join("instructions/deposit.rs")).unwrap();
     assert!(deposit_rs.contains("emit!(VaultDeposited"));
     assert!(deposit_rs.contains("amount: u64"));
+}
 
-    let mut recipe = env.sunscreen_in(&workspace);
+fn scaffold_crud_recipe(env: &CliEnv, workspace: &Path, program_dir: &Path) {
+    let mut recipe = env.sunscreen_in(workspace);
     recipe.args([
         "--json",
         "scaffold",
@@ -133,6 +168,11 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
         "--no-frontend",
     ]);
     let recipe_report = env.json_ok("scaffold crud", &mut recipe);
+    assert_crud_recipe_report(&recipe_report);
+    assert_crud_recipe_files(program_dir);
+}
+
+fn assert_crud_recipe_report(recipe_report: &serde_json::Value) {
     assert_eq!(recipe_report["ok"], true);
     assert_eq!(recipe_report["recipe"], "crud");
     assert_eq!(recipe_report["resource"], "post");
@@ -143,13 +183,18 @@ fn scaffold_group_runs_primitives_and_recipe_command_by_command() {
         recipe_report["steps"].as_u64().unwrap() >= 4,
         "recipe should report multiple primitive steps: {recipe_report:#?}"
     );
+}
+
+fn assert_crud_recipe_files(program_dir: &Path) {
     assert!(program_dir.join("state/post.rs").exists());
     assert!(program_dir.join("instructions/create_post.rs").exists());
     assert!(program_dir.join("instructions/read_post.rs").exists());
     assert!(program_dir.join("instructions/update_post.rs").exists());
     assert!(program_dir.join("instructions/delete_post.rs").exists());
+}
 
-    let mut rerun = env.sunscreen_in(&workspace);
+fn assert_account_rerun(env: &CliEnv, workspace: &Path) {
+    let mut rerun = env.sunscreen_in(workspace);
     rerun.args([
         "--json",
         "scaffold",
@@ -198,7 +243,15 @@ fn scaffold_group_covers_program_and_builtin_recipes() {
     let workspace = env.chain_new("asset_walk", "none");
     let program_dir = workspace.join("programs/asset_walk/src");
 
-    let mut program = env.sunscreen_in(&workspace);
+    scaffold_rewards_program(&env, &workspace);
+    assert_spl_dry_run(&env, &workspace, &program_dir);
+    scaffold_spl_token(&env, &workspace, &program_dir);
+    scaffold_metaplex_nft(&env, &workspace, &program_dir);
+    assert_spl_token_rerun(&env, &workspace);
+}
+
+fn scaffold_rewards_program(env: &CliEnv, workspace: &Path) {
+    let mut program = env.sunscreen_in(workspace);
     program.args(["--json", "scaffold", "program", "Rewards"]);
     let program_report = env.json_ok("scaffold program", &mut program);
     assert_eq!(program_report["ok"], true);
@@ -206,8 +259,10 @@ fn scaffold_group_covers_program_and_builtin_recipes() {
     assert_eq!(program_report["name"], "rewards");
     assert_eq!(program_report["anchor_toml_patched"], true);
     assert!(workspace.join("programs/rewards/src/lib.rs").exists());
+}
 
-    let mut dry = env.sunscreen_in(&workspace);
+fn assert_spl_dry_run(env: &CliEnv, workspace: &Path, program_dir: &Path) {
+    let mut dry = env.sunscreen_in(workspace);
     dry.args([
         "--json",
         "scaffold",
@@ -223,8 +278,10 @@ fn scaffold_group_covers_program_and_builtin_recipes() {
     assert_eq!(dry_report["dry_run"], true);
     assert_eq!(dry_report["written"], 0);
     assert!(!program_dir.join("state/preview_vault.rs").exists());
+}
 
-    let mut spl = env.sunscreen_in(&workspace);
+fn scaffold_spl_token(env: &CliEnv, workspace: &Path, program_dir: &Path) {
+    let mut spl = env.sunscreen_in(workspace);
     spl.args([
         "--json",
         "scaffold",
@@ -246,8 +303,10 @@ fn scaffold_group_covers_program_and_builtin_recipes() {
     ] {
         assert!(program_dir.join(format!("instructions/{ix}.rs")).exists());
     }
+}
 
-    let mut nft = env.sunscreen_in(&workspace);
+fn scaffold_metaplex_nft(env: &CliEnv, workspace: &Path, program_dir: &Path) {
+    let mut nft = env.sunscreen_in(workspace);
     nft.args([
         "--json",
         "scaffold",
@@ -268,8 +327,10 @@ fn scaffold_group_covers_program_and_builtin_recipes() {
     ] {
         assert!(program_dir.join(format!("instructions/{ix}.rs")).exists());
     }
+}
 
-    let mut spl_again = env.sunscreen_in(&workspace);
+fn assert_spl_token_rerun(env: &CliEnv, workspace: &Path) {
+    let mut spl_again = env.sunscreen_in(workspace);
     spl_again.args([
         "--json",
         "scaffold",

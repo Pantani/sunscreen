@@ -22,6 +22,9 @@ path = "src/lib.rs"
 default = ["onboarding"]
 onboarding = []
 
+[lints.clippy]
+cognitive_complexity = "deny"
+
 [[test]]
 name = "render_basic"
 path = "tests/golden/render_basic.rs"

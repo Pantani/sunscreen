@@ -1,5 +1,7 @@
 mod support;
 
+use std::path::Path;
+
 use support::CliEnv;
 
 #[test]
@@ -10,7 +12,19 @@ fn generate_group_exports_idl_hooks_and_clients_command_by_command() {
     let workspace = env.chain_new("generate_walk", "next");
     env.write_target_idl(&workspace, "generate_walk");
 
-    let mut idl = env.sunscreen_in(&workspace);
+    generate_idl(&env, &workspace);
+    generate_frontend_hooks(&env, &workspace);
+    generate_clients(&env, &workspace);
+    assert_idl_rerun_is_unchanged(&env, &workspace);
+
+    assert_eq!(
+        env.fake_log_lines(),
+        ["pnpm exec codama run --all --config codama.json"]
+    );
+}
+
+fn generate_idl(env: &CliEnv, workspace: &Path) {
+    let mut idl = env.sunscreen_in(workspace);
     idl.args(["--json", "generate", "idl"]);
     let idl_report = env.json_ok("generate idl", &mut idl);
     assert_eq!(idl_report["ok"], true);
@@ -25,8 +39,12 @@ fn generate_group_exports_idl_hooks_and_clients_command_by_command() {
     );
     let exported_idl = workspace.join("clients/idl/generate_walk.json");
     assert!(exported_idl.exists());
+    assert_exported_idl(&exported_idl);
+}
+
+fn assert_exported_idl(exported_idl: &Path) {
     let exported_idl_json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&exported_idl).unwrap())
+        serde_json::from_str(&std::fs::read_to_string(exported_idl).unwrap())
             .expect("exported idl json");
     assert!(
         exported_idl_json["metadata"]["name"].is_string(),
@@ -41,8 +59,10 @@ fn generate_group_exports_idl_hooks_and_clients_command_by_command() {
         "exported IDL instructions should not be empty"
     );
     assert_eq!(instructions[0]["name"], "initializeVault");
+}
 
-    let mut hooks = env.sunscreen_in(&workspace);
+fn generate_frontend_hooks(env: &CliEnv, workspace: &Path) {
+    let mut hooks = env.sunscreen_in(workspace);
     hooks.args(["--json", "generate", "frontend-hooks"]);
     let hooks_report = env.json_ok("generate frontend-hooks", &mut hooks);
     assert_eq!(hooks_report["ok"], true);
@@ -61,8 +81,10 @@ fn generate_group_exports_idl_hooks_and_clients_command_by_command() {
     let react_hooks =
         std::fs::read_to_string(workspace.join("app/src/generated/sunscreen/react.ts")).unwrap();
     assert!(react_hooks.contains("useInitializeVaultMutation"));
+}
 
-    let mut clients = env.sunscreen_fake_only_in(&workspace);
+fn generate_clients(env: &CliEnv, workspace: &Path) {
+    let mut clients = env.sunscreen_fake_only_in(workspace);
     clients.args(["--json", "generate", "clients"]);
     let clients_report = env.json_ok("generate clients", &mut clients);
     assert_eq!(clients_report["command"], "generate_clients");
@@ -83,16 +105,13 @@ fn generate_group_exports_idl_hooks_and_clients_command_by_command() {
         codama_config["scripts"]["js"]["from"],
         "@codama/renderers-js"
     );
+}
 
-    let mut idl_again = env.sunscreen_in(&workspace);
+fn assert_idl_rerun_is_unchanged(env: &CliEnv, workspace: &Path) {
+    let mut idl_again = env.sunscreen_in(workspace);
     idl_again.args(["--json", "generate", "idl"]);
     let idl_again_report = env.json_ok("generate idl idempotent rerun", &mut idl_again);
     assert_eq!(idl_again_report["changed_files"], serde_json::json!([]));
-
-    assert_eq!(
-        env.fake_log_lines(),
-        ["pnpm exec codama run --all --config codama.json"]
-    );
 }
 
 #[test]

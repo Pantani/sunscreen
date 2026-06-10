@@ -370,8 +370,19 @@ mod tests {
     #[test]
     fn parse_full_workspace_schema() {
         let cfg = parse_file("valid/workspace.yml").expect("workspace fixture parses");
+        assert_workspace_project(&cfg);
+        assert_workspace_program(&cfg);
+        assert_workspace_frontend_and_runtime(&cfg);
+        assert!(cfg.plugins.is_empty());
+        cfg.validate().expect("semantic validation passes");
+    }
+
+    fn assert_workspace_project(cfg: &Config) {
         assert_eq!(cfg.project.name, "my-protocol");
         assert_eq!(cfg.project.framework, crate::config::Framework::Anchor);
+    }
+
+    fn assert_workspace_program(cfg: &Config) {
         assert_eq!(cfg.programs.len(), 1);
         assert_eq!(cfg.programs[0].name, "my-protocol");
         assert_eq!(
@@ -381,13 +392,14 @@ mod tests {
                 .map(String::as_str),
             Some("EscrowDevnetkD3aQVgPdMxbAv7XmgFK5Q6n8jR2")
         );
+    }
+
+    fn assert_workspace_frontend_and_runtime(cfg: &Config) {
         assert_eq!(cfg.workspace.frontend, crate::config::Frontend::Next);
         assert_eq!(cfg.workspace.frontend_path.as_deref(), Some("app"));
         assert!(cfg.clusters.devnet.url.contains("devnet"));
         assert_eq!(cfg.runtime.engine, crate::config::RuntimeEngine::Surfpool);
         assert_eq!(cfg.runtime.faucet_sol, 100);
-        assert!(cfg.plugins.is_empty());
-        cfg.validate().expect("semantic validation passes");
     }
 
     #[test]

@@ -42,15 +42,25 @@ fn normalize_json_strings(value: &mut serde_json::Value, from: &str, to: &str) {
 
 #[test]
 fn examples_list_describe_and_use_are_embedded_and_deterministic() {
+    assert_examples_list_snapshots();
+    assert_example_describe_snapshot();
+    assert_example_use_snapshot();
+}
+
+fn assert_examples_list_snapshots() {
     let list = json_stdout(&["--json", "examples", "list"]);
     insta::assert_json_snapshot!("examples_list", list);
 
     let filtered = json_stdout(&["--json", "examples", "list", "--tag", "crud"]);
     insta::assert_json_snapshot!("examples_list_tag_crud", filtered);
+}
 
+fn assert_example_describe_snapshot() {
     let describe = json_stdout(&["--json", "examples", "describe", "nft-collection"]);
     insta::assert_json_snapshot!("examples_describe_nft_collection", describe);
+}
 
+fn assert_example_use_snapshot() {
     let tmp = tempfile::tempdir().unwrap();
     let dest = tmp.path().join("copied");
     let out = Command::new(sunscreen_bin())

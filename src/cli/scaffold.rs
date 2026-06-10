@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
-use heck::{ToPascalCase, ToSnakeCase};
+use heck::{ToKebabCase, ToPascalCase, ToSnakeCase};
 
 use crate::config::schema::{Framework as ConfigFramework, Frontend};
 use crate::error::SunscreenError;
@@ -727,85 +727,17 @@ fn run_instruction_in_workspace(
     //
     // `ix_existing_patched`, when `Some`, holds the rewritten file contents to
     // be written back (with the user-region preserved).
-    let mut ix_existing_patched: Option<String> = None;
-    let ix_status: FileStatus = if ix_abs.exists() {
-        let existing = std::fs::read_to_string(&ix_abs).map_err(|e| {
-            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", ix_abs.display()))
-        })?;
-        // The freshly-rendered template carries both the auto-generated and
-        // the (stub) user regions. Extract the auto-generated `file` segment
-        // body from each side and compare only that.
-        let rendered_file_body =
-            extract_segment_body(&instruction_body, "file").ok_or_else(|| {
-                SunscreenError::Other(anyhow::anyhow!(
-                    "rendered instruction missing `segment=file` markers"
-                ))
-            })?;
-        let existing_file_body = extract_segment_body(&existing, "file");
-
-        match existing_file_body {
-            // Existing file has no recognisable `segment=file` marker — fall
-            // back to a strict byte comparison and surface drift if mismatched.
-            None => {
-                if existing == instruction_body {
-                    FileStatus::Unchanged
-                } else {
-                    return Err(SunscreenError::InstructionDrift {
-                        path: ix_rel.to_string_lossy().into_owned(),
-                        hint: "instruction file has no auto-generated markers; \
-                               restore from VCS or delete to regenerate"
-                            .to_string(),
-                    });
-                }
-            }
-            Some(existing_body) if existing_body == rendered_file_body => FileStatus::Unchanged,
-            Some(_) => {
-                // Auto-generated region drifted: re-apply ONLY the `file`
-                // segment, leaving the user-region (`segment=handler`)
-                // untouched.
-                let body_lines: Vec<String> = rendered_file_body
-                    .strip_suffix('\n')
-                    .unwrap_or(&rendered_file_body)
-                    .split('\n')
-                    .map(str::to_string)
-                    .collect();
-                let patches = vec![Patch {
-                    segment: "file".to_string(),
-                    lines: body_lines,
-                }];
-                let patched = apply(&existing, &patches).map_err(map_patch_err)?;
-                ix_existing_patched = Some(patched);
-                FileStatus::Updated
-            }
-        }
-    } else {
-        FileStatus::Created
-    };
+    let ix_plan = plan_instruction_file(&ix_abs, &ix_rel, &instruction_body)?;
 
     // 4. Compute new instructions/mod.rs content.
-    let existing_instructions = list_existing_instructions(program);
-    let mut all_instructions = existing_instructions.clone();
-    if !all_instructions.contains(&ix_snake) {
-        all_instructions.push(ix_snake.clone());
-    }
-    all_instructions.sort();
-    all_instructions.dedup();
+    let all_instructions = merged_instruction_names(program, &ix_snake);
     let mod_segment_body = render_instructions_mod_segment(&all_instructions);
     let (new_mod_contents, mod_action) =
         build_mod_rs(&program.instructions_mod_rs, &mod_segment_body)?;
 
     // Detect mod.rs no-op: if file exists and would be identical, skip.
-    let mod_status: FileStatus = match mod_action {
-        ModAction::Create => FileStatus::Created,
-        ModAction::Replace => {
-            let current = std::fs::read_to_string(&program.instructions_mod_rs).unwrap_or_default();
-            if current == new_mod_contents {
-                FileStatus::Unchanged
-            } else {
-                FileStatus::Updated
-            }
-        }
-    };
+    let mod_status =
+        status_after_action(&program.instructions_mod_rs, &new_mod_contents, mod_action);
 
     // 5. Compute new lib.rs content (best-effort; skip if marker missing).
     //
@@ -814,20 +746,12 @@ fn run_instruction_in_workspace(
     // their argument lists. Then merge in the new instruction, deduplicating
     // by name (the new entry's args win for that name).
     let existing_dispatches = read_existing_dispatches(&program.lib_rs)?;
-    let mut dispatches: Vec<InstructionDispatch> = Vec::new();
-    for n in &all_instructions {
-        let args = if n == &ix_snake {
-            parsed_args.clone()
-        } else if let Some(d) = existing_dispatches.iter().find(|d| &d.name == n) {
-            d.args.clone()
-        } else {
-            Vec::new()
-        };
-        dispatches.push(InstructionDispatch {
-            name: n.clone(),
-            args,
-        });
-    }
+    let dispatches = merge_instruction_dispatches(
+        &all_instructions,
+        &ix_snake,
+        &parsed_args,
+        &existing_dispatches,
+    );
     let dispatch_body = render_dispatch_segment(&program_snake, &dispatches);
     let (lib_new, lib_status) = try_patch_lib_rs(&program.lib_rs, &dispatch_body)?;
 
@@ -845,16 +769,9 @@ fn run_instruction_in_workspace(
 
     // 6. Stage everything via Transaction.
     // Normalize separators to '/' for stable JSON output on all platforms.
-    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let plan_files: Vec<String> = {
-        let mut v = vec![to_fwd(&ix_rel), to_fwd(&mod_rel)];
-        if lib_status.patched {
-            v.push(to_fwd(&lib_rel));
-        }
-        v
-    };
+    let plan_files = instruction_plan_files(&ix_rel, &mod_rel, &lib_rel, lib_status.patched);
 
-    let unchanged = ix_status == FileStatus::Unchanged
+    let unchanged = ix_plan.status == FileStatus::Unchanged
         && mod_status == FileStatus::Unchanged
         && lib_file_status != FileStatus::Updated;
 
@@ -869,83 +786,287 @@ fn run_instruction_in_workspace(
     // in-place mod.rs / lib.rs patches) into one transaction so they land
     // together or not at all. New files use `stage`; in-place rewrites use
     // `stage_replace` (which captures originals for rollback).
-    let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-
-    // Stage the new instruction file (only if not unchanged).
-    if ix_status == FileStatus::Created {
-        tx.stage(&to_fwd(&ix_rel), instruction_body.as_bytes())
-            .map_err(map_tx_err)?;
-    } else if ix_status == FileStatus::Updated {
-        // Auto-generated region drifted: rewrite in place, preserving the
-        // user-region content captured in `ix_existing_patched`.
-        if let Some(patched) = &ix_existing_patched {
-            tx.stage_replace(&ix_abs, patched.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-    }
-
-    // Stage the updated mod.rs only if it actually changed.
-    match (mod_action, mod_status) {
-        (_, FileStatus::Unchanged) => {}
-        (ModAction::Create, _) => {
-            tx.stage(&to_fwd(&mod_rel), new_mod_contents.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-        (ModAction::Replace, _) => {
-            tx.stage_replace(&program.instructions_mod_rs, new_mod_contents.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-    }
-
-    if lib_file_status == FileStatus::Updated {
-        tx.stage_replace(&program.lib_rs, lib_new.as_bytes())
-            .map_err(map_tx_err)?;
-    }
-
-    let written = tx.commit().map_err(map_tx_err)?;
+    let written = commit_instruction_changes(InstructionCommitPlan {
+        root: &ws.root,
+        ix_abs: &ix_abs,
+        ix_rel: &ix_rel,
+        instruction_body: &instruction_body,
+        ix_plan: &ix_plan,
+        mod_abs: &program.instructions_mod_rs,
+        mod_rel: &mod_rel,
+        mod_contents: &new_mod_contents,
+        mod_action,
+        mod_status,
+        lib_abs: &program.lib_rs,
+        lib_contents: &lib_new,
+        lib_status: lib_file_status,
+    })?;
 
     if quiet {
         return Ok(0);
     }
 
-    if json {
+    emit_instruction_result(InstructionResult {
+        json,
+        ix_snake: &ix_snake,
+        program_name: &program_name,
+        plan_files: &plan_files,
+        lib_rel: &lib_rel,
+        lib_status,
+        ix_status: ix_plan.status,
+        mod_status,
+        lib_file_status,
+        unchanged,
+        written_count: written.len(),
+    });
+    Ok(0)
+}
+
+struct InstructionFilePlan {
+    status: FileStatus,
+    patched: Option<String>,
+}
+
+fn plan_instruction_file(
+    ix_abs: &Path,
+    ix_rel: &Path,
+    instruction_body: &str,
+) -> Result<InstructionFilePlan, SunscreenError> {
+    if !ix_abs.exists() {
+        return Ok(InstructionFilePlan {
+            status: FileStatus::Created,
+            patched: None,
+        });
+    }
+
+    let existing = std::fs::read_to_string(ix_abs)
+        .map_err(|e| SunscreenError::Other(anyhow::anyhow!("read {}: {e}", ix_abs.display())))?;
+    let rendered_file_body = extract_segment_body(instruction_body, "file").ok_or_else(|| {
+        SunscreenError::Other(anyhow::anyhow!(
+            "rendered instruction missing `segment=file` markers"
+        ))
+    })?;
+    match extract_segment_body(&existing, "file") {
+        None => plan_unmarked_instruction_file(&existing, instruction_body, ix_rel),
+        Some(existing_body) if existing_body == rendered_file_body => Ok(InstructionFilePlan {
+            status: FileStatus::Unchanged,
+            patched: None,
+        }),
+        Some(_) => repatch_instruction_file(&existing, &rendered_file_body),
+    }
+}
+
+fn plan_unmarked_instruction_file(
+    existing: &str,
+    instruction_body: &str,
+    ix_rel: &Path,
+) -> Result<InstructionFilePlan, SunscreenError> {
+    if existing == instruction_body {
+        return Ok(InstructionFilePlan {
+            status: FileStatus::Unchanged,
+            patched: None,
+        });
+    }
+    Err(SunscreenError::InstructionDrift {
+        path: ix_rel.to_string_lossy().into_owned(),
+        hint: "instruction file has no auto-generated markers; restore from VCS or delete to regenerate"
+            .to_string(),
+    })
+}
+
+fn repatch_instruction_file(
+    existing: &str,
+    rendered_file_body: &str,
+) -> Result<InstructionFilePlan, SunscreenError> {
+    let body_lines: Vec<String> = rendered_file_body
+        .strip_suffix('\n')
+        .unwrap_or(rendered_file_body)
+        .split('\n')
+        .map(str::to_string)
+        .collect();
+    let patches = vec![Patch {
+        segment: "file".to_string(),
+        lines: body_lines,
+    }];
+    let patched = apply(existing, &patches).map_err(map_patch_err)?;
+    Ok(InstructionFilePlan {
+        status: FileStatus::Updated,
+        patched: Some(patched),
+    })
+}
+
+fn merged_instruction_names(program: &ProgramView, ix_snake: &str) -> Vec<String> {
+    let mut names = list_existing_instructions(program);
+    if !names.iter().any(|name| name == ix_snake) {
+        names.push(ix_snake.to_string());
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn merge_instruction_dispatches(
+    all_instructions: &[String],
+    ix_snake: &str,
+    parsed_args: &[ArgSpec],
+    existing_dispatches: &[InstructionDispatch],
+) -> Vec<InstructionDispatch> {
+    all_instructions
+        .iter()
+        .map(|name| InstructionDispatch {
+            name: name.clone(),
+            args: dispatch_args_for(name, ix_snake, parsed_args, existing_dispatches),
+        })
+        .collect()
+}
+
+fn dispatch_args_for(
+    name: &str,
+    ix_snake: &str,
+    parsed_args: &[ArgSpec],
+    existing_dispatches: &[InstructionDispatch],
+) -> Vec<ArgSpec> {
+    if name == ix_snake {
+        return parsed_args.to_vec();
+    }
+    existing_dispatches
+        .iter()
+        .find(|dispatch| dispatch.name == name)
+        .map(|dispatch| dispatch.args.clone())
+        .unwrap_or_default()
+}
+
+fn instruction_plan_files(
+    ix_rel: &Path,
+    mod_rel: &Path,
+    lib_rel: &Path,
+    lib_patched: bool,
+) -> Vec<String> {
+    let mut files = vec![to_fwd_path(ix_rel), to_fwd_path(mod_rel)];
+    if lib_patched {
+        files.push(to_fwd_path(lib_rel));
+    }
+    files
+}
+
+#[derive(Clone, Copy)]
+struct InstructionCommitPlan<'a> {
+    root: &'a Path,
+    ix_abs: &'a Path,
+    ix_rel: &'a Path,
+    instruction_body: &'a str,
+    ix_plan: &'a InstructionFilePlan,
+    mod_abs: &'a Path,
+    mod_rel: &'a Path,
+    mod_contents: &'a str,
+    mod_action: ModAction,
+    mod_status: FileStatus,
+    lib_abs: &'a Path,
+    lib_contents: &'a str,
+    lib_status: FileStatus,
+}
+
+fn commit_instruction_changes(
+    plan: InstructionCommitPlan<'_>,
+) -> Result<Vec<PathBuf>, SunscreenError> {
+    let mut tx = Transaction::new(plan.root).map_err(map_tx_err)?;
+    stage_instruction_file(&mut tx, plan)?;
+    stage_host_change(
+        &mut tx,
+        plan.mod_rel,
+        plan.mod_abs,
+        plan.mod_contents,
+        plan.mod_action,
+        plan.mod_status,
+    )?;
+    if plan.lib_status == FileStatus::Updated {
+        tx.stage_replace(plan.lib_abs, plan.lib_contents.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    tx.commit().map_err(map_tx_err)
+}
+
+fn stage_instruction_file(
+    tx: &mut Transaction,
+    plan: InstructionCommitPlan<'_>,
+) -> Result<(), SunscreenError> {
+    match plan.ix_plan.status {
+        FileStatus::Created => tx
+            .stage(&to_fwd_path(plan.ix_rel), plan.instruction_body.as_bytes())
+            .map_err(map_tx_err),
+        FileStatus::Updated => {
+            if let Some(patched) = &plan.ix_plan.patched {
+                tx.stage_replace(plan.ix_abs, patched.as_bytes())
+                    .map_err(map_tx_err)?;
+            }
+            Ok(())
+        }
+        FileStatus::Unchanged | FileStatus::Skipped => Ok(()),
+    }
+}
+
+struct InstructionResult<'a> {
+    json: bool,
+    ix_snake: &'a str,
+    program_name: &'a str,
+    plan_files: &'a [String],
+    lib_rel: &'a Path,
+    lib_status: LibPatchStatus,
+    ix_status: FileStatus,
+    mod_status: FileStatus,
+    lib_file_status: FileStatus,
+    unchanged: bool,
+    written_count: usize,
+}
+
+fn emit_instruction_result(result: InstructionResult<'_>) {
+    if result.json {
         let payload = serde_json::json!({
             "ok": true,
-            "instruction": ix_snake,
-            "program": program_name,
-            "files": plan_files,
-            "lib_rs_patched": lib_status.patched,
-            "unchanged": unchanged,
-            "instruction_file": ix_status.as_str(),
-            "mod_file": mod_status.as_str(),
-            "lib_file": lib_file_status.as_str(),
-            // `written` covers new files; add replacements (mod.rs / lib.rs
-            // updated in-place) so the count reflects all changed files.
-            "written": written.len()
-                + usize::from(mod_status == FileStatus::Updated)
-                + usize::from(lib_file_status == FileStatus::Updated)
-                + usize::from(ix_status == FileStatus::Updated),
+            "instruction": result.ix_snake,
+            "program": result.program_name,
+            "files": result.plan_files,
+            "lib_rs_patched": result.lib_status.patched,
+            "unchanged": result.unchanged,
+            "instruction_file": result.ix_status.as_str(),
+            "mod_file": result.mod_status.as_str(),
+            "lib_file": result.lib_file_status.as_str(),
+            "written": instruction_written_count(&result),
         });
         println!("{payload}");
-    } else if unchanged {
-        println!("scaffold instruction `{ix_snake}`: unchanged (idempotent no-op)");
-    } else {
+    } else if result.unchanged {
         println!(
-            "scaffolded instruction `{ix_snake}` for program `{}` ({} files)",
-            program_name,
-            plan_files.len()
+            "scaffold instruction `{}`: unchanged (idempotent no-op)",
+            result.ix_snake
         );
-        for f in &plan_files {
-            println!("  {f}");
-        }
-        if !lib_status.patched {
-            println!(
-                "warning: {} has no `dispatch` segment marker — skipped",
-                lib_rel.display()
-            );
-        }
+    } else {
+        emit_instruction_text_result(&result);
     }
-    Ok(0)
+}
+
+fn instruction_written_count(result: &InstructionResult<'_>) -> usize {
+    result.written_count
+        + usize::from(result.mod_status == FileStatus::Updated)
+        + usize::from(result.lib_file_status == FileStatus::Updated)
+        + usize::from(result.ix_status == FileStatus::Updated)
+}
+
+fn emit_instruction_text_result(result: &InstructionResult<'_>) {
+    println!(
+        "scaffolded instruction `{}` for program `{}` ({} files)",
+        result.ix_snake,
+        result.program_name,
+        result.plan_files.len()
+    );
+    for file in result.plan_files {
+        println!("  {file}");
+    }
+    if !result.lib_status.patched {
+        println!(
+            "warning: {} has no `dispatch` segment marker — skipped",
+            result.lib_rel.display()
+        );
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -965,6 +1086,67 @@ impl FileStatus {
             FileStatus::Skipped => "skipped",
         }
     }
+}
+
+fn to_fwd_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn status_after_action(path: &Path, new_contents: &str, action: ModAction) -> FileStatus {
+    match action {
+        ModAction::Create => FileStatus::Created,
+        ModAction::Replace => {
+            let current = std::fs::read_to_string(path).unwrap_or_default();
+            if current == new_contents {
+                FileStatus::Unchanged
+            } else {
+                FileStatus::Updated
+            }
+        }
+    }
+}
+
+fn status_for_rendered_path(path: &Path, new_contents: &str) -> FileStatus {
+    if !path.exists() {
+        return FileStatus::Created;
+    }
+    let current = std::fs::read_to_string(path).unwrap_or_default();
+    if current == new_contents {
+        FileStatus::Unchanged
+    } else {
+        FileStatus::Updated
+    }
+}
+
+fn stage_host_change(
+    tx: &mut Transaction,
+    rel_path: &Path,
+    abs_path: &Path,
+    contents: &str,
+    action: ModAction,
+    status: FileStatus,
+) -> Result<(), SunscreenError> {
+    match (action, status) {
+        (_, FileStatus::Unchanged) => Ok(()),
+        (ModAction::Create, _) => tx
+            .stage(&to_fwd_path(rel_path), contents.as_bytes())
+            .map_err(map_tx_err),
+        (ModAction::Replace, _) => tx
+            .stage_replace(abs_path, contents.as_bytes())
+            .map_err(map_tx_err),
+    }
+}
+
+fn stage_optional_lib_change(
+    tx: &mut Transaction,
+    lib_rs: &Path,
+    contents: Option<&String>,
+) -> Result<(), SunscreenError> {
+    if let Some(contents) = contents {
+        tx.stage_replace(lib_rs, contents.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    Ok(())
 }
 
 fn emit_dry_run(
@@ -1332,56 +1514,49 @@ fn parse_dispatch_entries(body: &str) -> Vec<InstructionDispatch> {
         if name.is_empty() {
             continue;
         }
-        // Extract the parenthesised parameter list (match the closing paren of
-        // the signature — wrappers keep the whole signature on one line).
-        // Find the closing ')' of the param list by scanning forward from
-        // `paren`, tracking angle-bracket depth so we skip over
-        // `Context<Foo>` but stop at the real close-paren.
-        let close = {
-            let chars: Vec<char> = rest[paren + 1..].chars().collect();
-            let mut depth = 0usize;
-            let mut found = None;
-            for (i, &ch) in chars.iter().enumerate() {
-                match ch {
-                    '<' => depth += 1,
-                    '>' if depth > 0 => depth -= 1,
-                    ')' if depth == 0 => {
-                        found = Some(paren + 1 + i);
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-            let Some(pos) = found else { continue };
-            pos
+        let Some(close) = find_dispatch_param_close(rest, paren) else {
+            continue;
         };
         let params = &rest[paren + 1..close];
-        let mut args = Vec::new();
-        for param in params.split(',') {
-            let param = param.trim();
-            if param.is_empty() {
-                continue;
-            }
-            // Skip the actual `ctx: Context<...>` parameter (not e.g. `ctx_seed: u64`).
-            if param.starts_with("ctx:") || param.starts_with("ctx :") {
-                continue;
-            }
-            let Some((arg_name, ty)) = param.split_once(':') else {
-                continue;
-            };
-            let arg_name = arg_name.trim();
-            let ty = ty.trim();
-            if arg_name.is_empty() || ty.is_empty() {
-                continue;
-            }
-            args.push(ArgSpec {
-                name: arg_name.to_string(),
-                ty: ty.to_string(),
-            });
-        }
+        let args = parse_dispatch_args(params);
         out.push(InstructionDispatch { name, args });
     }
     out
+}
+
+fn find_dispatch_param_close(rest: &str, open: usize) -> Option<usize> {
+    let chars: Vec<char> = rest[open + 1..].chars().collect();
+    let mut depth = 0usize;
+    for (idx, &ch) in chars.iter().enumerate() {
+        match ch {
+            '<' => depth += 1,
+            '>' if depth > 0 => depth -= 1,
+            ')' if depth == 0 => return Some(open + 1 + idx),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_dispatch_args(params: &str) -> Vec<ArgSpec> {
+    params.split(',').filter_map(parse_dispatch_arg).collect()
+}
+
+fn parse_dispatch_arg(param: &str) -> Option<ArgSpec> {
+    let param = param.trim();
+    if param.is_empty() || param.starts_with("ctx:") || param.starts_with("ctx :") {
+        return None;
+    }
+    let (arg_name, ty) = param.split_once(':')?;
+    let arg_name = arg_name.trim();
+    let ty = ty.trim();
+    if arg_name.is_empty() || ty.is_empty() {
+        return None;
+    }
+    Some(ArgSpec {
+        name: arg_name.to_string(),
+        ty: ty.to_string(),
+    })
 }
 
 fn list_existing_instructions(program: &ProgramView) -> Vec<String> {
@@ -1596,42 +1771,7 @@ fn run_account_in_workspace(
     // either created fresh, or — when it already exists — either identical
     // (Unchanged) or different (in which case we error out below). There is
     // no in-place rewrite path; a future `--force` flag may add one.
-    let account_status: FileStatus = if account_abs.exists() {
-        let existing = std::fs::read_to_string(&account_abs).map_err(|e| {
-            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", account_abs.display()))
-        })?;
-        let rendered_body = extract_segment_body(&account_body, "file").ok_or_else(|| {
-            SunscreenError::Other(anyhow::anyhow!(
-                "rendered account missing `segment=file` markers"
-            ))
-        })?;
-        match extract_segment_body(&existing, "file") {
-            None => {
-                if existing == account_body {
-                    FileStatus::Unchanged
-                } else {
-                    return Err(SunscreenError::InstructionDrift {
-                        path: account_rel.to_string_lossy().into_owned(),
-                        hint: "account file has no auto-generated markers; \
-                               restore from VCS or delete to regenerate"
-                            .to_string(),
-                    });
-                }
-            }
-            Some(existing_body) if existing_body == rendered_body => FileStatus::Unchanged,
-            Some(_) => {
-                return Err(SunscreenError::UserInput(format!(
-                    "account `{}` already exists at {} with different fields; \
-                     edit the file manually or remove it to regenerate \
-                     (a `--force` flag may be added in a future release)",
-                    args.name,
-                    account_rel.display(),
-                )));
-            }
-        }
-    } else {
-        FileStatus::Created
-    };
+    let account_status = plan_account_file(&account_abs, &account_rel, &account_body, &args.name)?;
 
     // Compute new state/mod.rs body merging existing accounts.
     let mut all_accounts = list_existing_accounts(&state_dir);
@@ -1646,20 +1786,9 @@ fn run_account_in_workspace(
         MOD_RS_HEADER,
         "account",
     )?;
-    let mod_status: FileStatus = match mod_action {
-        ModAction::Create => FileStatus::Created,
-        ModAction::Replace => {
-            let current = std::fs::read_to_string(&mod_abs).unwrap_or_default();
-            if current == new_mod_contents {
-                FileStatus::Unchanged
-            } else {
-                FileStatus::Updated
-            }
-        }
-    };
+    let mod_status = status_after_action(&mod_abs, &new_mod_contents, mod_action);
 
-    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let plan_files: Vec<String> = vec![to_fwd(&account_rel), to_fwd(&mod_rel)];
+    let plan_files: Vec<String> = vec![to_fwd_path(&account_rel), to_fwd_path(&mod_rel)];
     let segments_patched: Vec<&str> = if mod_status == FileStatus::Unchanged {
         Vec::new()
     } else {
@@ -1671,7 +1800,7 @@ fn run_account_in_workspace(
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
     let mut plan_files = plan_files;
     if lib_new.is_some() {
-        plan_files.push(to_fwd(&lib_rel));
+        plan_files.push(to_fwd_path(&lib_rel));
     }
 
     // `unchanged` covers the user-facing files and the lib.rs mod-decl patch.
@@ -1686,29 +1815,19 @@ fn run_account_in_workspace(
         return Ok(0);
     }
 
-    let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-    // Only `Created` and `Unchanged` are reachable here (see comment on
-    // `account_status` above). `Unchanged` is a no-op.
-    if account_status == FileStatus::Created {
-        tx.stage(&to_fwd(&account_rel), account_body.as_bytes())
-            .map_err(map_tx_err)?;
-    }
-    match (mod_action, mod_status) {
-        (_, FileStatus::Unchanged) => {}
-        (ModAction::Create, _) => {
-            tx.stage(&to_fwd(&mod_rel), new_mod_contents.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-        (ModAction::Replace, _) => {
-            tx.stage_replace(&mod_abs, new_mod_contents.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-    }
-    if let Some(ref contents) = lib_new {
-        tx.stage_replace(&program.lib_rs, contents.as_bytes())
-            .map_err(map_tx_err)?;
-    }
-    let _written = tx.commit().map_err(map_tx_err)?;
+    commit_account_changes(AccountCommitPlan {
+        root: &ws.root,
+        account_rel: &account_rel,
+        account_body: &account_body,
+        account_status,
+        mod_abs: &mod_abs,
+        mod_rel: &mod_rel,
+        mod_contents: &new_mod_contents,
+        mod_action,
+        mod_status,
+        lib_abs: &program.lib_rs,
+        lib_new: lib_new.as_ref(),
+    })?;
 
     if !quiet {
         emit_noun_result(
@@ -1734,6 +1853,85 @@ fn run_account_in_workspace(
         );
     }
     Ok(0)
+}
+
+fn plan_account_file(
+    account_abs: &Path,
+    account_rel: &Path,
+    account_body: &str,
+    account_name: &str,
+) -> Result<FileStatus, SunscreenError> {
+    if !account_abs.exists() {
+        return Ok(FileStatus::Created);
+    }
+
+    let existing = std::fs::read_to_string(account_abs).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read {}: {e}", account_abs.display()))
+    })?;
+    let rendered_body = extract_segment_body(account_body, "file").ok_or_else(|| {
+        SunscreenError::Other(anyhow::anyhow!(
+            "rendered account missing `segment=file` markers"
+        ))
+    })?;
+    match extract_segment_body(&existing, "file") {
+        None => plan_unmarked_account_file(&existing, account_body, account_rel),
+        Some(existing_body) if existing_body == rendered_body => Ok(FileStatus::Unchanged),
+        Some(_) => Err(SunscreenError::UserInput(format!(
+            "account `{}` already exists at {} with different fields; \
+             edit the file manually or remove it to regenerate \
+             (a `--force` flag may be added in a future release)",
+            account_name,
+            account_rel.display(),
+        ))),
+    }
+}
+
+fn plan_unmarked_account_file(
+    existing: &str,
+    account_body: &str,
+    account_rel: &Path,
+) -> Result<FileStatus, SunscreenError> {
+    if existing == account_body {
+        return Ok(FileStatus::Unchanged);
+    }
+    Err(SunscreenError::InstructionDrift {
+        path: account_rel.to_string_lossy().into_owned(),
+        hint:
+            "account file has no auto-generated markers; restore from VCS or delete to regenerate"
+                .to_string(),
+    })
+}
+
+struct AccountCommitPlan<'a> {
+    root: &'a Path,
+    account_rel: &'a Path,
+    account_body: &'a str,
+    account_status: FileStatus,
+    mod_abs: &'a Path,
+    mod_rel: &'a Path,
+    mod_contents: &'a str,
+    mod_action: ModAction,
+    mod_status: FileStatus,
+    lib_abs: &'a Path,
+    lib_new: Option<&'a String>,
+}
+
+fn commit_account_changes(plan: AccountCommitPlan<'_>) -> Result<Vec<PathBuf>, SunscreenError> {
+    let mut tx = Transaction::new(plan.root).map_err(map_tx_err)?;
+    if plan.account_status == FileStatus::Created {
+        tx.stage(&to_fwd_path(plan.account_rel), plan.account_body.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    stage_host_change(
+        &mut tx,
+        plan.mod_rel,
+        plan.mod_abs,
+        plan.mod_contents,
+        plan.mod_action,
+        plan.mod_status,
+    )?;
+    stage_optional_lib_change(&mut tx, plan.lib_abs, plan.lib_new)?;
+    tx.commit().map_err(map_tx_err)
 }
 
 const MOD_RS_HEADER: &str = "//! Auto-generated by sunscreen. Edit user regions only.\n\n";
@@ -1859,15 +2057,7 @@ fn run_event_in_workspace(
     };
 
     // Merge with existing entries.
-    let mut existing_events: Vec<(String, String)> = Vec::new(); // (pascal_name, raw_entry)
-    if events_abs.exists() {
-        let existing = std::fs::read_to_string(&events_abs).map_err(|e| {
-            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", events_abs.display()))
-        })?;
-        if let Some(body) = extract_segment_body(&existing, "events") {
-            existing_events = parse_event_entries(&body);
-        }
-    }
+    let existing_events = read_event_entries(&events_abs)?;
 
     // Decide what to render.
     let new_entry = render_event_entry(&new_ctx)
@@ -1875,53 +2065,18 @@ fn run_event_in_workspace(
 
     // Idempotency: if event name exists, compare raw text — if identical, no-op;
     // if different fields, error.
-    let mut merged: Vec<String> = Vec::new();
-    let mut already_present = false;
-    for (name, raw) in &existing_events {
-        if name == &event_pascal {
-            already_present = true;
-            let normalized_new = normalize_entry(&new_entry);
-            let normalized_old = normalize_entry(raw);
-            if normalized_new != normalized_old {
-                return Err(SunscreenError::UserInput(format!(
-                    "event `{event_pascal}` already exists with different fields"
-                )));
-            }
-            merged.push(raw.clone());
-        } else {
-            merged.push(raw.clone());
-        }
-    }
-    if !already_present {
-        merged.push(new_entry.clone());
-    }
-
-    // Build segment body: concat entries separated by blank line for readability.
-    let mut segment_body = String::new();
-    for (i, entry) in merged.iter().enumerate() {
-        if i > 0 {
-            segment_body.push('\n');
-        }
-        segment_body.push_str(entry);
-        if !entry.ends_with('\n') {
-            segment_body.push('\n');
-        }
-    }
+    let merged = merge_named_entries(
+        &existing_events,
+        &event_pascal,
+        &new_entry,
+        format!("event `{event_pascal}` already exists with different fields"),
+    )?;
+    let segment_body = event_segment_body(&merged);
 
     let (new_contents, action) = build_events_host(&events_abs, &segment_body)?;
-    let file_status: FileStatus = if !events_abs.exists() {
-        FileStatus::Created
-    } else {
-        let current = std::fs::read_to_string(&events_abs).unwrap_or_default();
-        if current == new_contents {
-            FileStatus::Unchanged
-        } else {
-            FileStatus::Updated
-        }
-    };
+    let file_status = status_for_rendered_path(&events_abs, &new_contents);
 
-    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let plan_files = vec![to_fwd(&events_rel)];
+    let plan_files = vec![to_fwd_path(&events_rel)];
     let segments_patched: Vec<&str> = if file_status == FileStatus::Unchanged {
         Vec::new()
     } else {
@@ -1935,7 +2090,7 @@ fn run_event_in_workspace(
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
     let mut plan_files = plan_files;
     if lib_new.is_some() {
-        plan_files.push(to_fwd(&lib_rel));
+        plan_files.push(to_fwd_path(&lib_rel));
     }
 
     let unchanged = file_status == FileStatus::Unchanged && lib_new.is_none();
@@ -1947,26 +2102,16 @@ fn run_event_in_workspace(
         return Ok(0);
     }
 
-    if file_status != FileStatus::Unchanged || lib_new.is_some() {
-        let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-        if file_status != FileStatus::Unchanged {
-            match action {
-                ModAction::Create => {
-                    tx.stage(&to_fwd(&events_rel), new_contents.as_bytes())
-                        .map_err(map_tx_err)?;
-                }
-                ModAction::Replace => {
-                    tx.stage_replace(&events_abs, new_contents.as_bytes())
-                        .map_err(map_tx_err)?;
-                }
-            }
-        }
-        if let Some(ref contents) = lib_new {
-            tx.stage_replace(&program.lib_rs, contents.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-        let _ = tx.commit().map_err(map_tx_err)?;
-    }
+    commit_noun_file_changes(NounFileCommitPlan {
+        root: &ws.root,
+        file_abs: &events_abs,
+        file_rel: &events_rel,
+        file_contents: &new_contents,
+        file_action: action,
+        file_status,
+        lib_abs: &program.lib_rs,
+        lib_new: lib_new.as_ref(),
+    })?;
 
     if !quiet {
         emit_noun_result(
@@ -1991,6 +2136,77 @@ fn run_event_in_workspace(
         );
     }
     Ok(0)
+}
+
+fn read_event_entries(events_abs: &Path) -> Result<Vec<(String, String)>, SunscreenError> {
+    if !events_abs.exists() {
+        return Ok(Vec::new());
+    }
+    let existing = std::fs::read_to_string(events_abs).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read {}: {e}", events_abs.display()))
+    })?;
+    Ok(extract_segment_body(&existing, "events")
+        .map(|body| parse_event_entries(&body))
+        .unwrap_or_default())
+}
+
+fn merge_named_entries(
+    existing: &[(String, String)],
+    target_name: &str,
+    new_entry: &str,
+    conflict_message: String,
+) -> Result<Vec<String>, SunscreenError> {
+    let mut merged: Vec<String> = existing.iter().map(|(_, raw)| raw.clone()).collect();
+    let Some(idx) = existing.iter().position(|(name, _)| name == target_name) else {
+        merged.push(new_entry.to_string());
+        return Ok(merged);
+    };
+    if normalize_entry(&existing[idx].1) != normalize_entry(new_entry) {
+        return Err(SunscreenError::UserInput(conflict_message));
+    }
+    Ok(merged)
+}
+
+fn event_segment_body(entries: &[String]) -> String {
+    let mut segment_body = String::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        if idx > 0 {
+            segment_body.push('\n');
+        }
+        segment_body.push_str(entry);
+        if !entry.ends_with('\n') {
+            segment_body.push('\n');
+        }
+    }
+    segment_body
+}
+
+struct NounFileCommitPlan<'a> {
+    root: &'a Path,
+    file_abs: &'a Path,
+    file_rel: &'a Path,
+    file_contents: &'a str,
+    file_action: ModAction,
+    file_status: FileStatus,
+    lib_abs: &'a Path,
+    lib_new: Option<&'a String>,
+}
+
+fn commit_noun_file_changes(plan: NounFileCommitPlan<'_>) -> Result<Vec<PathBuf>, SunscreenError> {
+    if plan.file_status == FileStatus::Unchanged && plan.lib_new.is_none() {
+        return Ok(Vec::new());
+    }
+    let mut tx = Transaction::new(plan.root).map_err(map_tx_err)?;
+    stage_host_change(
+        &mut tx,
+        plan.file_rel,
+        plan.file_abs,
+        plan.file_contents,
+        plan.file_action,
+        plan.file_status,
+    )?;
+    stage_optional_lib_change(&mut tx, plan.lib_abs, plan.lib_new)?;
+    tx.commit().map_err(map_tx_err)
 }
 
 /// Build (or rewrite) `events.rs` content with the given segment body. If the
@@ -2177,62 +2393,23 @@ fn run_error_in_workspace(
     };
 
     // Collect existing variants from segment body (if file exists).
-    let mut existing_variants: Vec<(String, String)> = Vec::new(); // (PascalName, raw block)
-    if errors_abs.exists() {
-        let existing = std::fs::read_to_string(&errors_abs).map_err(|e| {
-            SunscreenError::Other(anyhow::anyhow!("read {}: {e}", errors_abs.display()))
-        })?;
-        if let Some(body) = extract_segment_body(&existing, "error_variants") {
-            existing_variants = parse_error_variants(&body);
-        }
-    }
+    let existing_variants = read_error_variants(&errors_abs)?;
 
     let new_entry = render_error_variant(&new_variant)
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render error variant: {e}")))?;
 
-    let mut merged: Vec<String> = Vec::new();
-    let mut already_present = false;
-    for (name, raw) in &existing_variants {
-        if name == &variant_pascal {
-            already_present = true;
-            if normalize_entry(raw) != normalize_entry(&new_entry) {
-                return Err(SunscreenError::UserInput(format!(
-                    "error variant `{variant_pascal}` already exists with a different message"
-                )));
-            }
-            merged.push(raw.clone());
-        } else {
-            merged.push(raw.clone());
-        }
-    }
-    if !already_present {
-        merged.push(new_entry.clone());
-    }
-
-    // Build segment body: each entry indented by 4 spaces (nested inside enum).
-    let mut segment_body = String::new();
-    for entry in &merged {
-        for line in entry.lines() {
-            segment_body.push_str("    ");
-            segment_body.push_str(line);
-            segment_body.push('\n');
-        }
-    }
+    let merged = merge_named_entries(
+        &existing_variants,
+        &variant_pascal,
+        &new_entry,
+        format!("error variant `{variant_pascal}` already exists with a different message"),
+    )?;
+    let segment_body = error_variants_segment_body(&merged);
 
     let (new_contents, action) = build_errors_host(&errors_abs, &enum_name, &segment_body)?;
-    let file_status: FileStatus = if !errors_abs.exists() {
-        FileStatus::Created
-    } else {
-        let current = std::fs::read_to_string(&errors_abs).unwrap_or_default();
-        if current == new_contents {
-            FileStatus::Unchanged
-        } else {
-            FileStatus::Updated
-        }
-    };
+    let file_status = status_for_rendered_path(&errors_abs, &new_contents);
 
-    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let plan_files = vec![to_fwd(&errors_rel)];
+    let plan_files = vec![to_fwd_path(&errors_rel)];
     let segments_patched: Vec<&str> = if file_status == FileStatus::Unchanged {
         Vec::new()
     } else {
@@ -2243,7 +2420,7 @@ fn run_error_in_workspace(
     let lib_rel = relative_to(&ws.root, &program.lib_rs);
     let mut plan_files = plan_files;
     if lib_new.is_some() {
-        plan_files.push(to_fwd(&lib_rel));
+        plan_files.push(to_fwd_path(&lib_rel));
     }
 
     let unchanged = file_status == FileStatus::Unchanged && lib_new.is_none();
@@ -2255,26 +2432,16 @@ fn run_error_in_workspace(
         return Ok(0);
     }
 
-    if file_status != FileStatus::Unchanged || lib_new.is_some() {
-        let mut tx = Transaction::new(&ws.root).map_err(map_tx_err)?;
-        if file_status != FileStatus::Unchanged {
-            match action {
-                ModAction::Create => {
-                    tx.stage(&to_fwd(&errors_rel), new_contents.as_bytes())
-                        .map_err(map_tx_err)?;
-                }
-                ModAction::Replace => {
-                    tx.stage_replace(&errors_abs, new_contents.as_bytes())
-                        .map_err(map_tx_err)?;
-                }
-            }
-        }
-        if let Some(ref contents) = lib_new {
-            tx.stage_replace(&program.lib_rs, contents.as_bytes())
-                .map_err(map_tx_err)?;
-        }
-        let _ = tx.commit().map_err(map_tx_err)?;
-    }
+    commit_noun_file_changes(NounFileCommitPlan {
+        root: &ws.root,
+        file_abs: &errors_abs,
+        file_rel: &errors_rel,
+        file_contents: &new_contents,
+        file_action: action,
+        file_status,
+        lib_abs: &program.lib_rs,
+        lib_new: lib_new.as_ref(),
+    })?;
 
     if !quiet {
         emit_noun_result(
@@ -2299,6 +2466,30 @@ fn run_error_in_workspace(
         );
     }
     Ok(0)
+}
+
+fn read_error_variants(errors_abs: &Path) -> Result<Vec<(String, String)>, SunscreenError> {
+    if !errors_abs.exists() {
+        return Ok(Vec::new());
+    }
+    let existing = std::fs::read_to_string(errors_abs).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read {}: {e}", errors_abs.display()))
+    })?;
+    Ok(extract_segment_body(&existing, "error_variants")
+        .map(|body| parse_error_variants(&body))
+        .unwrap_or_default())
+}
+
+fn error_variants_segment_body(entries: &[String]) -> String {
+    let mut segment_body = String::new();
+    for entry in entries {
+        for line in entry.lines() {
+            segment_body.push_str("    ");
+            segment_body.push_str(line);
+            segment_body.push('\n');
+        }
+    }
+    segment_body
 }
 
 fn build_errors_host(
@@ -2472,29 +2663,10 @@ fn run_program(args: &ProgramArgs, json: bool, quiet: bool) -> Result<i32, Sunsc
         .unwrap_or_else(|| "0.30.1".to_string());
     let rust_edition = ws.config.project.rust_edition.clone();
 
-    // Idempotency check #1: program already declared in sunscreen.yml.
-    if ws
-        .config
-        .programs
-        .iter()
-        .any(|p| p.name.to_snake_case() == program_snake || p.name.to_kebab_case() == program_kebab)
-    {
-        return Err(SunscreenError::UserInput(format!(
-            "program `{program_kebab}` already declared in sunscreen.yml; \
-             pick a different name or remove the existing entry"
-        )));
-    }
-
-    // Idempotency check #2: directory already exists on disk.
+    ensure_program_not_declared(&ws, &program_snake, &program_kebab)?;
     let program_dir_rel = format!("programs/{program_snake}");
     let program_dir_abs = workspace_root.join(&program_dir_rel);
-    if program_dir_abs.exists() {
-        return Err(SunscreenError::UserInput(format!(
-            "program directory already exists at {}; \
-             remove it manually before re-scaffolding",
-            program_dir_rel
-        )));
-    }
+    ensure_program_dir_absent(&program_dir_abs, &program_dir_rel)?;
 
     // Render program crate into a temp staging dir so we can adopt every
     // file into the transaction atomically.
@@ -2510,128 +2682,256 @@ fn run_program(args: &ProgramArgs, json: bool, quiet: bool) -> Result<i32, Sunsc
         .map_err(|e| SunscreenError::Other(anyhow::anyhow!("render program: {e}")))?;
 
     // Planned file list (workspace-relative, forward-slash).
-    let to_fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let mut planned: Vec<String> = Vec::new();
-    for abs in &rendered {
-        let rel = abs
-            .strip_prefix(staging_tmp.path())
-            .unwrap_or(abs)
-            .to_path_buf();
-        // Files are already emitted under `programs/<program_snake>/...`
-        // because `render_program` substitutes `__program__` at render time.
-        // The relative path is workspace-relative as-is.
-        let rel_str = to_fwd(&rel);
-        planned.push(rel_str);
-    }
+    let planned = planned_program_files(&rendered, staging_tmp.path());
 
     // Patches to existing manifests.
     let anchor_toml_abs = workspace_root.join("Anchor.toml");
     let sunscreen_yml_abs = workspace_root.join("sunscreen.yml");
-    let anchor_toml_rel = "Anchor.toml".to_string();
-    let sunscreen_yml_rel = "sunscreen.yml".to_string();
-
-    // Only treat manifests as "patched" when their content actually changes
-    // — idempotent re-runs (and `--dry-run` plans) shouldn't claim edits.
-    let anchor_new = if anchor_toml_abs.exists() {
-        let patched = patch_anchor_toml(&anchor_toml_abs, &program_snake, program_id)?;
-        let current = std::fs::read_to_string(&anchor_toml_abs).unwrap_or_default();
-        if patched == current {
-            None
-        } else {
-            Some(patched)
-        }
-    } else {
-        None
-    };
-    let sunscreen_patched =
-        patch_sunscreen_yml(&sunscreen_yml_abs, &program_kebab, &program_snake)?;
-    let sunscreen_current = std::fs::read_to_string(&sunscreen_yml_abs).unwrap_or_default();
-    let sunscreen_new = if sunscreen_patched == sunscreen_current {
-        None
-    } else {
-        Some(sunscreen_patched)
-    };
-
-    let mut all_files = planned.clone();
-    if anchor_new.is_some() {
-        all_files.push(anchor_toml_rel.clone());
-    }
-    if sunscreen_new.is_some() {
-        all_files.push(sunscreen_yml_rel.clone());
-    }
+    let manifest_patches = plan_program_manifest_patches(
+        &planned,
+        &anchor_toml_abs,
+        &sunscreen_yml_abs,
+        &program_kebab,
+        &program_snake,
+        program_id,
+    )?;
 
     if args.dry_run {
-        if !quiet {
-            if json {
-                let payload = serde_json::json!({
-                    "ok": true,
-                    "dry_run": true,
-                    "noun": "program",
-                    "name": program_kebab,
-                    "files": all_files,
-                    "program_id": program_id,
-                });
-                println!("{payload}");
-            } else {
-                println!("dry-run: would scaffold program `{program_kebab}`");
-                for f in &all_files {
-                    println!("  {f}");
-                }
-            }
-        }
+        emit_program_dry_run(
+            quiet,
+            json,
+            &program_kebab,
+            program_id,
+            &manifest_patches.all_files,
+        );
         return Ok(0);
     }
 
     // Commit: stage all new files + Anchor.toml / sunscreen.yml replacements.
-    let mut tx = Transaction::new(&workspace_root).map_err(map_tx_err)?;
-    for abs in &rendered {
-        let rel = abs
-            .strip_prefix(staging_tmp.path())
-            .unwrap_or(abs)
-            .to_path_buf();
-        let bytes = std::fs::read(abs).map_err(|e| {
-            SunscreenError::Other(anyhow::anyhow!("read staged {}: {e}", abs.display()))
-        })?;
-        tx.stage(&to_fwd(&rel), &bytes).map_err(map_tx_err)?;
-    }
-    if let Some(ref new_toml) = anchor_new {
-        tx.stage_replace(&anchor_toml_abs, new_toml.as_bytes())
-            .map_err(map_tx_err)?;
-    }
-    if let Some(ref new_yml) = sunscreen_new {
-        tx.stage_replace(&sunscreen_yml_abs, new_yml.as_bytes())
-            .map_err(map_tx_err)?;
-    }
-    let written = tx.commit().map_err(map_tx_err)?;
+    let written = commit_program_changes(ProgramCommitPlan {
+        workspace_root: &workspace_root,
+        staging_root: staging_tmp.path(),
+        rendered: &rendered,
+        anchor_toml_abs: &anchor_toml_abs,
+        sunscreen_yml_abs: &sunscreen_yml_abs,
+        manifest_patches: &manifest_patches,
+    })?;
 
     if quiet {
         return Ok(0);
     }
 
+    emit_program_result(
+        json,
+        &program_kebab,
+        program_id,
+        &manifest_patches,
+        written.len(),
+    );
+    Ok(0)
+}
+
+fn ensure_program_not_declared(
+    ws: &workspace::WorkspaceRoot,
+    program_snake: &str,
+    program_kebab: &str,
+) -> Result<(), SunscreenError> {
+    if ws.config.programs.iter().any(|program| {
+        program.name.to_snake_case() == program_snake
+            || program.name.to_kebab_case() == program_kebab
+    }) {
+        return Err(SunscreenError::UserInput(format!(
+            "program `{program_kebab}` already declared in sunscreen.yml; \
+             pick a different name or remove the existing entry"
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_program_dir_absent(
+    program_dir_abs: &Path,
+    program_dir_rel: &str,
+) -> Result<(), SunscreenError> {
+    if program_dir_abs.exists() {
+        return Err(SunscreenError::UserInput(format!(
+            "program directory already exists at {}; \
+             remove it manually before re-scaffolding",
+            program_dir_rel
+        )));
+    }
+    Ok(())
+}
+
+fn planned_program_files(rendered: &[PathBuf], staging_root: &Path) -> Vec<String> {
+    rendered
+        .iter()
+        .map(|abs| {
+            let rel = abs.strip_prefix(staging_root).unwrap_or(abs);
+            to_fwd_path(rel)
+        })
+        .collect()
+}
+
+struct ProgramManifestPatches {
+    anchor_new: Option<String>,
+    sunscreen_new: Option<String>,
+    all_files: Vec<String>,
+}
+
+fn plan_program_manifest_patches(
+    planned: &[String],
+    anchor_toml_abs: &Path,
+    sunscreen_yml_abs: &Path,
+    program_kebab: &str,
+    program_snake: &str,
+    program_id: &str,
+) -> Result<ProgramManifestPatches, SunscreenError> {
+    let anchor_new = changed_anchor_toml(anchor_toml_abs, program_snake, program_id)?;
+    let sunscreen_new = changed_sunscreen_yml(sunscreen_yml_abs, program_kebab, program_snake)?;
+    let all_files = program_all_files(planned, anchor_new.is_some(), sunscreen_new.is_some());
+    Ok(ProgramManifestPatches {
+        anchor_new,
+        sunscreen_new,
+        all_files,
+    })
+}
+
+fn changed_anchor_toml(
+    anchor_toml_abs: &Path,
+    program_snake: &str,
+    program_id: &str,
+) -> Result<Option<String>, SunscreenError> {
+    if !anchor_toml_abs.exists() {
+        return Ok(None);
+    }
+    let patched = patch_anchor_toml(anchor_toml_abs, program_snake, program_id)?;
+    Ok(changed_contents(anchor_toml_abs, patched))
+}
+
+fn changed_sunscreen_yml(
+    sunscreen_yml_abs: &Path,
+    program_kebab: &str,
+    program_snake: &str,
+) -> Result<Option<String>, SunscreenError> {
+    let patched = patch_sunscreen_yml(sunscreen_yml_abs, program_kebab, program_snake)?;
+    Ok(changed_contents(sunscreen_yml_abs, patched))
+}
+
+fn changed_contents(path: &Path, patched: String) -> Option<String> {
+    let current = std::fs::read_to_string(path).unwrap_or_default();
+    (patched != current).then_some(patched)
+}
+
+fn program_all_files(
+    planned: &[String],
+    anchor_patched: bool,
+    sunscreen_patched: bool,
+) -> Vec<String> {
+    let mut files = planned.to_vec();
+    if anchor_patched {
+        files.push("Anchor.toml".to_string());
+    }
+    if sunscreen_patched {
+        files.push("sunscreen.yml".to_string());
+    }
+    files
+}
+
+fn emit_program_dry_run(
+    quiet: bool,
+    json: bool,
+    program_kebab: &str,
+    program_id: &str,
+    all_files: &[String],
+) {
+    if quiet {
+        return;
+    }
+    if json {
+        let payload = serde_json::json!({
+            "ok": true,
+            "dry_run": true,
+            "noun": "program",
+            "name": program_kebab,
+            "files": all_files,
+            "program_id": program_id,
+        });
+        println!("{payload}");
+    } else {
+        println!("dry-run: would scaffold program `{program_kebab}`");
+        for file in all_files {
+            println!("  {file}");
+        }
+    }
+}
+
+struct ProgramCommitPlan<'a> {
+    workspace_root: &'a Path,
+    staging_root: &'a Path,
+    rendered: &'a [PathBuf],
+    anchor_toml_abs: &'a Path,
+    sunscreen_yml_abs: &'a Path,
+    manifest_patches: &'a ProgramManifestPatches,
+}
+
+fn commit_program_changes(plan: ProgramCommitPlan<'_>) -> Result<Vec<PathBuf>, SunscreenError> {
+    let mut tx = Transaction::new(plan.workspace_root).map_err(map_tx_err)?;
+    for abs in plan.rendered {
+        stage_rendered_program_file(&mut tx, abs, plan.staging_root)?;
+    }
+    if let Some(ref new_toml) = plan.manifest_patches.anchor_new {
+        tx.stage_replace(plan.anchor_toml_abs, new_toml.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    if let Some(ref new_yml) = plan.manifest_patches.sunscreen_new {
+        tx.stage_replace(plan.sunscreen_yml_abs, new_yml.as_bytes())
+            .map_err(map_tx_err)?;
+    }
+    tx.commit().map_err(map_tx_err)
+}
+
+fn stage_rendered_program_file(
+    tx: &mut Transaction,
+    abs: &Path,
+    staging_root: &Path,
+) -> Result<(), SunscreenError> {
+    let rel = abs.strip_prefix(staging_root).unwrap_or(abs);
+    let bytes = std::fs::read(abs).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read staged {}: {e}", abs.display()))
+    })?;
+    tx.stage(&to_fwd_path(rel), &bytes).map_err(map_tx_err)
+}
+
+fn emit_program_result(
+    json: bool,
+    program_kebab: &str,
+    program_id: &str,
+    patches: &ProgramManifestPatches,
+    written_count: usize,
+) {
     if json {
         let payload = serde_json::json!({
             "ok": true,
             "noun": "program",
             "name": program_kebab,
-            "files": all_files,
-            "written": written.len()
-                + usize::from(anchor_new.is_some())
-                + usize::from(sunscreen_new.is_some()),
+            "files": patches.all_files,
+            "written": written_count
+                + usize::from(patches.anchor_new.is_some())
+                + usize::from(patches.sunscreen_new.is_some()),
             "program_id": program_id,
-            "anchor_toml_patched": anchor_new.is_some(),
-            "sunscreen_yml_patched": sunscreen_new.is_some(),
+            "anchor_toml_patched": patches.anchor_new.is_some(),
+            "sunscreen_yml_patched": patches.sunscreen_new.is_some(),
         });
         println!("{payload}");
     } else {
         println!(
             "scaffolded program `{program_kebab}` ({} files)",
-            all_files.len()
+            patches.all_files.len()
         );
-        for f in &all_files {
-            println!("  {f}");
+        for file in &patches.all_files {
+            println!("  {file}");
         }
     }
-    Ok(0)
 }
 
 fn validate_program_name(name: &str) -> Result<(), SunscreenError> {
@@ -2859,15 +3159,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(v.len(), 6);
-        assert!(v[0].mutable);
-        assert!(v[0].signer);
-        assert_eq!(v[0].seeds.as_ref().unwrap().len(), 2);
-        assert!(v[1].mutable);
-        assert!(v[1].signer);
-        assert_eq!(v[2].kind, AccountKind::SystemProgram);
-        assert_eq!(v[3].kind, AccountKind::TokenProgram);
-        assert_eq!(v[4].kind, AccountKind::AssociatedTokenProgram);
-        assert_eq!(v[5].kind, AccountKind::AssociatedTokenProgram);
+        assert_vault_account(&v[0]);
+        assert_mut_signer_account(&v[1]);
+        assert_program_shorthands(&v[2..]);
+    }
+
+    fn assert_vault_account(account: &AccountSpec) {
+        assert!(account.mutable);
+        assert!(account.signer);
+        assert_eq!(account.seeds.as_ref().unwrap().len(), 2);
+    }
+
+    fn assert_mut_signer_account(account: &AccountSpec) {
+        assert!(account.mutable);
+        assert!(account.signer);
+    }
+
+    fn assert_program_shorthands(accounts: &[AccountSpec]) {
+        assert_eq!(accounts[0].kind, AccountKind::SystemProgram);
+        assert_eq!(accounts[1].kind, AccountKind::TokenProgram);
+        assert_eq!(accounts[2].kind, AccountKind::AssociatedTokenProgram);
+        assert_eq!(accounts[3].kind, AccountKind::AssociatedTokenProgram);
     }
 
     #[test]

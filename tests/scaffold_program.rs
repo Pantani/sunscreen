@@ -1,6 +1,6 @@
 //! End-to-end tests for `sunscreen scaffold program`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn sunscreen_bin() -> &'static str {
@@ -105,9 +105,7 @@ fn remove_auto_marker_lines_preserves_crlf_line_endings() {
 
 #[test]
 fn scaffold_program_creates_crate_and_patches_manifests() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("multi_app");
-    run_chain_new(&ws, "multi_app");
+    let (_tmp, ws) = chain_workspace("multi_app");
 
     let out = run(&ws, &["scaffold", "program", "extra-prog", "--json"]);
     assert!(
@@ -124,7 +122,19 @@ fn scaffold_program_creates_crate_and_patches_manifests() {
         Some("extra-prog")
     );
 
-    // Files on disk.
+    assert_extra_program_files(&ws);
+    assert_extra_program_anchor_toml(&ws);
+    assert_extra_program_manifest(&ws);
+}
+
+fn chain_workspace(name: &str) -> (tempfile::TempDir, PathBuf) {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join(name);
+    run_chain_new(&ws, name);
+    (tmp, ws)
+}
+
+fn assert_extra_program_files(ws: &Path) {
     let prog_dir = ws.join("programs/extra_prog");
     assert!(prog_dir.is_dir(), "program directory missing");
     let lib_rs = prog_dir.join("src/lib.rs");
@@ -137,8 +147,9 @@ fn scaffold_program_creates_crate_and_patches_manifests() {
     let mod_rs = prog_dir.join("src/instructions/mod.rs");
     let mod_contents = std::fs::read_to_string(&mod_rs).unwrap();
     assert!(mod_contents.contains("segment=instructions"));
+}
 
-    // Anchor.toml patched on both clusters.
+fn assert_extra_program_anchor_toml(ws: &Path) {
     let anchor_toml = std::fs::read_to_string(ws.join("Anchor.toml")).unwrap();
     assert!(
         anchor_toml.contains("[programs.localnet]"),
@@ -154,8 +165,9 @@ fn scaffold_program_creates_crate_and_patches_manifests() {
         after_devnet.contains("extra_prog ="),
         "devnet entry missing: {anchor_toml}"
     );
+}
 
-    // sunscreen.yml has the new program entry.
+fn assert_extra_program_manifest(ws: &Path) {
     let cfg = std::fs::read_to_string(ws.join("sunscreen.yml")).unwrap();
     assert!(
         cfg.contains("name: extra-prog"),
@@ -296,26 +308,37 @@ fn chain_doctor_fix_markers_repairs_drift() {
 
 #[test]
 fn chain_doctor_fix_markers_rebuilds_dispatch_inside_program_module() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("dispatch_repair_app");
-    run_chain_new(&ws, "dispatch_repair_app");
+    let (_tmp, ws) = chain_workspace("dispatch_repair_app");
+    let (program_name, program_dir) = single_program(&ws);
+    scaffold_deposit_instruction(&ws, &program_name);
 
+    let lib_rs = program_dir.join("src/lib.rs");
+    remove_dispatch_segment(&lib_rs);
+    assert_doctor_fix_succeeds(&ws, "dispatch repair should succeed");
+    assert_dispatch_repaired(&lib_rs);
+}
+
+fn single_program(ws: &Path) -> (String, PathBuf) {
     let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
         .unwrap()
         .flatten()
         .filter(|e| e.path().is_dir())
         .collect();
-    let program_name = entries[0].file_name().to_string_lossy().into_owned();
-    let program_dir = entries[0].path();
+    (
+        entries[0].file_name().to_string_lossy().into_owned(),
+        entries[0].path(),
+    )
+}
 
+fn scaffold_deposit_instruction(ws: &Path, program_name: &str) {
     let scaffold = run(
-        &ws,
+        ws,
         &[
             "scaffold",
             "instruction",
             "deposit",
             "--program",
-            &program_name,
+            program_name,
             "--args",
             "amount:u64",
             "--json",
@@ -326,30 +349,35 @@ fn chain_doctor_fix_markers_rebuilds_dispatch_inside_program_module() {
         "scaffold instruction failed: stderr={}",
         String::from_utf8_lossy(&scaffold.stderr)
     );
+}
 
-    let lib_rs = program_dir.join("src/lib.rs");
-    let original = std::fs::read_to_string(&lib_rs).unwrap();
+fn remove_dispatch_segment(lib_rs: &Path) {
+    let original = std::fs::read_to_string(lib_rs).unwrap();
     assert!(original.contains("sunscreen:auto-generated:begin segment=dispatch"));
     assert!(original.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
 
     let scrubbed = strip_auto_segment(&original, "dispatch");
     assert!(!scrubbed.contains("sunscreen:auto-generated:begin segment=dispatch"));
     assert!(!scrubbed.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
-    std::fs::write(&lib_rs, scrubbed).unwrap();
+    std::fs::write(lib_rs, scrubbed).unwrap();
+}
 
-    let report = run(&ws, &["chain", "doctor", "--json"]);
+fn assert_doctor_fix_succeeds(ws: &Path, message: &str) {
+    let report = run(ws, &["chain", "doctor", "--json"]);
     assert_eq!(report.status.code(), Some(6));
 
-    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    let fix = run(ws, &["chain", "doctor", "--fix-markers", "--json"]);
     assert_eq!(
         fix.status.code(),
         Some(0),
-        "dispatch repair should succeed; stdout={} stderr={}",
+        "{message}; stdout={} stderr={}",
         String::from_utf8_lossy(&fix.stdout),
         String::from_utf8_lossy(&fix.stderr)
     );
+}
 
-    let after = std::fs::read_to_string(&lib_rs).unwrap();
+fn assert_dispatch_repaired(lib_rs: &Path) {
+    let after = std::fs::read_to_string(lib_rs).unwrap();
     assert!(after.contains("sunscreen:auto-generated:begin segment=dispatch"));
     assert!(after.contains("pub fn deposit(ctx: Context<Deposit>, amount: u64)"));
     assert!(after.contains("instructions::deposit::handler(ctx, amount)"));
@@ -501,7 +529,7 @@ fn chain_doctor_fix_markers_repairs_empty_error_variants_enum() {
     );
 
     let errors_rs = program_dir.join("src/errors.rs");
-    let original = std::fs::read_to_string(&errors_rs).unwrap();
+    let original = std::fs::read_to_string(errors_rs.as_path()).unwrap();
     let scrubbed = strip_auto_segment(&original, "error_variants");
     assert!(!scrubbed.contains("Unauthorized,"));
     std::fs::write(&errors_rs, scrubbed).unwrap();
@@ -515,33 +543,31 @@ fn chain_doctor_fix_markers_repairs_empty_error_variants_enum() {
         String::from_utf8_lossy(&fix.stderr)
     );
 
-    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    let after = std::fs::read_to_string(errors_rs).unwrap();
     assert!(after.contains("sunscreen:auto-generated:begin segment=error_variants"));
     assert!(after.contains("sunscreen:auto-generated:end segment=error_variants"));
 }
 
 #[test]
 fn chain_doctor_fix_markers_refuses_ambiguous_error_variants_body() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("error_repair_app");
-    run_chain_new(&ws, "error_repair_app");
+    let (_tmp, ws) = chain_workspace("error_repair_app");
+    let (program_name, program_dir) = single_program(&ws);
+    scaffold_unauthorized_error(&ws, &program_name);
 
-    let entries: Vec<_> = std::fs::read_dir(ws.join("programs"))
-        .unwrap()
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .collect();
-    let program_name = entries[0].file_name().to_string_lossy().into_owned();
-    let program_dir = entries[0].path();
+    let errors_rs = program_dir.join("src/errors.rs");
+    let scrubbed = remove_error_variant_markers(&errors_rs);
+    assert_ambiguous_error_repair_stays_unresolved(&ws, &errors_rs, &scrubbed);
+}
 
+fn scaffold_unauthorized_error(ws: &Path, program_name: &str) {
     let scaffold = run(
-        &ws,
+        ws,
         &[
             "scaffold",
             "error",
             "Unauthorized",
             "--program",
-            &program_name,
+            program_name,
             "--msg",
             "caller is not authorized } today",
             "--json",
@@ -552,21 +578,25 @@ fn chain_doctor_fix_markers_refuses_ambiguous_error_variants_body() {
         "scaffold error failed: stderr={}",
         String::from_utf8_lossy(&scaffold.stderr)
     );
+}
 
-    let errors_rs = program_dir.join("src/errors.rs");
-    let original = std::fs::read_to_string(&errors_rs).unwrap();
+fn remove_error_variant_markers(errors_rs: &Path) -> String {
+    let original = std::fs::read_to_string(errors_rs).unwrap();
     assert!(original.contains("sunscreen:auto-generated:begin segment=error_variants"));
     assert!(original.contains("Unauthorized,"));
 
     let scrubbed = remove_auto_marker_lines(&original, "error_variants");
     assert!(!scrubbed.contains("sunscreen:auto-generated:begin segment=error_variants"));
     assert!(scrubbed.contains("Unauthorized,"));
-    std::fs::write(&errors_rs, &scrubbed).unwrap();
+    std::fs::write(errors_rs, &scrubbed).unwrap();
+    scrubbed
+}
 
-    let report = run(&ws, &["chain", "doctor", "--json"]);
+fn assert_ambiguous_error_repair_stays_unresolved(ws: &Path, errors_rs: &Path, scrubbed: &str) {
+    let report = run(ws, &["chain", "doctor", "--json"]);
     assert_eq!(report.status.code(), Some(6));
 
-    let fix = run(&ws, &["chain", "doctor", "--fix-markers", "--json"]);
+    let fix = run(ws, &["chain", "doctor", "--fix-markers", "--json"]);
     assert_eq!(
         fix.status.code(),
         Some(6),
@@ -575,7 +605,7 @@ fn chain_doctor_fix_markers_refuses_ambiguous_error_variants_body() {
         String::from_utf8_lossy(&fix.stderr)
     );
 
-    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    let after = std::fs::read_to_string(errors_rs).unwrap();
     assert_eq!(after, scrubbed);
     assert!(!after.contains("sunscreen:auto-generated:begin segment=error_variants"));
     assert!(after.contains("Unauthorized,"));

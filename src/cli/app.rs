@@ -322,65 +322,14 @@ fn run_describe(args: &DescribeArgs, json_out: bool) -> Result<i32, SunscreenErr
 
 fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError> {
     let (source, parsed_version) = split_source_version(&args.source);
-    if source.trim().is_empty() {
-        return Err(SunscreenError::UserInput(
-            "`source` must not be empty".to_string(),
-        ));
-    }
-    let version = match (&args.version, parsed_version) {
-        (Some(flag), _) => Some(flag.clone()),
-        (None, parsed) => parsed,
-    };
-    if let Some(ref v) = version {
-        validate_version_str(v).map_err(SunscreenError::UserInput)?;
-    }
+    validate_install_source(&source)?;
+    let version = resolve_install_version(args, parsed_version)?;
 
     let ws = workspace_root()?;
     let mut cfg = ws.config.clone();
+    let install = apply_plugin_install(&mut cfg.plugins, &source, version)?;
 
-    // Conflict / idempotency check:
-    // - exact source match → update entry in place (resolved across ALL
-    //   entries first so a same-basename neighbour does not shadow it).
-    // - otherwise, basename collision with a different source → exit 4.
-    let basename = normalize_basename(&source);
-    let existing_idx = cfg.plugins.iter().position(|p| p.source == source);
-    if existing_idx.is_none() {
-        if let Some(p) = cfg
-            .plugins
-            .iter()
-            .find(|p| normalize_basename(&p.source) == basename)
-        {
-            return Err(SunscreenError::UserInput(format!(
-                "plugin name {basename:?} already declared with a different source ({:?}); \
-                 uninstall it first or pick a different source",
-                p.source
-            )));
-        }
-    }
-
-    let mut changed = false;
-    let stored_version = if let Some(i) = existing_idx {
-        // Bare `install <source>` (no `@version` / `--version`) MUST NOT
-        // silently unpin an entry that already carries a pinned version.
-        // Re-pin only when the caller explicitly supplied a version.
-        if let Some(new_v) = version.clone() {
-            if cfg.plugins[i].version.as_deref() != Some(new_v.as_str()) {
-                cfg.plugins[i].version = Some(new_v);
-                changed = true;
-            }
-        }
-        cfg.plugins[i].version.clone()
-    } else {
-        cfg.plugins.push(PluginCfg {
-            source: source.clone(),
-            version: version.clone(),
-            ..PluginCfg::default()
-        });
-        changed = true;
-        version.clone()
-    };
-
-    if !args.dry_run && changed {
+    if !args.dry_run && install.changed {
         write_plugins(&ws, cfg.plugins.clone())?;
     } else {
         cfg.validate()
@@ -389,7 +338,7 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
 
     let app = plugin_to_json(&PluginCfg {
         source: source.clone(),
-        version: stored_version,
+        version: install.stored_version,
         ..PluginCfg::default()
     });
     let config_rel = ws
@@ -404,18 +353,101 @@ fn run_install(args: &InstallArgs, json_out: bool) -> Result<i32, SunscreenError
             "command": "app install",
             "config": config_rel,
             "app": app,
-            "changed": changed,
+            "changed": install.changed,
             "dry_run": args.dry_run,
         });
         println!("{payload}");
     } else if args.dry_run {
         println!("dry-run: would declare plugin {source}");
-    } else if changed {
+    } else if install.changed {
         println!("declared plugin {source}");
     } else {
         println!("plugin {source} already declared (no change)");
     }
     Ok(0)
+}
+
+struct InstallChange {
+    changed: bool,
+    stored_version: Option<String>,
+}
+
+fn validate_install_source(source: &str) -> Result<(), SunscreenError> {
+    if source.trim().is_empty() {
+        return Err(SunscreenError::UserInput(
+            "`source` must not be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_install_version(
+    args: &InstallArgs,
+    parsed_version: Option<String>,
+) -> Result<Option<String>, SunscreenError> {
+    let version = args.version.clone().or(parsed_version);
+    if let Some(ref v) = version {
+        validate_version_str(v).map_err(SunscreenError::UserInput)?;
+    }
+    Ok(version)
+}
+
+fn apply_plugin_install(
+    plugins: &mut Vec<PluginCfg>,
+    source: &str,
+    version: Option<String>,
+) -> Result<InstallChange, SunscreenError> {
+    // Exact source matches are updated before basename collision checks, so a
+    // same-basename neighbour cannot shadow an idempotent reinstall.
+    if let Some(idx) = plugins.iter().position(|p| p.source == source) {
+        return Ok(update_existing_plugin(plugins, idx, version));
+    }
+    reject_basename_collision(plugins, source)?;
+    plugins.push(PluginCfg {
+        source: source.to_string(),
+        version: version.clone(),
+        ..PluginCfg::default()
+    });
+    Ok(InstallChange {
+        changed: true,
+        stored_version: version,
+    })
+}
+
+fn update_existing_plugin(
+    plugins: &mut [PluginCfg],
+    idx: usize,
+    version: Option<String>,
+) -> InstallChange {
+    let mut changed = false;
+    // Bare `install <source>` (no `@version` / `--version`) MUST NOT silently
+    // unpin an entry that already carries a pinned version. Re-pin only when
+    // the caller explicitly supplied a version.
+    if let Some(new_v) = version {
+        if plugins[idx].version.as_deref() != Some(new_v.as_str()) {
+            plugins[idx].version = Some(new_v);
+            changed = true;
+        }
+    }
+    InstallChange {
+        changed,
+        stored_version: plugins[idx].version.clone(),
+    }
+}
+
+fn reject_basename_collision(plugins: &[PluginCfg], source: &str) -> Result<(), SunscreenError> {
+    let basename = normalize_basename(source);
+    if let Some(plugin) = plugins
+        .iter()
+        .find(|p| normalize_basename(&p.source) == basename)
+    {
+        return Err(SunscreenError::UserInput(format!(
+            "plugin name {basename:?} already declared with a different source ({:?}); \
+             uninstall it first or pick a different source",
+            plugin.source
+        )));
+    }
+    Ok(())
 }
 
 fn run_commands(json_out: bool) -> Result<i32, SunscreenError> {

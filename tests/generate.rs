@@ -305,6 +305,13 @@ fn generate_frontend_hooks_defaults_to_react_hooks_for_next() {
         String::from_utf8_lossy(&first.stderr)
     );
     let generated_root = ws.join("app/src/generated/sunscreen");
+    assert_react_generated_files(&generated_root);
+    assert_react_hooks(&generated_root);
+    assert_core_defaults(&generated_root);
+    assert_frontend_hooks_rerun_is_idempotent(&ws, &generated_root);
+}
+
+fn assert_react_generated_files(generated_root: &Path) {
     for rel in ["idl.ts", "core.ts", "react.ts", "index.ts"] {
         assert!(generated_root.join(rel).exists(), "missing generated {rel}");
     }
@@ -312,19 +319,25 @@ fn generate_frontend_hooks_defaults_to_react_hooks_for_next() {
         !generated_root.join("solid.ts").exists(),
         "React frontend default should not generate Solid hooks"
     );
+}
 
+fn assert_react_hooks(generated_root: &Path) {
     let react = std::fs::read_to_string(generated_root.join("react.ts")).unwrap();
     assert!(react.contains("@tanstack/react-query"));
     assert!(react.contains("useInitializeVaultMutation"));
     assert!(react.contains("useCloseVaultMutation"));
     assert!(react.contains("useProgramAccountsQuery"));
+}
 
+fn assert_core_defaults(generated_root: &Path) {
     let core = std::fs::read_to_string(generated_root.join("core.ts")).unwrap();
     assert!(core.contains("createSurfpoolRpc"));
     assert!(core.contains("http://127.0.0.1:8899"));
+}
 
-    let before = read_tree(&generated_root);
-    let second = run_generate(&ws, &["--json", "generate", "frontend-hooks"]);
+fn assert_frontend_hooks_rerun_is_idempotent(ws: &Path, generated_root: &Path) {
+    let before = read_tree(generated_root);
+    let second = run_generate(ws, &["--json", "generate", "frontend-hooks"]);
     assert!(second.status.success());
     let second_payload = parse_json(&second.stdout);
     assert_eq!(
@@ -335,7 +348,7 @@ fn generate_frontend_hooks_defaults_to_react_hooks_for_next() {
             .len(),
         0
     );
-    assert_eq!(before, read_tree(&generated_root));
+    assert_eq!(before, read_tree(generated_root));
 }
 
 #[test]

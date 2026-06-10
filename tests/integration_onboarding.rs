@@ -2,6 +2,8 @@
 
 mod support;
 
+use std::path::{Path, PathBuf};
+
 use support::CliEnv;
 
 #[test]
@@ -10,6 +12,19 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     env.install_fake_anchor_success();
     env.install_fake_solana_success();
 
+    assert_examples_flow(&env);
+
+    assert_learn_flow(&env);
+
+    let workspace = run_quickstart(&env);
+
+    assert_wallet_flow(&env, &workspace);
+
+    assert_deploy_flow(&env, &workspace);
+    assert_onboarding_fake_logs(&env);
+}
+
+fn assert_examples_flow(env: &CliEnv) {
     let mut examples = env.sunscreen();
     examples.args(["--json", "examples", "list"]);
     let examples_report = env.json_ok("examples list", &mut examples);
@@ -39,7 +54,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         .as_str()
         .unwrap()
         .contains("sunscreen quickstart blog"));
+    assert_examples_use_dry_run(env);
+}
 
+fn assert_examples_use_dry_run(env: &CliEnv) {
     let example_dest = env.path("dry-example");
     let mut example_dry = env.sunscreen();
     example_dry
@@ -50,7 +68,9 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     assert_eq!(example_dry_report["dry_run"], true);
     assert_eq!(example_dry_report["written"], 0);
     assert!(!example_dest.exists());
+}
 
+fn assert_learn_flow(env: &CliEnv) {
     let mut learn = env.sunscreen();
     learn.args(["--json", "learn"]);
     let learn_list = env.json_ok("learn list", &mut learn);
@@ -71,7 +91,9 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     missing_learn.args(["--json", "learn", "missing-topic"]);
     let missing_learn_report = env.json_err("learn missing topic", &mut missing_learn, 4);
     assert_eq!(missing_learn_report["kind"], "user_input");
+}
 
+fn run_quickstart(env: &CliEnv) -> PathBuf {
     let workspace = env.path("onboard_walk");
     let mut quickstart = env.sunscreen();
     quickstart
@@ -90,6 +112,12 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         ])
         .arg(&workspace);
     let quickstart_report = env.json_ok("quickstart nft", &mut quickstart);
+    assert_quickstart_report(&quickstart_report);
+    assert_quickstart_workspace(&workspace);
+    workspace
+}
+
+fn assert_quickstart_report(quickstart_report: &serde_json::Value) {
     assert_eq!(quickstart_report["ok"], true);
     assert_eq!(quickstart_report["command"], "quickstart");
     assert_eq!(quickstart_report["recipe"], "nft");
@@ -107,12 +135,26 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         .unwrap()
         .iter()
         .any(|step| step.as_str().unwrap().contains("sunscreen wallet new")));
+}
+
+fn assert_quickstart_workspace(workspace: &Path) {
     assert!(workspace
         .join("programs/onboard_walk/src/state/nft_collection.rs")
         .exists());
+}
 
+fn assert_wallet_flow(env: &CliEnv, workspace: &Path) {
+    assert_wallet_new(env, workspace);
+    assert_named_wallet(env, workspace);
+    assert_wallet_list(env, workspace);
+    assert_wallet_set_default(env, workspace);
+    assert_wallet_balance(env, workspace);
+    assert_wallet_airdrop_dry_run(env, workspace);
+}
+
+fn assert_wallet_new(env: &CliEnv, workspace: &Path) {
     let wallet = env.path("wallet.json");
-    let mut wallet_new = env.sunscreen_fake_only_in(&workspace);
+    let mut wallet_new = env.sunscreen_fake_only_in(workspace);
     wallet_new.args([
         "--json",
         "wallet",
@@ -131,8 +173,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         .contains("Fake111111111111111111111111111111111111111"));
     assert_eq!(wallet_report["stderr"], "");
     assert!(wallet.exists());
+}
 
-    let mut named_wallet = env.sunscreen_fake_only_in(&workspace);
+fn assert_named_wallet(env: &CliEnv, workspace: &Path) {
+    let mut named_wallet = env.sunscreen_fake_only_in(workspace);
     named_wallet.args([
         "--json",
         "wallet",
@@ -143,8 +187,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     let named_wallet_report = env.json_ok("wallet new named", &mut named_wallet);
     assert_eq!(named_wallet_report["command"], "wallet_new");
     assert!(workspace.join(".sunscreen/wallets/treasury.json").exists());
+}
 
-    let mut wallet_list = env.sunscreen_in(&workspace);
+fn assert_wallet_list(env: &CliEnv, workspace: &Path) {
+    let mut wallet_list = env.sunscreen_in(workspace);
     wallet_list.args(["--json", "wallet", "list"]);
     let wallet_list_report = env.json_ok("wallet list", &mut wallet_list);
     let wallet_names = wallet_list_report["wallets"]
@@ -155,8 +201,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         .collect::<Vec<_>>();
     assert!(wallet_names.contains(&"solana-default"));
     assert!(wallet_names.contains(&"treasury"));
+}
 
-    let mut set_default = env.sunscreen_in(&workspace);
+fn assert_wallet_set_default(env: &CliEnv, workspace: &Path) {
+    let mut set_default = env.sunscreen_in(workspace);
     set_default.args([
         "--json",
         "wallet",
@@ -172,8 +220,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         .as_str()
         .unwrap()
         .ends_with(".sunscreen/wallets/treasury.json"));
+}
 
-    let mut balance = env.sunscreen_fake_only_in(&workspace);
+fn assert_wallet_balance(env: &CliEnv, workspace: &Path) {
+    let mut balance = env.sunscreen_fake_only_in(workspace);
     balance.args([
         "--json",
         "wallet",
@@ -186,8 +236,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     assert_eq!(balance_report["command"], "wallet_balance");
     assert_eq!(balance_report["cluster"], "devnet");
     assert_eq!(balance_report["stdout"], "1 SOL\n");
+}
 
-    let mut airdrop_dry = env.sunscreen_fake_only_in(&workspace);
+fn assert_wallet_airdrop_dry_run(env: &CliEnv, workspace: &Path) {
+    let mut airdrop_dry = env.sunscreen_fake_only_in(workspace);
     airdrop_dry.args([
         "--json",
         "wallet",
@@ -213,8 +265,16 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
             "FakePubkey"
         ])
     );
+}
 
-    let mut deploy_mainnet_guard = env.sunscreen_in(&workspace);
+fn assert_deploy_flow(env: &CliEnv, workspace: &Path) {
+    assert_deploy_guards(env, workspace);
+    assert_deploy_dry_run(env, workspace);
+    assert_deploy_devnet(env, workspace);
+}
+
+fn assert_deploy_guards(env: &CliEnv, workspace: &Path) {
+    let mut deploy_mainnet_guard = env.sunscreen_in(workspace);
     deploy_mainnet_guard.args(["--json", "deploy", "mainnet", "--program", "onboard_walk"]);
     let deploy_mainnet_error = env.json_err(
         "deploy mainnet requires confirmation",
@@ -223,7 +283,7 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     );
     assert_eq!(deploy_mainnet_error["kind"], "user_input");
 
-    let mut deploy_verify_guard = env.sunscreen_in(&workspace);
+    let mut deploy_verify_guard = env.sunscreen_in(workspace);
     deploy_verify_guard.args(["--json", "deploy", "devnet", "--verify"]);
     let deploy_verify_error = env.json_err(
         "deploy verify requires program",
@@ -231,8 +291,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         4,
     );
     assert_eq!(deploy_verify_error["kind"], "user_input");
+}
 
-    let mut deploy_dry = env.sunscreen_in(&workspace);
+fn assert_deploy_dry_run(env: &CliEnv, workspace: &Path) {
+    let mut deploy_dry = env.sunscreen_in(workspace);
     deploy_dry.args([
         "--json",
         "deploy",
@@ -255,8 +317,10 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
             "onboard_walk"
         ])
     );
+}
 
-    let mut deploy = env.sunscreen_fake_only_in(&workspace);
+fn assert_deploy_devnet(env: &CliEnv, workspace: &Path) {
+    let mut deploy = env.sunscreen_fake_only_in(workspace);
     deploy.args([
         "--json",
         "deploy",
@@ -279,7 +343,9 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
         .as_str()
         .unwrap()
         .contains("fake anchor verify onboard_walk"));
+}
 
+fn assert_onboarding_fake_logs(env: &CliEnv) {
     let log_lines = env.fake_log_lines();
     assert!(log_lines
         .iter()
@@ -287,9 +353,9 @@ fn onboarding_group_runs_examples_learn_quickstart_wallet_and_deploy() {
     assert!(log_lines
         .iter()
         .any(|line| line == "solana balance --url https://api.devnet.solana.com FakePubkey"));
-    assert!(log_lines.iter().any(|line| {
-        line == "anchor deploy --provider.cluster devnet --program-name onboard_walk"
-    }));
+    assert!(log_lines
+        .iter()
+        .any(|line| line == "anchor deploy --provider.cluster devnet --program-name onboard_walk"));
     assert!(log_lines
         .iter()
         .any(|line| line == "anchor verify onboard_walk --provider.cluster devnet"));

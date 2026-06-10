@@ -43,19 +43,37 @@ fn discover_program(ws: &Path) -> String {
 
 #[test]
 fn scaffold_account_creates_file_and_patches_mod() {
+    let (_tmp, ws, program_name) = account_workspace();
+
+    scaffold_vault_account(&ws, &program_name);
+
+    let program_dir = ws.join("programs").join(&program_name);
+    let acct_file = program_dir.join("src/state/vault.rs");
+    let mod_file = program_dir.join("src/state/mod.rs");
+    assert_account_outputs(&acct_file, &mod_file);
+
+    let mod_contents = std::fs::read_to_string(mod_file.as_path()).unwrap();
+    assert_account_rerun(&ws, &program_name, &mod_file, &mod_contents);
+    assert_account_dry_run(&ws, &program_name, &program_dir, &acct_file);
+}
+
+fn account_workspace() -> (tempfile::TempDir, std::path::PathBuf, String) {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("acct_app");
     run_chain_new(&ws, "acct_app");
     let program_name = discover_program(&ws);
+    (tmp, ws, program_name)
+}
 
+fn scaffold_vault_account(ws: &Path, program_name: &str) {
     let out = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "account",
             "Vault",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "owner:Pubkey,total:u64",
             "--json",
@@ -66,33 +84,33 @@ fn scaffold_account_creates_file_and_patches_mod() {
         "scaffold account failed: stderr={}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
 
-    let program_dir = ws.join("programs").join(&program_name);
-    let acct_file = program_dir.join("src/state/vault.rs");
-    let mod_file = program_dir.join("src/state/mod.rs");
+fn assert_account_outputs(acct_file: &Path, mod_file: &Path) {
     assert!(acct_file.exists(), "account file missing");
     assert!(mod_file.exists(), "state/mod.rs missing");
 
-    let mod_contents = std::fs::read_to_string(&mod_file).unwrap();
+    let mod_contents = std::fs::read_to_string(mod_file).unwrap();
     assert!(mod_contents.contains("pub mod vault;"));
     assert!(mod_contents.contains("pub use vault::*;"));
     assert!(mod_contents.contains("sunscreen:auto-generated:begin segment=accounts"));
 
-    let acct_contents = std::fs::read_to_string(&acct_file).unwrap();
+    let acct_contents = std::fs::read_to_string(acct_file).unwrap();
     assert!(acct_contents.contains("#[account]"));
     assert!(acct_contents.contains("pub struct Vault"));
     assert!(acct_contents.contains("pub owner: Pubkey,"));
     assert!(acct_contents.contains("pub total: u64,"));
+}
 
-    // Re-run: idempotent no-op.
+fn assert_account_rerun(ws: &Path, program_name: &str, mod_file: &Path, mod_contents: &str) {
     let again = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "account",
             "Vault",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "owner:Pubkey,total:u64",
             "--json",
@@ -107,19 +125,20 @@ fn scaffold_account_creates_file_and_patches_mod() {
         Some(true)
     );
 
-    let snap = std::fs::read_to_string(&mod_file).unwrap();
+    let snap = std::fs::read_to_string(mod_file).unwrap();
     assert_eq!(snap, mod_contents);
+}
 
-    // Dry-run: does not touch disk even with new args.
-    let acct_before = std::fs::read_to_string(&acct_file).unwrap();
+fn assert_account_dry_run(ws: &Path, program_name: &str, program_dir: &Path, acct_file: &Path) {
+    let acct_before = std::fs::read_to_string(acct_file).unwrap();
     let dry = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "account",
             "Treasury",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "balance:u64",
             "--dry-run",
@@ -128,7 +147,7 @@ fn scaffold_account_creates_file_and_patches_mod() {
     );
     assert!(dry.status.success());
     assert!(!program_dir.join("src/state/treasury.rs").exists());
-    let acct_after = std::fs::read_to_string(&acct_file).unwrap();
+    let acct_after = std::fs::read_to_string(acct_file).unwrap();
     assert_eq!(acct_before, acct_after);
 }
 

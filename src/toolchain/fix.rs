@@ -292,109 +292,117 @@ fn skipped(report: &ToolReport, message: impl Into<String>) -> ToolFixResult {
 
 fn recipe<R: CommandRunner>(runner: &R, report: &ToolReport) -> Result<Vec<FixStep>, String> {
     match report.name.as_str() {
-        "anchor" => {
-            let mut steps = Vec::new();
-            if runner.which("avm").is_none() {
-                steps.push(FixStep::new("cargo").args([
-                    "install",
-                    "--git",
-                    "https://github.com/solana-foundation/anchor",
-                    "avm",
-                    "--force",
-                ]));
-            }
-            steps.push(FixStep::new("avm").args(["install", "latest"]));
-            steps.push(FixStep::new("avm").args(["use", "latest"]));
-            Ok(steps)
-        }
-        "solana" => {
-            if cfg!(windows) {
-                Err("automatic Solana CLI installation is not supported on Windows yet".to_string())
-            } else if runner.which("agave-install").is_some() {
-                Ok(vec![FixStep::new("agave-install").arg("update")])
-            } else {
-                Ok(vec![FixStep::shell(download_then_run_shell(
-                    "https://release.anza.xyz/stable/install",
-                    "",
-                ))])
-            }
-        }
-        "rustc" | "cargo" => {
-            if runner.which("rustup").is_some() {
-                Ok(vec![FixStep::new("rustup").args(["update", "stable"])])
-            } else if cfg!(windows) {
-                Err("install Rust with rustup, then run `sunscreen doctor` again".to_string())
-            } else {
-                Ok(vec![FixStep::shell(download_then_run_shell(
-                    "https://sh.rustup.rs",
-                    "-y",
-                ))])
-            }
-        }
+        "anchor" => Ok(anchor_recipe(runner)),
+        "solana" => solana_recipe(runner),
+        "rustc" | "cargo" => rust_recipe(runner),
         "node" => {
             Err("install Node.js with your OS package manager or version manager".to_string())
         }
-        "pnpm" => {
-            let version = report
-                .min_version
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "latest".to_string());
-            let pnpm_spec = format!("pnpm@{version}");
-            if runner.which("corepack").is_some() {
-                Ok(vec![
-                    FixStep::corepack().args(["enable", "pnpm"]),
-                    FixStep::corepack().args(["install", "-g", pnpm_spec.as_str()]),
-                ])
-            } else if runner.which("npm").is_some() {
-                Ok(vec![
-                    FixStep::new("npm").args(["install", "--global", "corepack@latest"]),
-                    FixStep::corepack().args(["enable", "pnpm"]),
-                    FixStep::corepack().args(["install", "-g", pnpm_spec.as_str()]),
-                ])
-            } else {
-                Err(
-                    "install Node.js/npm first, then run `sunscreen doctor --fix` again"
-                        .to_string(),
-                )
-            }
-        }
-        "codama" => {
-            if runner.which("pnpm").is_some() {
-                Ok(vec![
-                    FixStep::new("pnpm").args(["add", "--global", "codama"])
-                ])
-            } else {
-                Err(
-                    "install pnpm first, then run `sunscreen doctor --component codama --fix`"
-                        .to_string(),
-                )
-            }
-        }
-        "surfpool" => {
-            if cfg!(windows) {
-                Err("automatic Surfpool installation is not supported on Windows yet".to_string())
-            } else {
-                Ok(vec![FixStep::shell(
-                    "curl -sL https://run.surfpool.run/ | bash",
-                )])
-            }
-        }
-        "rustfmt" => {
-            if runner.which("rustup").is_some() {
-                Ok(vec![FixStep::new("rustup").args([
-                    "component",
-                    "add",
-                    "rustfmt",
-                ])])
-            } else {
-                Err("install rustup first, then run `rustup component add rustfmt`".to_string())
-            }
-        }
+        "pnpm" => pnpm_recipe(runner, report),
+        "codama" => codama_recipe(runner),
+        "surfpool" => surfpool_recipe(),
+        "rustfmt" => rustfmt_recipe(runner),
         _ => Err(format!(
             "no automatic repair recipe is registered for {}",
             report.name
         )),
+    }
+}
+
+fn anchor_recipe<R: CommandRunner>(runner: &R) -> Vec<FixStep> {
+    let mut steps = Vec::new();
+    if runner.which("avm").is_none() {
+        steps.push(FixStep::new("cargo").args([
+            "install",
+            "--git",
+            "https://github.com/solana-foundation/anchor",
+            "avm",
+            "--force",
+        ]));
+    }
+    steps.push(FixStep::new("avm").args(["install", "latest"]));
+    steps.push(FixStep::new("avm").args(["use", "latest"]));
+    steps
+}
+
+fn solana_recipe<R: CommandRunner>(runner: &R) -> Result<Vec<FixStep>, String> {
+    if cfg!(windows) {
+        Err("automatic Solana CLI installation is not supported on Windows yet".to_string())
+    } else if runner.which("agave-install").is_some() {
+        Ok(vec![FixStep::new("agave-install").arg("update")])
+    } else {
+        Ok(vec![FixStep::shell(download_then_run_shell(
+            "https://release.anza.xyz/stable/install",
+            "",
+        ))])
+    }
+}
+
+fn rust_recipe<R: CommandRunner>(runner: &R) -> Result<Vec<FixStep>, String> {
+    if runner.which("rustup").is_some() {
+        Ok(vec![FixStep::new("rustup").args(["update", "stable"])])
+    } else if cfg!(windows) {
+        Err("install Rust with rustup, then run `sunscreen doctor` again".to_string())
+    } else {
+        Ok(vec![FixStep::shell(download_then_run_shell(
+            "https://sh.rustup.rs",
+            "-y",
+        ))])
+    }
+}
+
+fn pnpm_recipe<R: CommandRunner>(runner: &R, report: &ToolReport) -> Result<Vec<FixStep>, String> {
+    let version = report
+        .min_version
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "latest".to_string());
+    let pnpm_spec = format!("pnpm@{version}");
+    if runner.which("corepack").is_some() {
+        Ok(vec![
+            FixStep::corepack().args(["enable", "pnpm"]),
+            FixStep::corepack().args(["install", "-g", pnpm_spec.as_str()]),
+        ])
+    } else if runner.which("npm").is_some() {
+        Ok(vec![
+            FixStep::new("npm").args(["install", "--global", "corepack@latest"]),
+            FixStep::corepack().args(["enable", "pnpm"]),
+            FixStep::corepack().args(["install", "-g", pnpm_spec.as_str()]),
+        ])
+    } else {
+        Err("install Node.js/npm first, then run `sunscreen doctor --fix` again".to_string())
+    }
+}
+
+fn codama_recipe<R: CommandRunner>(runner: &R) -> Result<Vec<FixStep>, String> {
+    if runner.which("pnpm").is_some() {
+        Ok(vec![
+            FixStep::new("pnpm").args(["add", "--global", "codama"])
+        ])
+    } else {
+        Err("install pnpm first, then run `sunscreen doctor --component codama --fix`".to_string())
+    }
+}
+
+fn surfpool_recipe() -> Result<Vec<FixStep>, String> {
+    if cfg!(windows) {
+        Err("automatic Surfpool installation is not supported on Windows yet".to_string())
+    } else {
+        Ok(vec![FixStep::shell(
+            "curl -sL https://run.surfpool.run/ | bash",
+        )])
+    }
+}
+
+fn rustfmt_recipe<R: CommandRunner>(runner: &R) -> Result<Vec<FixStep>, String> {
+    if runner.which("rustup").is_some() {
+        Ok(vec![FixStep::new("rustup").args([
+            "component",
+            "add",
+            "rustfmt",
+        ])])
+    } else {
+        Err("install rustup first, then run `rustup component add rustfmt`".to_string())
     }
 }
 

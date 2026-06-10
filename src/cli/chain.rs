@@ -334,20 +334,13 @@ fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
     let build_kind = build_kind_for_config(ws.config.project.framework);
     let run_codama = build_kind == BuildKind::Anchor && !args.no_codama;
 
-    if structured {
-        emit_build_event(serde_json::json!({
-            "event": "chain_build_started",
-            "workspace": ws.root.display().to_string(),
-            "framework": framework_str(ws.config.project.framework),
-            "programs": programs,
-            "codama": run_codama,
-        }));
-    } else {
-        println!(
-            "chain build: running build pipeline in {}",
-            ws.root.display()
-        );
-    }
+    emit_build_start(
+        structured,
+        &ws.root,
+        framework_str(ws.config.project.framework),
+        programs,
+        run_codama,
+    );
 
     let report = BuildPipeline::new(&ws.root)
         .run(
@@ -362,37 +355,73 @@ fn run_build(args: &BuildArgs, json: bool) -> Result<i32, SunscreenError> {
         .map_err(|err| map_pipeline_err(err, "sunscreen chain build"))?;
     let exit_code = report.exit_code;
     let success = report.success();
-    let status = if success { "ok" } else { "failed" };
-
-    if structured {
-        for event in &report.events {
-            emit_build_event(event.to_json());
-        }
-        emit_build_event(serde_json::json!({
-            "event": "chain_build_finished",
-            "status": status,
-            "exit_code": exit_code,
-        }));
-    } else {
-        for event in &report.events {
-            if event.event != "command_finished" {
-                continue;
-            }
-            if let Some(stdout) = &event.stdout {
-                print!("{stdout}");
-            }
-            if let Some(stderr) = &event.stderr {
-                eprint!("{stderr}");
-            }
-        }
-        if success {
-            println!("chain build: ok");
-        } else {
-            eprintln!("chain build: pipeline failed with exit code {exit_code}");
-        }
-    }
+    emit_build_report(structured, &report);
 
     Ok(if success { 0 } else { exit_code })
+}
+
+fn emit_build_start(
+    structured: bool,
+    workspace_root: &Path,
+    framework: &'static str,
+    programs: Vec<String>,
+    run_codama: bool,
+) {
+    if structured {
+        emit_build_event(serde_json::json!({
+            "event": "chain_build_started",
+            "workspace": workspace_root.display().to_string(),
+            "framework": framework,
+            "programs": programs,
+            "codama": run_codama,
+        }));
+    } else {
+        println!(
+            "chain build: running build pipeline in {}",
+            workspace_root.display()
+        );
+    }
+}
+
+fn emit_build_report(structured: bool, report: &crate::runtime::pipeline::PipelineReport) {
+    if structured {
+        emit_structured_build_report(report);
+    } else {
+        emit_text_build_report(report);
+    }
+}
+
+fn emit_structured_build_report(report: &crate::runtime::pipeline::PipelineReport) {
+    for event in &report.events {
+        emit_build_event(event.to_json());
+    }
+    emit_build_event(serde_json::json!({
+        "event": "chain_build_finished",
+        "status": if report.success() { "ok" } else { "failed" },
+        "exit_code": report.exit_code,
+    }));
+}
+
+fn emit_text_build_report(report: &crate::runtime::pipeline::PipelineReport) {
+    for event in &report.events {
+        if event.event != "command_finished" {
+            continue;
+        }
+        if let Some(stdout) = &event.stdout {
+            print!("{stdout}");
+        }
+        if let Some(stderr) = &event.stderr {
+            eprint!("{stderr}");
+        }
+    }
+    if report.success() {
+        println!("chain build: ok");
+    } else {
+        eprintln!(
+            "chain build: pipeline failed with exit code {}",
+            report.exit_code
+        );
+    }
 }
 
 fn emit_build_event(payload: serde_json::Value) {
@@ -813,123 +842,90 @@ struct MarkerSite {
 }
 
 fn run_doctor(args: &DoctorArgs, json: bool) -> Result<i32, SunscreenError> {
-    use crate::rustpatch::{scan, MarkerKind};
     use crate::workspace;
 
     let ws = workspace::find_root(None)?;
+    let summary = collect_marker_checks(&ws.programs, &ws.root, args.fix_markers)?;
+    let unresolved = summary
+        .drift_count
+        .saturating_sub(summary.fixed_files.len());
 
-    let mut findings: Vec<serde_json::Value> = Vec::new();
-    let mut fixed_files: Vec<String> = Vec::new();
-    let mut drift_count = 0usize;
+    emit_doctor_report(json, args.fix_markers, &summary, unresolved);
 
-    for program in &ws.programs {
-        let sites = expected_sites(program, &ws.root);
-        for site in &sites {
-            if site.optional && !site.abs_path.exists() {
-                continue;
-            }
-            let rel_str = site.rel_path.to_string_lossy().replace('\\', "/");
-            if !site.abs_path.exists() {
-                findings.push(serde_json::json!({
-                    "program": program.name,
-                    "file": rel_str,
-                    "segment": site.segment,
-                    "status": "file_missing",
-                }));
-                drift_count += 1;
-                continue;
-            }
-            let contents = std::fs::read_to_string(&site.abs_path).map_err(|e| {
-                SunscreenError::Other(anyhow::anyhow!("read {}: {e}", site.abs_path.display()))
-            })?;
-            // Treat scan failures (malformed/unbalanced markers) as drift
-            // findings instead of aborting the whole run — those are exactly
-            // the cases the doctor exists to surface.
-            let markers = match scan(&contents) {
-                Ok(m) => m,
-                Err(e) => {
-                    findings.push(serde_json::json!({
-                        "program": program.name,
-                        "file": rel_str,
-                        "segment": site.segment,
-                        "status": "scan_error",
-                        "error": e.to_string(),
-                    }));
-                    drift_count += 1;
-                    continue;
-                }
-            };
-            let has_segment = markers
-                .iter()
-                .any(|m| m.kind == MarkerKind::AutoGenerated && m.segment == site.segment);
-            if has_segment {
-                findings.push(serde_json::json!({
-                    "program": program.name,
-                    "file": rel_str,
-                    "segment": site.segment,
-                    "status": "ok",
-                }));
-                continue;
-            }
-            drift_count += 1;
-            if args.fix_markers {
-                let patched = if site.appendable {
-                    Some(append_marker_block(&contents, site.segment))
-                } else {
-                    repair_non_appendable_site(&contents, site, program)?
-                };
-                if let Some(patched) = patched {
-                    std::fs::write(&site.abs_path, &patched).map_err(|e| {
-                        SunscreenError::Other(anyhow::anyhow!(
-                            "write {}: {e}",
-                            site.abs_path.display()
-                        ))
-                    })?;
-                    fixed_files.push(rel_str.clone());
-                    findings.push(serde_json::json!({
-                        "program": program.name,
-                        "file": rel_str,
-                        "segment": site.segment,
-                        "status": "fixed",
-                    }));
-                } else {
-                    findings.push(serde_json::json!({
-                        "program": program.name,
-                        "file": rel_str,
-                        "segment": site.segment,
-                        "status": "missing_marker",
-                    }));
-                }
-            } else {
-                findings.push(serde_json::json!({
-                    "program": program.name,
-                    "file": rel_str,
-                    "segment": site.segment,
-                    "status": "missing_marker",
-                }));
-            }
-        }
+    if unresolved > 0 {
+        // Treat unresolved drift as exit 6 (drift) when reporting only; when
+        // fix-markers ran but couldn't fix something (non-appendable site),
+        // still surface it as drift.
+        Ok(6)
+    } else {
+        Ok(0)
+    }
+}
+
+struct DoctorSummary {
+    findings: Vec<serde_json::Value>,
+    fixed_files: Vec<String>,
+    drift_count: usize,
+}
+
+fn collect_marker_checks(
+    programs: &[crate::workspace::ProgramView],
+    ws_root: &Path,
+    fix_markers: bool,
+) -> Result<DoctorSummary, SunscreenError> {
+    let mut summary = DoctorSummary {
+        findings: Vec::new(),
+        fixed_files: Vec::new(),
+        drift_count: 0,
+    };
+
+    for program in programs {
+        collect_program_marker_checks(&mut summary, program, ws_root, fix_markers)?;
     }
 
-    let unresolved = drift_count.saturating_sub(fixed_files.len());
+    Ok(summary)
+}
 
+fn collect_program_marker_checks(
+    summary: &mut DoctorSummary,
+    program: &crate::workspace::ProgramView,
+    ws_root: &Path,
+    fix_markers: bool,
+) -> Result<(), SunscreenError> {
+    let sites = expected_sites(program, ws_root);
+    for site in &sites {
+        let Some(check) = check_marker_site(fix_markers, program, site)? else {
+            continue;
+        };
+        if check.drifted {
+            summary.drift_count += 1;
+        }
+        if let Some(file) = check.fixed_file {
+            summary.fixed_files.push(file);
+        }
+        summary.findings.push(check.finding);
+    }
+    Ok(())
+}
+
+fn emit_doctor_report(json: bool, fix_markers: bool, summary: &DoctorSummary, unresolved: usize) {
     if json {
         let payload = serde_json::json!({
             "ok": unresolved == 0,
-            "fix_markers": args.fix_markers,
-            "findings": findings,
-            "fixed": fixed_files,
-            "drift_count": drift_count,
+            "fix_markers": fix_markers,
+            "findings": summary.findings,
+            "fixed": summary.fixed_files,
+            "drift_count": summary.drift_count,
             "unresolved": unresolved,
         });
         println!("{payload}");
-    } else if drift_count == 0 {
+    } else if summary.drift_count == 0 {
         println!(
             "chain doctor: all markers present ({} sites checked)",
-            findings.len()
+            summary.findings.len()
         );
     } else {
-        for f in &findings {
+        for f in &summary.findings {
             let status = f.get("status").and_then(|v| v.as_str()).unwrap_or("?");
             if status == "ok" {
                 continue;
@@ -940,24 +936,138 @@ fn run_doctor(args: &DoctorArgs, json: bool) -> Result<i32, SunscreenError> {
                 f.get("segment").and_then(|v| v.as_str()).unwrap_or(""),
             );
         }
-        if args.fix_markers {
+        if fix_markers {
             println!(
-                "chain doctor: drift={drift_count}, fixed={}, unresolved={unresolved}",
-                fixed_files.len(),
+                "chain doctor: drift={}, fixed={}, unresolved={unresolved}",
+                summary.drift_count,
+                summary.fixed_files.len(),
             );
         } else {
-            println!("chain doctor: drift={drift_count} (re-run with --fix-markers to repair)");
+            println!(
+                "chain doctor: drift={} (re-run with --fix-markers to repair)",
+                summary.drift_count
+            );
         }
     }
+}
 
-    if unresolved > 0 {
-        // Treat unresolved drift as exit 6 (drift) when reporting only; when
-        // fix-markers ran but couldn't fix something (non-appendable site),
-        // still surface it as drift.
-        Ok(6)
-    } else {
-        Ok(0)
+struct MarkerCheck {
+    finding: serde_json::Value,
+    fixed_file: Option<String>,
+    drifted: bool,
+}
+
+fn check_marker_site(
+    fix_markers: bool,
+    program: &crate::workspace::ProgramView,
+    site: &MarkerSite,
+) -> Result<Option<MarkerCheck>, SunscreenError> {
+    use crate::rustpatch::{scan, MarkerKind};
+
+    if site.optional && !site.abs_path.exists() {
+        return Ok(None);
     }
+    let rel_str = site.rel_path.to_string_lossy().replace('\\', "/");
+    if !site.abs_path.exists() {
+        return Ok(Some(marker_check(
+            program,
+            site,
+            &rel_str,
+            "file_missing",
+            true,
+        )));
+    }
+
+    let contents = std::fs::read_to_string(&site.abs_path).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("read {}: {e}", site.abs_path.display()))
+    })?;
+    let markers = match scan(&contents) {
+        Ok(markers) => markers,
+        Err(err) => {
+            return Ok(Some(MarkerCheck {
+                finding: serde_json::json!({
+                    "program": program.name,
+                    "file": rel_str,
+                    "segment": site.segment,
+                    "status": "scan_error",
+                    "error": err.to_string(),
+                }),
+                fixed_file: None,
+                drifted: true,
+            }));
+        }
+    };
+    if markers
+        .iter()
+        .any(|m| m.kind == MarkerKind::AutoGenerated && m.segment == site.segment)
+    {
+        return Ok(Some(marker_check(program, site, &rel_str, "ok", false)));
+    }
+    repair_missing_marker(fix_markers, program, site, &rel_str, &contents)
+}
+
+fn marker_check(
+    program: &crate::workspace::ProgramView,
+    site: &MarkerSite,
+    rel_str: &str,
+    status: &str,
+    drifted: bool,
+) -> MarkerCheck {
+    MarkerCheck {
+        finding: serde_json::json!({
+            "program": program.name,
+            "file": rel_str,
+            "segment": site.segment,
+            "status": status,
+        }),
+        fixed_file: None,
+        drifted,
+    }
+}
+
+fn repair_missing_marker(
+    fix_markers: bool,
+    program: &crate::workspace::ProgramView,
+    site: &MarkerSite,
+    rel_str: &str,
+    contents: &str,
+) -> Result<Option<MarkerCheck>, SunscreenError> {
+    if !fix_markers {
+        return Ok(Some(marker_check(
+            program,
+            site,
+            rel_str,
+            "missing_marker",
+            true,
+        )));
+    }
+    let patched = if site.appendable {
+        Some(append_marker_block(contents, site.segment))
+    } else {
+        repair_non_appendable_site(contents, site, program)?
+    };
+    let Some(patched) = patched else {
+        return Ok(Some(marker_check(
+            program,
+            site,
+            rel_str,
+            "missing_marker",
+            true,
+        )));
+    };
+    std::fs::write(&site.abs_path, &patched).map_err(|e| {
+        SunscreenError::Other(anyhow::anyhow!("write {}: {e}", site.abs_path.display()))
+    })?;
+    Ok(Some(MarkerCheck {
+        finding: serde_json::json!({
+            "program": program.name,
+            "file": rel_str,
+            "segment": site.segment,
+            "status": "fixed",
+        }),
+        fixed_file: Some(rel_str.to_string()),
+        drifted: true,
+    }))
 }
 
 fn expected_sites(program: &crate::workspace::ProgramView, ws_root: &Path) -> Vec<MarkerSite> {
@@ -1305,67 +1415,90 @@ impl RustBraceScanner {
         let mut idx = 0usize;
         while idx < line.len() {
             let rest = &line[idx..];
-            if self.block_comment_depth > 0 {
-                if rest.starts_with("/*") {
-                    self.block_comment_depth += 1;
-                    idx += 2;
-                } else if rest.starts_with("*/") {
-                    self.block_comment_depth -= 1;
-                    idx += 2;
-                } else {
-                    idx += next_char_len(rest);
-                }
+            if let Some(advance) = self.consume_block_comment(rest) {
+                idx += advance;
                 continue;
             }
-
-            if let Some(mode) = self.string_mode {
-                match mode {
-                    StringScanMode::Normal { escaped } => {
-                        let ch = rest.chars().next().expect("non-empty rest");
-                        if escaped {
-                            self.string_mode = Some(StringScanMode::Normal { escaped: false });
-                        } else if ch == '\\' {
-                            self.string_mode = Some(StringScanMode::Normal { escaped: true });
-                        } else if ch == '"' {
-                            self.string_mode = None;
-                        }
-                        idx += ch.len_utf8();
-                    }
-                    StringScanMode::Raw { hashes } => {
-                        if let Some(end_len) = raw_string_end_len(rest, hashes) {
-                            self.string_mode = None;
-                            idx += end_len;
-                        } else {
-                            idx += next_char_len(rest);
-                        }
-                    }
-                }
+            if let Some(advance) = self.consume_string(rest) {
+                idx += advance;
                 continue;
             }
-
-            if rest.starts_with("//") {
-                break;
+            match self.scan_code(rest, &mut on_brace) {
+                LineScanStep::Advance(advance) => idx += advance,
+                LineScanStep::Stop => break,
             }
-            if rest.starts_with("/*") {
-                self.block_comment_depth += 1;
-                idx += 2;
-                continue;
-            }
-            if let Some(hashes) = raw_string_hashes(rest) {
-                self.string_mode = Some(StringScanMode::Raw { hashes });
-                idx += 2 + hashes;
-                continue;
-            }
-
-            let ch = rest.chars().next().expect("non-empty rest");
-            if ch == '"' {
-                self.string_mode = Some(StringScanMode::Normal { escaped: false });
-            } else if ch == '{' || ch == '}' {
-                on_brace(ch);
-            }
-            idx += ch.len_utf8();
         }
     }
+
+    fn consume_block_comment(&mut self, rest: &str) -> Option<usize> {
+        if self.block_comment_depth == 0 {
+            return None;
+        }
+        if rest.starts_with("/*") {
+            self.block_comment_depth += 1;
+            Some(2)
+        } else if rest.starts_with("*/") {
+            self.block_comment_depth -= 1;
+            Some(2)
+        } else {
+            Some(next_char_len(rest))
+        }
+    }
+
+    fn consume_string(&mut self, rest: &str) -> Option<usize> {
+        match self.string_mode? {
+            StringScanMode::Normal { escaped } => Some(self.consume_normal_string(rest, escaped)),
+            StringScanMode::Raw { hashes } => Some(self.consume_raw_string(rest, hashes)),
+        }
+    }
+
+    fn consume_normal_string(&mut self, rest: &str, escaped: bool) -> usize {
+        let ch = rest.chars().next().expect("non-empty rest");
+        if escaped {
+            self.string_mode = Some(StringScanMode::Normal { escaped: false });
+        } else if ch == '\\' {
+            self.string_mode = Some(StringScanMode::Normal { escaped: true });
+        } else if ch == '"' {
+            self.string_mode = None;
+        }
+        ch.len_utf8()
+    }
+
+    fn consume_raw_string(&mut self, rest: &str, hashes: usize) -> usize {
+        if let Some(end_len) = raw_string_end_len(rest, hashes) {
+            self.string_mode = None;
+            end_len
+        } else {
+            next_char_len(rest)
+        }
+    }
+
+    fn scan_code(&mut self, rest: &str, on_brace: &mut impl FnMut(char)) -> LineScanStep {
+        if rest.starts_with("//") {
+            return LineScanStep::Stop;
+        }
+        if rest.starts_with("/*") {
+            self.block_comment_depth += 1;
+            return LineScanStep::Advance(2);
+        }
+        if let Some(hashes) = raw_string_hashes(rest) {
+            self.string_mode = Some(StringScanMode::Raw { hashes });
+            return LineScanStep::Advance(2 + hashes);
+        }
+
+        let ch = rest.chars().next().expect("non-empty rest");
+        if ch == '"' {
+            self.string_mode = Some(StringScanMode::Normal { escaped: false });
+        } else if ch == '{' || ch == '}' {
+            on_brace(ch);
+        }
+        LineScanStep::Advance(ch.len_utf8())
+    }
+}
+
+enum LineScanStep {
+    Advance(usize),
+    Stop,
 }
 
 fn next_char_len(input: &str) -> usize {
@@ -1444,37 +1577,72 @@ fn insert_error_variants_marker_block(
 
     match (begin_line, end_line) {
         (Some(begin), Some(end)) if begin < end => {
-            let mut out = Vec::with_capacity(lines.len());
-            for (idx, line) in lines.iter().enumerate() {
-                if idx == begin {
-                    out.push(format!(
-                        "{marker_indent}// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=doctor ==="
-                    ));
-                } else if idx == end {
-                    out.push(format!(
-                        "{marker_indent}// === sunscreen:auto-generated:end segment=error_variants ==="
-                    ));
-                } else {
-                    out.push((*line).to_string());
-                }
-            }
-            let mut joined = out.join(nl);
-            if trailing_nl {
-                joined.push_str(nl);
-            }
-            return Some(joined);
+            return Some(rewrite_error_variant_markers(
+                &lines,
+                begin,
+                end,
+                &marker_indent,
+                nl,
+                trailing_nl,
+            ));
         }
         (None, None) => {}
         _ => return None,
     }
 
-    if lines[open_line + 1..close_line]
-        .iter()
-        .any(|line| !line.trim().is_empty())
-    {
+    if enum_body_has_content(&lines, open_line, close_line) {
         return None;
     }
 
+    Some(insert_empty_error_variant_markers(
+        &lines,
+        open_line,
+        close_line,
+        &marker_indent,
+        nl,
+        trailing_nl,
+    ))
+}
+
+fn rewrite_error_variant_markers(
+    lines: &[&str],
+    begin: usize,
+    end: usize,
+    marker_indent: &str,
+    nl: &str,
+    trailing_nl: bool,
+) -> String {
+    let mut out = Vec::with_capacity(lines.len());
+    for (idx, line) in lines.iter().enumerate() {
+        if idx == begin {
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:begin segment=error_variants version=1 generator=doctor ==="
+            ));
+        } else if idx == end {
+            out.push(format!(
+                "{marker_indent}// === sunscreen:auto-generated:end segment=error_variants ==="
+            ));
+        } else {
+            out.push((*line).to_string());
+        }
+    }
+    join_preserving_trailing_newline(out, nl, trailing_nl)
+}
+
+fn enum_body_has_content(lines: &[&str], open_line: usize, close_line: usize) -> bool {
+    lines[open_line + 1..close_line]
+        .iter()
+        .any(|line| !line.trim().is_empty())
+}
+
+fn insert_empty_error_variant_markers(
+    lines: &[&str],
+    open_line: usize,
+    close_line: usize,
+    marker_indent: &str,
+    nl: &str,
+    trailing_nl: bool,
+) -> String {
     let mut out = Vec::with_capacity(lines.len() + 2);
     for (idx, line) in lines.iter().enumerate() {
         out.push((*line).to_string());
@@ -1489,11 +1657,15 @@ fn insert_error_variants_marker_block(
             ));
         }
     }
-    let mut joined = out.join(nl);
+    join_preserving_trailing_newline(out, nl, trailing_nl)
+}
+
+fn join_preserving_trailing_newline(lines: Vec<String>, nl: &str, trailing_nl: bool) -> String {
+    let mut joined = lines.join(nl);
     if trailing_nl {
         joined.push_str(nl);
     }
-    Some(joined)
+    joined
 }
 
 #[cfg(test)]

@@ -43,19 +43,37 @@ fn discover_program(ws: &Path) -> String {
 
 #[test]
 fn scaffold_error_creates_errors_rs_and_appends() {
+    let (_tmp, ws, program_name) = error_workspace();
+
+    scaffold_insufficient_funds(&ws, &program_name);
+    let errors_rs = ws
+        .join("programs")
+        .join(&program_name)
+        .join("src/errors.rs");
+    assert_errors_file_created(&errors_rs);
+    append_unauthorized_error(&ws, &program_name, &errors_rs);
+    assert_error_rerun(&ws, &program_name);
+    assert_error_conflict(&ws, &program_name);
+    assert_error_dry_run(&ws, &program_name, &errors_rs);
+}
+
+fn error_workspace() -> (tempfile::TempDir, std::path::PathBuf, String) {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("err_app");
     run_chain_new(&ws, "err_app");
     let program_name = discover_program(&ws);
+    (tmp, ws, program_name)
+}
 
+fn scaffold_insufficient_funds(ws: &Path, program_name: &str) {
     let out = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "error",
             "InsufficientFunds",
             "--program",
-            &program_name,
+            program_name,
             "--msg",
             "not enough lamports",
             "--json",
@@ -66,47 +84,47 @@ fn scaffold_error_creates_errors_rs_and_appends() {
         "scaffold error failed: stderr={}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
 
-    let errors_rs = ws
-        .join("programs")
-        .join(&program_name)
-        .join("src/errors.rs");
+fn assert_errors_file_created(errors_rs: &Path) {
     assert!(errors_rs.exists());
-    let contents = std::fs::read_to_string(&errors_rs).unwrap();
+    let contents = std::fs::read_to_string(errors_rs).unwrap();
     assert!(contents.contains("#[error_code]"));
     assert!(contents.contains("pub enum "));
     assert!(contents.contains("InsufficientFunds,"));
     assert!(contents.contains("#[msg(\"not enough lamports\")]"));
     assert!(contents.contains("segment=error_variants"));
+}
 
-    // Add second variant.
+fn append_unauthorized_error(ws: &Path, program_name: &str, errors_rs: &Path) {
     let out2 = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "error",
             "Unauthorized",
             "--program",
-            &program_name,
+            program_name,
             "--msg",
             "caller is not authorized",
             "--json",
         ],
     );
     assert!(out2.status.success());
-    let c2 = std::fs::read_to_string(&errors_rs).unwrap();
+    let c2 = std::fs::read_to_string(errors_rs).unwrap();
     assert!(c2.contains("InsufficientFunds,"));
     assert!(c2.contains("Unauthorized,"));
+}
 
-    // Re-add: no-op.
+fn assert_error_rerun(ws: &Path, program_name: &str) {
     let again = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "error",
             "InsufficientFunds",
             "--program",
-            &program_name,
+            program_name,
             "--msg",
             "not enough lamports",
             "--json",
@@ -119,38 +137,40 @@ fn scaffold_error_creates_errors_rs_and_appends() {
         payload.get("unchanged").and_then(|v| v.as_bool()),
         Some(true)
     );
+}
 
-    // Conflict: same name, different message → exit 4.
+fn assert_error_conflict(ws: &Path, program_name: &str) {
     let conflict = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "error",
             "InsufficientFunds",
             "--program",
-            &program_name,
+            program_name,
             "--msg",
             "different message",
         ],
     );
     assert_eq!(conflict.status.code(), Some(4));
+}
 
-    // Dry-run leaves disk untouched.
-    let before = std::fs::read_to_string(&errors_rs).unwrap();
+fn assert_error_dry_run(ws: &Path, program_name: &str, errors_rs: &Path) {
+    let before = std::fs::read_to_string(errors_rs).unwrap();
     let dry = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "error",
             "RateLimited",
             "--program",
-            &program_name,
+            program_name,
             "--msg",
             "slow down",
             "--dry-run",
         ],
     );
     assert!(dry.status.success());
-    let after = std::fs::read_to_string(&errors_rs).unwrap();
+    let after = std::fs::read_to_string(errors_rs).unwrap();
     assert_eq!(before, after);
 }

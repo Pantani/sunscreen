@@ -1,5 +1,7 @@
 mod support;
 
+use std::path::Path;
+
 use support::CliEnv;
 
 #[test]
@@ -11,7 +13,20 @@ fn chain_group_runs_new_doctor_and_build_pipeline_through_real_binary() {
     let workspace = env.chain_new("chain_walk", "none");
     let nested = workspace.join("programs/chain_walk/src");
 
-    let mut doctor = env.sunscreen_in(&nested);
+    assert_doctor_clean(&env, &nested);
+    assert_build_pipeline(&env, &nested, &workspace);
+
+    assert_eq!(
+        env.fake_log_lines(),
+        [
+            "anchor build",
+            "pnpm exec codama run --all --config codama.json"
+        ]
+    );
+}
+
+fn assert_doctor_clean(env: &CliEnv, nested: &Path) {
+    let mut doctor = env.sunscreen_in(nested);
     doctor.args(["--json", "chain", "doctor"]);
     let report = env.json_ok("chain doctor", &mut doctor);
     assert_eq!(report["ok"], true);
@@ -23,10 +38,18 @@ fn chain_group_runs_new_doctor_and_build_pipeline_through_real_binary() {
         findings.iter().all(|finding| finding["status"] == "ok"),
         "expected all marker findings to be ok: {findings:#?}"
     );
+}
 
-    let mut build = env.sunscreen_fake_only_in(&nested);
+fn assert_build_pipeline(env: &CliEnv, nested: &Path, workspace: &Path) {
+    let mut build = env.sunscreen_fake_only_in(nested);
     build.args(["--json", "chain", "build", "--headless"]);
     let events = env.ndjson_ok("chain build", &mut build);
+    assert_build_event_order(&events);
+    assert_build_events_succeeded(&events);
+    assert_codama_config(workspace);
+}
+
+fn assert_build_event_order(events: &[serde_json::Value]) {
     let names: Vec<_> = events
         .iter()
         .map(|event| event["event"].as_str().unwrap())
@@ -46,6 +69,9 @@ fn chain_group_runs_new_doctor_and_build_pipeline_through_real_binary() {
     assert_eq!(events[0]["programs"], serde_json::json!(["chain-walk"]));
     assert_eq!(events.last().unwrap()["status"], "ok");
     assert_eq!(events.last().unwrap()["exit_code"], 0);
+}
+
+fn assert_build_events_succeeded(events: &[serde_json::Value]) {
     let finished: Vec<_> = events
         .iter()
         .filter(|event| event["event"] == "command_finished")
@@ -55,20 +81,15 @@ fn chain_group_runs_new_doctor_and_build_pipeline_through_real_binary() {
         assert_eq!(event["exit_code"], 0);
         assert_eq!(event["status"], "ok");
     }
+}
+
+fn assert_codama_config(workspace: &Path) {
     assert!(workspace.join("codama.json").exists());
     let codama_config: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(workspace.join("codama.json")).unwrap())
             .expect("codama config json");
     assert_eq!(codama_config["idl"], "target/idl/fake_app.json");
     assert!(workspace.join("target/idl/fake_app.json").exists());
-
-    assert_eq!(
-        env.fake_log_lines(),
-        [
-            "anchor build",
-            "pnpm exec codama run --all --config codama.json"
-        ]
-    );
 }
 
 #[test]

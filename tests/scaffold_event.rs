@@ -43,20 +43,39 @@ fn discover_program(ws: &Path) -> String {
 
 #[test]
 fn scaffold_event_creates_events_rs_and_appends() {
+    let (_tmp, ws, program_name) = event_workspace();
+
+    scaffold_deposited_event(&ws, &program_name);
+    let events_rs = ws
+        .join("programs")
+        .join(&program_name)
+        .join("src/events.rs");
+    assert_events_file_created(&events_rs);
+    assert_lib_declares_events(&ws, &program_name);
+
+    append_withdrawn_event(&ws, &program_name, &events_rs);
+    assert_deposited_rerun(&ws, &program_name);
+    assert_event_conflict(&ws, &program_name);
+    assert_event_dry_run(&ws, &program_name, &events_rs);
+}
+
+fn event_workspace() -> (tempfile::TempDir, std::path::PathBuf, String) {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("evt_app");
     run_chain_new(&ws, "evt_app");
     let program_name = discover_program(&ws);
+    (tmp, ws, program_name)
+}
 
-    // 1st event creates the file.
+fn scaffold_deposited_event(ws: &Path, program_name: &str) {
     let out = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "event",
             "Deposited",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "amount:u64",
             "--json",
@@ -67,56 +86,55 @@ fn scaffold_event_creates_events_rs_and_appends() {
         "scaffold event failed: stderr={}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
 
-    let events_rs = ws
-        .join("programs")
-        .join(&program_name)
-        .join("src/events.rs");
+fn assert_events_file_created(events_rs: &Path) {
     assert!(events_rs.exists());
-    let contents = std::fs::read_to_string(&events_rs).unwrap();
+    let contents = std::fs::read_to_string(events_rs).unwrap();
     assert!(contents.contains("#[event]"));
     assert!(contents.contains("pub struct Deposited"));
     assert!(contents.contains("pub amount: u64"));
     assert!(contents.contains("segment=events"));
+}
 
-    // First-time creation of events.rs must also patch lib.rs to declare
-    // `pub mod events;` — otherwise `use crate::events::*` (e.g. from
-    // `scaffold instruction --emit X`) would fail to resolve.
-    let lib_rs = ws.join("programs").join(&program_name).join("src/lib.rs");
+fn assert_lib_declares_events(ws: &Path, program_name: &str) {
+    let lib_rs = ws.join("programs").join(program_name).join("src/lib.rs");
     let lib_contents = std::fs::read_to_string(&lib_rs).unwrap();
     assert!(
         lib_contents.lines().any(|l| l.trim() == "pub mod events;"),
         "expected `pub mod events;` in lib.rs, got:\n{lib_contents}"
     );
+}
 
-    // 2nd event appends.
+fn append_withdrawn_event(ws: &Path, program_name: &str, events_rs: &Path) {
     let out2 = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "event",
             "Withdrawn",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "amount:u64,user:Pubkey",
             "--json",
         ],
     );
     assert!(out2.status.success());
-    let c2 = std::fs::read_to_string(&events_rs).unwrap();
+    let c2 = std::fs::read_to_string(events_rs).unwrap();
     assert!(c2.contains("pub struct Deposited"));
     assert!(c2.contains("pub struct Withdrawn"));
+}
 
-    // 3rd: re-add Deposited → no-op.
+fn assert_deposited_rerun(ws: &Path, program_name: &str) {
     let again = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "event",
             "Deposited",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "amount:u64",
             "--json",
@@ -129,36 +147,38 @@ fn scaffold_event_creates_events_rs_and_appends() {
         payload.get("unchanged").and_then(|v| v.as_bool()),
         Some(true)
     );
+}
 
-    // Different fields for existing name → error.
+fn assert_event_conflict(ws: &Path, program_name: &str) {
     let conflict = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "event",
             "Deposited",
             "--program",
-            &program_name,
+            program_name,
             "--fields",
             "amount:u128",
         ],
     );
     assert_eq!(conflict.status.code(), Some(4));
+}
 
-    // Dry-run for a new event leaves disk untouched.
-    let before = std::fs::read_to_string(&events_rs).unwrap();
+fn assert_event_dry_run(ws: &Path, program_name: &str, events_rs: &Path) {
+    let before = std::fs::read_to_string(events_rs).unwrap();
     let dry = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "event",
             "Paused",
             "--program",
-            &program_name,
+            program_name,
             "--dry-run",
         ],
     );
     assert!(dry.status.success());
-    let after = std::fs::read_to_string(&events_rs).unwrap();
+    let after = std::fs::read_to_string(events_rs).unwrap();
     assert_eq!(before, after);
 }

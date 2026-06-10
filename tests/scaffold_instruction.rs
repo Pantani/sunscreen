@@ -6,7 +6,7 @@
 //! 3. Validate the generated files + that `mod.rs` was patched.
 //! 4. Re-run the same command (should be a no-op, idempotent).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn sunscreen_bin() -> &'static str {
@@ -38,13 +38,36 @@ fn run_scaffold(workspace: &Path, args: &[&str]) -> std::process::Output {
 
 #[test]
 fn scaffold_instruction_creates_file_and_patches_mod() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ws = tmp.path().join("demo_app");
-    run_chain_new(&ws, "demo_app");
+    let (_tmp, ws, program_name) = instruction_workspace("demo_app");
+    scaffold_deposit_instruction(&ws, &program_name, true);
 
-    // The program path in config is `programs/demo-app` (kebab-case
-    // normalisation), but the on-disk crate folder is whatever `chain new`
-    // emitted. Inspect the layout to discover the actual program name.
+    let program_dir = ws.join("programs").join(&program_name);
+    let ix_file = program_dir.join("src/instructions/deposit.rs");
+    let mod_file = program_dir.join("src/instructions/mod.rs");
+    assert_instruction_outputs(&ix_file, &mod_file);
+
+    let mod_contents = std::fs::read_to_string(mod_file.as_path()).unwrap();
+    let ix_contents = std::fs::read_to_string(ix_file.as_path()).unwrap();
+    assert_instruction_rerun(
+        &ws,
+        &program_name,
+        &mod_file,
+        &mod_contents,
+        &ix_file,
+        &ix_contents,
+    );
+    assert_user_region_preserved(&ws, &program_name, &ix_file, &ix_contents);
+}
+
+fn instruction_workspace(name: &str) -> (tempfile::TempDir, PathBuf, String) {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join(name);
+    run_chain_new(&ws, name);
+    let program_name = discover_program(&ws);
+    (tmp, ws, program_name)
+}
+
+fn discover_program(ws: &Path) -> String {
     let programs_dir = ws.join("programs");
     let entries: Vec<_> = std::fs::read_dir(&programs_dir)
         .unwrap()
@@ -52,53 +75,61 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
         .filter(|e| e.path().is_dir())
         .collect();
     assert_eq!(entries.len(), 1, "expected exactly one program dir");
-    let program_name = entries[0].file_name().to_string_lossy().into_owned();
+    entries[0].file_name().to_string_lossy().into_owned()
+}
 
-    // 1) Scaffold an instruction.
-    let out = run_scaffold(
-        &ws,
-        &[
-            "scaffold",
-            "instruction",
-            "deposit",
-            "--program",
-            &program_name,
-            "--args",
-            "amount:u64",
-            "--json",
-        ],
-    );
+fn scaffold_deposit_instruction(ws: &Path, program_name: &str, json: bool) {
+    let mut args = vec![
+        "scaffold",
+        "instruction",
+        "deposit",
+        "--program",
+        program_name,
+        "--args",
+        "amount:u64",
+    ];
+    if json {
+        args.push("--json");
+    }
+    let out = run_scaffold(ws, &args);
     assert!(
         out.status.success(),
         "scaffold failed: exit={:?} stderr={}",
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
+}
 
-    let program_dir = programs_dir.join(&program_name);
-    let ix_file = program_dir.join("src/instructions/deposit.rs");
-    let mod_file = program_dir.join("src/instructions/mod.rs");
+fn assert_instruction_outputs(ix_file: &Path, mod_file: &Path) {
     assert!(ix_file.exists(), "instruction file missing");
     assert!(mod_file.exists(), "mod.rs missing");
 
-    let mod_contents = std::fs::read_to_string(&mod_file).unwrap();
+    let mod_contents = std::fs::read_to_string(mod_file).unwrap();
     assert!(mod_contents.contains("pub mod deposit;"));
     assert!(mod_contents.contains("pub use deposit::*;"));
     assert!(mod_contents.contains("sunscreen:auto-generated:begin segment=instructions"));
 
-    let ix_contents = std::fs::read_to_string(&ix_file).unwrap();
+    let ix_contents = std::fs::read_to_string(ix_file).unwrap();
     assert!(ix_contents.contains("Deposit"));
     assert!(ix_contents.contains("amount: u64"));
+}
 
-    // 2) Re-run with identical args: idempotent no-op (exit 0, unchanged=true).
+fn assert_instruction_rerun(
+    ws: &Path,
+    program_name: &str,
+    mod_file: &Path,
+    mod_contents: &str,
+    ix_file: &Path,
+    ix_contents: &str,
+) {
     let again = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "instruction",
             "deposit",
             "--program",
-            &program_name,
+            program_name,
             "--args",
             "amount:u64",
             "--json",
@@ -117,26 +148,27 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
     );
 
     // 3) Files on disk are byte-stable across the re-run.
-    let snapshot = std::fs::read_to_string(&mod_file).unwrap();
+    let snapshot = std::fs::read_to_string(mod_file).unwrap();
     assert_eq!(snapshot, mod_contents);
-    let ix_snapshot = std::fs::read_to_string(&ix_file).unwrap();
+    let ix_snapshot = std::fs::read_to_string(ix_file).unwrap();
     assert_eq!(ix_snapshot, ix_contents);
+}
 
-    // 4) User-region edits are PRESERVED across re-runs (not treated as drift).
+fn assert_user_region_preserved(ws: &Path, program_name: &str, ix_file: &Path, ix_contents: &str) {
     let user_edited = ix_contents.replace(
         "let _ = ctx;",
         "let _ = ctx;\n    msg!(\"custom user logic\");",
     );
     assert_ne!(user_edited, ix_contents, "test setup: edit must apply");
-    std::fs::write(&ix_file, &user_edited).unwrap();
+    std::fs::write(ix_file, &user_edited).unwrap();
     let preserved = run_scaffold(
-        &ws,
+        ws,
         &[
             "scaffold",
             "instruction",
             "deposit",
             "--program",
-            &program_name,
+            program_name,
             "--args",
             "amount:u64",
         ],
@@ -147,7 +179,7 @@ fn scaffold_instruction_creates_file_and_patches_mod() {
         "user-region edit must NOT drift; stderr={}",
         String::from_utf8_lossy(&preserved.stderr)
     );
-    let after = std::fs::read_to_string(&ix_file).unwrap();
+    let after = std::fs::read_to_string(ix_file).unwrap();
     insta::assert_snapshot!("user_region_preserved_after_rescaffold", after);
 }
 

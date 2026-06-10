@@ -7,7 +7,7 @@
 use anyhow::Result;
 use serde_yaml::Value;
 
-use crate::config::migrator::Migration;
+use crate::config::migrations::Migration;
 
 /// Renames `project.id` to `project.name` when the latter is absent.
 pub struct V0ToV1;

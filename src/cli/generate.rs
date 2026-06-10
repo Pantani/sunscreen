@@ -11,7 +11,7 @@ use crate::codegen::frontend_hooks::{
 use crate::codegen::idl::{export_idls, IdlExportOptions};
 use crate::codegen::{relative_path, CodegenError};
 use crate::error::SunscreenError;
-use crate::runtime::subprocess::SubprocessRunner;
+use crate::process::SubprocessRunner;
 use crate::{
     config::schema::{Framework as ConfigFramework, Frontend as ConfigFrontend},
     workspace,

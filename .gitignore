@@ -1,6 +1,10 @@
 # Rust build artifacts
 /target
 
+# Node tooling used by architecture validation
+/node_modules/
+/.dependency-cruiser-rust/
+
 # Editor / OS
 .DS_Store
 *.swp

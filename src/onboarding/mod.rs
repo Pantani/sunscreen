@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::error::SunscreenError;
 
+pub mod args;
 pub mod deploy;
 pub mod examples;
 pub mod learn;

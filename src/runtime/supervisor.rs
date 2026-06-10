@@ -3,8 +3,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::subprocess::{ManagedProcess, ProcessError, ProcessSpawner};
 use super::validator::Runtime;
+use crate::process::{ManagedProcess, ProcessError, ProcessSpawner};
 
 /// Runtime process start metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]

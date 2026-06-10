@@ -36,7 +36,7 @@ pub enum CodegenError {
     },
     /// Subprocess failure before the command could complete.
     #[error(transparent)]
-    Process(#[from] crate::runtime::subprocess::ProcessError),
+    Process(#[from] crate::process::ProcessError),
 }
 
 impl CodegenError {

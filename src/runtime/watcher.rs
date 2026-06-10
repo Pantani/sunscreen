@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use notify::Event as NotifyEvent;
 
 use super::pipeline::{BuildPipeline, PipelineError, PipelineOptions, PipelineReport};
-use super::subprocess::ProcessRunner;
+use crate::process::ProcessRunner;
 
 /// Kind of action a debounced file-change batch should trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

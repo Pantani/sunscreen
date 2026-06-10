@@ -4,10 +4,9 @@ use std::path::{Path, PathBuf};
 
 use heck::ToSnakeCase;
 
-use crate::cli::chain::{self, Framework, Frontend, NewArgs};
-use crate::cli::onboarding::{ClusterArg, QuickstartArgs, QuickstartRecipeArg};
-use crate::cli::scaffold::{self, BuiltinRecipeArgs, CrudArgs};
+use crate::bootstrap::{self, Framework, Frontend, NewArgs};
 use crate::error::SunscreenError;
+use crate::onboarding::args::{ClusterArg, QuickstartArgs, QuickstartRecipeArg};
 use crate::onboarding::{preflight_path, resolve_name};
 use crate::strings::en_US;
 use crate::workspace;
@@ -17,7 +16,40 @@ pub mod dao;
 pub mod nft;
 pub mod token;
 
-pub fn run(args: &QuickstartArgs, json: bool) -> Result<i32, SunscreenError> {
+pub(crate) trait RecipeApplier {
+    fn apply_spl_token(
+        &self,
+        name: &str,
+        program: &str,
+        workspace_root: &Path,
+    ) -> Result<(), SunscreenError>;
+
+    fn apply_metaplex_nft(
+        &self,
+        name: &str,
+        program: &str,
+        workspace_root: &Path,
+    ) -> Result<(), SunscreenError>;
+
+    #[allow(clippy::too_many_arguments)]
+    fn apply_crud(
+        &self,
+        name: &str,
+        program: &str,
+        fields: &str,
+        no_update: bool,
+        no_delete: bool,
+        no_events: bool,
+        no_frontend: bool,
+        workspace_root: &Path,
+    ) -> Result<(), SunscreenError>;
+}
+
+pub(crate) fn run<A: RecipeApplier>(
+    args: &QuickstartArgs,
+    json: bool,
+    recipe_applier: &A,
+) -> Result<i32, SunscreenError> {
     let name = resolve_name(
         args.name.as_deref(),
         args.non_interactive,
@@ -39,70 +71,62 @@ pub fn run(args: &QuickstartArgs, json: bool) -> Result<i32, SunscreenError> {
         path: args.path.clone(),
         dry_run: false,
     };
-    let workspace = chain::create_workspace(&new_args)?;
-    apply_recipe_in_workspace(args.recipe, &name, args.frontend, &workspace.path)?;
+    let workspace = bootstrap::create_workspace(&new_args)?;
+    apply_recipe_in_workspace(
+        args.recipe,
+        &name,
+        args.frontend,
+        &workspace.path,
+        recipe_applier,
+    )?;
     emit_report(json, &plan, false, workspace.written);
     Ok(0)
 }
 
-pub(crate) fn apply_recipe_in_workspace(
+pub(crate) fn apply_recipe_in_workspace<A: RecipeApplier>(
     recipe: QuickstartRecipeArg,
     project_name: &str,
     frontend: Frontend,
     workspace_path: &Path,
+    recipe_applier: &A,
 ) -> Result<(), SunscreenError> {
     let ws = workspace::find_root(Some(workspace_path))?;
-    apply_recipe(recipe, project_name, frontend, &ws.root)
+    apply_recipe(recipe, project_name, frontend, &ws.root, recipe_applier)
 }
 
-fn apply_recipe(
+fn apply_recipe<A: RecipeApplier>(
     recipe: QuickstartRecipeArg,
     project_name: &str,
     frontend: Frontend,
     workspace_root: &Path,
+    recipe_applier: &A,
 ) -> Result<(), SunscreenError> {
     let program = project_name.to_snake_case();
     match recipe {
-        QuickstartRecipeArg::Token => scaffold::run_spl_token_quiet(
-            &BuiltinRecipeArgs {
-                name: token::RESOURCE_NAME.to_string(),
-                program,
-                dry_run: false,
-            },
+        QuickstartRecipeArg::Token => {
+            recipe_applier.apply_spl_token(token::RESOURCE_NAME, &program, workspace_root)?
+        }
+        QuickstartRecipeArg::Nft => {
+            recipe_applier.apply_metaplex_nft(nft::RESOURCE_NAME, &program, workspace_root)?
+        }
+        QuickstartRecipeArg::Dao => recipe_applier.apply_crud(
+            dao::RESOURCE_NAME,
+            &program,
+            dao::FIELDS,
+            false,
+            false,
+            false,
+            frontend == Frontend::None,
             workspace_root,
         )?,
-        QuickstartRecipeArg::Nft => scaffold::run_metaplex_nft_quiet(
-            &BuiltinRecipeArgs {
-                name: nft::RESOURCE_NAME.to_string(),
-                program,
-                dry_run: false,
-            },
-            workspace_root,
-        )?,
-        QuickstartRecipeArg::Dao => scaffold::run_crud_quiet(
-            &CrudArgs {
-                name: dao::RESOURCE_NAME.to_string(),
-                program,
-                fields: dao::FIELDS.to_string(),
-                no_update: false,
-                no_delete: false,
-                no_events: false,
-                no_frontend: frontend == Frontend::None,
-                dry_run: false,
-            },
-            workspace_root,
-        )?,
-        QuickstartRecipeArg::Blog => scaffold::run_crud_quiet(
-            &CrudArgs {
-                name: blog::RESOURCE_NAME.to_string(),
-                program,
-                fields: blog::FIELDS.to_string(),
-                no_update: false,
-                no_delete: false,
-                no_events: false,
-                no_frontend: frontend == Frontend::None,
-                dry_run: false,
-            },
+        QuickstartRecipeArg::Blog => recipe_applier.apply_crud(
+            blog::RESOURCE_NAME,
+            &program,
+            blog::FIELDS,
+            false,
+            false,
+            false,
+            frontend == Frontend::None,
             workspace_root,
         )?,
     };

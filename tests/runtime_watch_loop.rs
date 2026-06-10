@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind};
+use sunscreen::process::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 use sunscreen::runtime::pipeline::{PipelineOptions, PipelineStep};
-use sunscreen::runtime::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 use sunscreen::runtime::watcher::{WatchBuildLoop, WatchDebouncer};
 
 #[derive(Default)]

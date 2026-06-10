@@ -5,9 +5,9 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind};
+use sunscreen::process::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 use sunscreen::runtime::pipeline::PipelineOptions;
 use sunscreen::runtime::serve::{HeadlessServeLoop, ServeLoopInput};
-use sunscreen::runtime::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
 #[derive(Default)]
 struct FakeRunner {

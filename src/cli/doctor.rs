@@ -11,7 +11,7 @@ use comfy_table::{Cell, Color, ContentArrangement, Table};
 use owo_colors::OwoColorize;
 use serde::Serialize;
 
-use crate::runtime::subprocess::SubprocessRunner;
+use crate::process::SubprocessRunner;
 use crate::toolchain::{
     detect_all, finalize_fix_results, fix_reports_with_logger, known, RealRunner, Status,
     ToolFixLogEvent, ToolFixResult, ToolFixStatus, ToolReport,

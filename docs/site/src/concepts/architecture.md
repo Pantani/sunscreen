@@ -24,7 +24,7 @@ The CLI layer is thin: it parses, validates, then hands off to the runtime or te
 
 [`src/runtime/`](https://github.com/Pantani/sunscreen/tree/main/src/runtime). Owns:
 
-- **Subprocess management** (`subprocess.rs`) — `CommandSpec`, `ProcessRunner`, `SubprocessRunner`. Every shell-out goes through this for testability.
+- **Build/runtime orchestration** uses the shared subprocess boundary in `src/process.rs` (`CommandSpec`, `ProcessRunner`, `SubprocessRunner`) so every shell-out stays testable without coupling generators back to runtime.
 - **Build pipeline** (`pipeline.rs`) — anchor build → IDL export → Codama → frontend notify.
 - **Watcher** (`watcher.rs`) — `notify` events, debounced, dedup'd, filtered.
 - **Validator adapters** (`surfpool.rs`, `testvalidator.rs`) — abstracted behind a `LocalValidator` trait.
@@ -52,6 +52,8 @@ The gRPC contract in `proto/plugin.proto` is wire-defined but not yet end-to-end
 | Concern | Where |
 |---------|-------|
 | Config (`sunscreen.yml`) | [`src/config/`](https://github.com/Pantani/sunscreen/tree/main/src/config) — schema, loader, migrations |
+| Workspace bootstrap | [`src/bootstrap.rs`](https://github.com/Pantani/sunscreen/blob/main/src/bootstrap.rs) — shared `chain new`, `init`, examples, and quickstart workspace creation |
+| Process execution | [`src/process.rs`](https://github.com/Pantani/sunscreen/blob/main/src/process.rs) — shared subprocess runner boundary |
 | Toolchain detection | [`src/toolchain/`](https://github.com/Pantani/sunscreen/tree/main/src/toolchain) — uniform `ToolReport` for every external tool |
 | Errors | [`src/error.rs`](https://github.com/Pantani/sunscreen/blob/main/src/error.rs) — single `Error` enum, `code` + `next_step` |
 | TUI (chain serve) | [`src/tui/serve_model.rs`](https://github.com/Pantani/sunscreen/blob/main/src/tui/serve_model.rs) |

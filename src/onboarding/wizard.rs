@@ -2,13 +2,18 @@
 
 use std::path::PathBuf;
 
-use crate::cli::chain::{self, Framework, NewArgs};
-use crate::cli::onboarding::{InitArgs, QuickstartRecipeArg};
+use crate::bootstrap::{self, Framework, NewArgs};
 use crate::error::SunscreenError;
-use crate::onboarding::{preflight_path, recipes, resolve_name};
+use crate::onboarding::args::{InitArgs, QuickstartRecipeArg};
+use crate::onboarding::recipes::{self, RecipeApplier};
+use crate::onboarding::{preflight_path, resolve_name};
 use crate::strings::en_US;
 
-pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
+pub(crate) fn run<A: RecipeApplier>(
+    args: &InitArgs,
+    json: bool,
+    recipe_applier: &A,
+) -> Result<i32, SunscreenError> {
     let name = resolve_name(
         args.name.as_deref(),
         args.non_interactive,
@@ -25,10 +30,16 @@ pub fn run(args: &InitArgs, json: bool) -> Result<i32, SunscreenError> {
         path: args.path.clone(),
         dry_run: args.dry_run,
     };
-    let report = chain::create_workspace(&new_args)?;
+    let report = bootstrap::create_workspace(&new_args)?;
     if let Some(recipe) = preset {
         if !report.dry_run {
-            recipes::apply_recipe_in_workspace(recipe, &name, args.frontend, &report.path)?;
+            recipes::apply_recipe_in_workspace(
+                recipe,
+                &name,
+                args.frontend,
+                &report.path,
+                recipe_applier,
+            )?;
         }
     }
     let next_step = en_US::INIT_NEXT_STEP.replace("{path}", &report.path.display().to_string());

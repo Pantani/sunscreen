@@ -5,7 +5,7 @@ use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use sunscreen::runtime::subprocess::{CommandSpec, ManagedProcess, ProcessError, ProcessSpawner};
+use sunscreen::process::{CommandSpec, ManagedProcess, ProcessError, ProcessSpawner};
 use sunscreen::runtime::supervisor::RuntimeSupervisor;
 use sunscreen::runtime::surfpool::SurfpoolRuntime;
 use sunscreen::runtime::testvalidator::TestValidatorRuntime;

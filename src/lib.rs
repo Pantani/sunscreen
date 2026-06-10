@@ -2,6 +2,7 @@
 //!
 //! See `docs/adr/ADR-0001-solis-cli.md` for design rationale.
 
+pub mod bootstrap;
 pub mod cli;
 pub mod codegen;
 pub mod config;
@@ -10,6 +11,7 @@ pub mod fsutil;
 #[cfg(feature = "onboarding")]
 pub mod onboarding;
 pub mod plugin;
+pub mod process;
 pub mod runtime;
 pub mod rustpatch;
 pub mod scaffold;

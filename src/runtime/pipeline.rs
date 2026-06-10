@@ -5,8 +5,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::render_event_path;
-use super::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 use crate::codegen::codama;
+use crate::process::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
 /// Program build strategy selected from `sunscreen.yml`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

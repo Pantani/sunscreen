@@ -2,14 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::cli::onboarding::{
+use crate::error::SunscreenError;
+use crate::onboarding::args::{
     ClusterArg, WalletAirdropArgs, WalletBalanceArgs, WalletCmd, WalletNewArgs,
     WalletSetDefaultArgs,
 };
-use crate::error::SunscreenError;
-use crate::runtime::subprocess::{
-    CommandOutput, CommandSpec, ProcessError, ProcessRunner, SubprocessRunner,
-};
+use crate::process::{CommandOutput, CommandSpec, ProcessError, ProcessRunner, SubprocessRunner};
 use crate::workspace;
 
 pub fn run(cmd: &WalletCmd, json: bool) -> Result<i32, SunscreenError> {

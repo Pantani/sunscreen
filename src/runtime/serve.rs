@@ -8,8 +8,8 @@ use notify::{Event as NotifyEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
 use super::pipeline::{PipelineError, PipelineOptions};
 use super::render_event_path;
-use super::subprocess::ProcessRunner;
 use super::watcher::{WatchBuildLoop, WatchBuildReport};
+use crate::process::ProcessRunner;
 
 /// One input consumed by the headless serve loop.
 #[derive(Debug, Clone)]

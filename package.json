@@ -1,0 +1,11 @@
+{
+  "name": "sunscreen-architecture-validation",
+  "private": true,
+  "description": "Dependency analysis checks for the Sunscreen Rust module graph.",
+  "scripts": {
+    "arch:deps": "node scripts/dependency-cruiser-rust-adapter.mjs && depcruise --config .dependency-cruiser.cjs .dependency-cruiser-rust/modules/src .dependency-cruiser-rust/layers/src"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^17.4.3"
+  }
+}

@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
+use sunscreen::process::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 use sunscreen::runtime::pipeline::{BuildKind, BuildPipeline, PipelineOptions, PipelineStep};
-use sunscreen::runtime::subprocess::{CommandOutput, CommandSpec, ProcessError, ProcessRunner};
 
 #[derive(Default)]
 struct FakeRunner {

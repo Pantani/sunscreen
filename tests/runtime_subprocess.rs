@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sunscreen::runtime::subprocess::{CommandSpec, ProcessRunner, SubprocessRunner};
+use sunscreen::process::{CommandSpec, ProcessRunner, SubprocessRunner};
 
 #[cfg(unix)]
 fn write_script(bin_dir: &Path, name: &str, exit_code: i32) -> PathBuf {

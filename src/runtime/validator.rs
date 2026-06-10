@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::subprocess::CommandSpec;
+use crate::process::CommandSpec;
 
 /// RPC/WebSocket port pair for a local Solana runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

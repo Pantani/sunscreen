@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use super::subprocess::CommandSpec;
 use super::validator::{Runtime, RuntimeEndpoints, RuntimePorts};
+use crate::process::CommandSpec;
 
 /// Managed Surfpool local runtime.
 #[derive(Debug, Clone, Copy, Default)]

@@ -1,10 +1,8 @@
 //! Friendly deployment wrapper.
 
-use crate::cli::onboarding::{ClusterArg, DeployArgs};
 use crate::error::SunscreenError;
-use crate::runtime::subprocess::{
-    CommandOutput, CommandSpec, ProcessError, ProcessRunner, SubprocessRunner,
-};
+use crate::onboarding::args::{ClusterArg, DeployArgs};
+use crate::process::{CommandOutput, CommandSpec, ProcessError, ProcessRunner, SubprocessRunner};
 use crate::workspace;
 
 pub fn run(args: &DeployArgs, json: bool) -> Result<i32, SunscreenError> {

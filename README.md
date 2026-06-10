@@ -41,7 +41,7 @@ The docs site source lives in [`docs/site/`](docs/site/) and is published from `
 | Concepts | [`Architecture`](docs/site/src/concepts/architecture.md), [`Workspace model`](docs/site/src/concepts/workspace-model.md), [`Build pipeline`](docs/site/src/concepts/build-pipeline.md), [`Plugin runtime`](docs/site/src/concepts/plugin-runtime.md), [`Anchor vs Pinocchio`](docs/site/src/concepts/framework-pinocchio-vs-anchor.md) | The mental model behind the CLI |
 | Contributing | [`Roadmap`](docs/site/src/contributing/roadmap.md), [`Architecture decisions`](docs/site/src/contributing/adrs.md), [`Developer setup`](docs/site/src/contributing/dev-setup.md), [`Documentation style`](docs/site/src/contributing/docs-style.md) | Project status, ADRs, local development, and docs conventions |
 
-Operational repo references are also kept in [`docs/reference/`](docs/reference/): [`markers`](docs/reference/markers.md), [`codegen`](docs/reference/codegen.md), [`recipes`](docs/reference/recipes.md), [`onboarding`](docs/reference/onboarding.md), [`app/plugins`](docs/reference/app.md), [`Pinocchio`](docs/reference/pinocchio.md), [`testing`](docs/reference/testing.md), and [`distribution`](docs/reference/distribution.md).
+Operational repo references are also kept in [`docs/reference/`](docs/reference/): [`markers`](docs/reference/markers.md), [`codegen`](docs/reference/codegen.md), [`recipes`](docs/reference/recipes.md), [`onboarding`](docs/reference/onboarding.md), [`app/plugins`](docs/reference/app.md), [`Pinocchio`](docs/reference/pinocchio.md), [`testing`](docs/reference/testing.md), [`dependency analysis`](docs/reference/dependency-analysis.md), and [`distribution`](docs/reference/distribution.md).
 
 ---
 
@@ -224,6 +224,7 @@ cargo test               # run unit + golden tests
 cargo clippy -- -D warnings
 cargo fmt --check
 cargo bench --bench cold_start
+npm run arch:deps        # dependency analysis with Dependency Cruiser
 mdbook build docs/site
 mdbook serve docs/site --open
 bash scripts/integration-heavy.sh
@@ -236,12 +237,14 @@ Project layout:
 
 ```
 src/
+  bootstrap.rs # shared workspace bootstrap for chain new and onboarding
   cli/         # clap command surface (root, version, doctor, ...)
   codegen/     # Codama config, IDL export, frontend hook generation
   config/      # sunscreen.yml schema, loader, migrations
   onboarding/  # init, quickstart, examples, wallet, deploy, learn flows
   plugin/      # plugin manifests, marketplace, sandbox, stdio/gRPC adapters
-  runtime/     # subprocess, build pipeline, watcher, validator supervisor
+  process.rs   # shared subprocess runner and process boundary
+  runtime/     # build pipeline, watcher, validator supervisor
   scaffold/    # composite CRUD/SPL token/Metaplex NFT recipes
   strings/     # centralized user-facing strings
   toolchain/   # external tool detection (anchor, solana, ...)

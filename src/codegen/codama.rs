@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use heck::ToSnakeCase;
 
-use crate::runtime::subprocess::{CommandOutput, CommandSpec, ProcessRunner};
+use crate::process::{CommandOutput, CommandSpec, ProcessRunner};
 
 use super::codama_config::{codama_config_path, write_codama_config};
 use super::{sorted_json_files, CodegenError, FileWrite};

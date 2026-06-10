@@ -4,11 +4,11 @@ use std::path::{Component, Path, PathBuf};
 
 use rust_embed::RustEmbed;
 
-use crate::cli::chain::{self, Framework, Frontend, NewArgs};
-use crate::cli::onboarding::{ExampleUseArgs, ExamplesCmd, ExamplesListArgs, QuickstartRecipeArg};
+use crate::bootstrap::{self, Framework, Frontend, NewArgs};
 use crate::error::SunscreenError;
 use crate::fsutil::{Transaction, TxError};
-use crate::onboarding::recipes;
+use crate::onboarding::args::{ExampleUseArgs, ExamplesCmd, ExamplesListArgs, QuickstartRecipeArg};
+use crate::onboarding::recipes::{self, RecipeApplier};
 
 #[derive(RustEmbed)]
 #[folder = "assets/examples/"]
@@ -67,11 +67,15 @@ const EXAMPLES: &[Example] = &[
     },
 ];
 
-pub fn run(cmd: &ExamplesCmd, json: bool) -> Result<i32, SunscreenError> {
+pub(crate) fn run<A: RecipeApplier>(
+    cmd: &ExamplesCmd,
+    json: bool,
+    recipe_applier: &A,
+) -> Result<i32, SunscreenError> {
     match cmd {
         ExamplesCmd::List(args) => run_list(args, json),
         ExamplesCmd::Describe(args) => run_describe(&args.name, json),
-        ExamplesCmd::Use(args) => run_use(args, json),
+        ExamplesCmd::Use(args) => run_use(args, json, recipe_applier),
     }
 }
 
@@ -117,7 +121,11 @@ fn run_describe(name: &str, json: bool) -> Result<i32, SunscreenError> {
     Ok(0)
 }
 
-fn run_use(args: &ExampleUseArgs, json: bool) -> Result<i32, SunscreenError> {
+fn run_use<A: RecipeApplier>(
+    args: &ExampleUseArgs,
+    json: bool,
+    recipe_applier: &A,
+) -> Result<i32, SunscreenError> {
     let example = find_example(&args.name)?;
     let dest = args
         .path
@@ -131,7 +139,7 @@ fn run_use(args: &ExampleUseArgs, json: bool) -> Result<i32, SunscreenError> {
         return Ok(0);
     }
 
-    let workspace = chain::create_workspace(&NewArgs {
+    let workspace = bootstrap::create_workspace(&NewArgs {
         name: example.name.to_string(),
         framework: Framework::Anchor,
         frontend: Frontend::None,
@@ -139,7 +147,13 @@ fn run_use(args: &ExampleUseArgs, json: bool) -> Result<i32, SunscreenError> {
         dry_run: false,
     })?;
     if let Some(preset) = example.preset {
-        recipes::apply_recipe_in_workspace(preset, example.name, Frontend::None, &workspace.path)?;
+        recipes::apply_recipe_in_workspace(
+            preset,
+            example.name,
+            Frontend::None,
+            &workspace.path,
+            recipe_applier,
+        )?;
     }
 
     let mut tx = Transaction::new(&dest).map_err(map_tx_err)?;

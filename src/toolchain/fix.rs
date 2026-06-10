@@ -4,7 +4,7 @@
 //! tools that the detector already knows how to verify, then the caller should
 //! re-run detection before reporting a tool as fixed.
 
-use crate::runtime::subprocess::{CommandSpec, ProcessRunner};
+use crate::process::{CommandSpec, ProcessRunner};
 
 use super::{CommandRunner, Status, ToolReport};
 
@@ -536,7 +536,7 @@ mod tests {
 
     use semver::Version;
 
-    use crate::runtime::subprocess::{CommandOutput, ProcessError};
+    use crate::process::{CommandOutput, ProcessError};
     use crate::toolchain::{CommandRunner, Status};
 
     use super::*;

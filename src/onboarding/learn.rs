@@ -2,8 +2,8 @@
 
 use rust_embed::RustEmbed;
 
-use crate::cli::onboarding::LearnArgs;
 use crate::error::SunscreenError;
+use crate::onboarding::args::LearnArgs;
 
 #[derive(RustEmbed)]
 #[folder = "assets/learn/"]

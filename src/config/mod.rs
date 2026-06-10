@@ -16,7 +16,8 @@ pub mod schema;
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
 pub use loader::{load, ConfigError};
-pub use migrator::{migrate, registry, Migration};
+pub use migrations::Migration;
+pub use migrator::{migrate, registry};
 pub use schema::{
     ClusterCfg, ClustersCfg, Config, Framework, Frontend, PluginCapabilities, PluginCfg,
     PluginFilesystemScope, PluginTransport, ProgramCfg, ProjectCfg, RuntimeCfg, RuntimeEngine,
